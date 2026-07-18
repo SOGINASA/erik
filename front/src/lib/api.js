@@ -106,13 +106,16 @@ export const api = {
   donateCharity: (id, body) => request(`/charity/${id}/donate`, { method: 'POST', body }),
   leaderboardVolunteers: () => request('/leaderboard/volunteers'),
   userPublic: (id) => request(`/users/${id}`),
+  userMe: () => request('/users/me'),
+  getConversations: () => request('/conversations'),
+  sendConversationMessage: (id, text) => request(`/conversations/${id}/messages`, { method: 'POST', body: { text } }),
+  readConversation: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
 
-  // штаб организатора (P2b): сборы, заявки волонтёров, база волонтёров
-  orgEvents: () => request('/org/events'),
-  orgVolunteers: () => request('/org/volunteers'),
-  myApplications: () => request('/org/applications'),
-  actOnApplication: (id, action) => request(`/org/applications/${id}`, { method: 'POST', body: { action } }),
-  createApplication: (eventId, body) => request(`/events/${eventId}/applications`, { method: 'POST', body }),
+  // модерация (admin)
+  adminReports: () => request('/admin/reports'),
+  approveOrg: (id) => request(`/admin/orgs/${id}/approve`, { method: 'POST' }),
+  rejectOrg: (id) => request(`/admin/orgs/${id}/reject`, { method: 'POST' }),
+  reviewReport: (id) => request(`/admin/reports/${id}/review`, { method: 'POST' }),
 };
 
 export { BASE };

@@ -4,12 +4,19 @@
 (Math.round = floor(x+0.5)) — поэтому серверный прогноз на PARK18 равен фронтовому.
 """
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from models import (
     db, User, Theme, City, Gathering, GatheringCoordinator, Participant, ForecastParams, Badge,
     Org, CharityRequest, Donation, Follow, AttendanceRecord, Notification, Reminder, BadgeAward,
+    Conversation, ConversationMember, Message, Report,
 )
+
+# Жалобы для экрана модерации: (target_type, ru, kz, count)
+REPORTS = [
+    ('event', 'Событие «Быстрый заработок» похоже на спам', '«Тез табыс» іс-шарасы спам сияқты', 3),
+    ('profile', 'Профиль с оскорблениями в чате', 'Чатта дөрекілік көрсеткен профиль', 1),
+]
 
 # Города: имя → id (для нормализации free-text из моков).
 CITY_ID = {'Алматы': 'alm', 'Астана': 'ast', 'Шымкент': 'shy', 'Караганда': 'kar',
@@ -83,6 +90,22 @@ VOLUNTEERS = [
     ('Динара Ким', 'shy', 159, 35, 90), ('Тимур Ли', 'alm', 148, 33, 88),
     ('Гүлнара Ахметова', 'kar', 132, 29, 91), ('Данияр Оспанов', 'ast', 121, 27, 85),
     ('Мария Волкова', 'pet', 108, 24, 89), ('Санжар Тлеу', 'tar', 97, 22, 82),
+]
+
+# Диалоги demo-coord: (title, role, other_device_id, [(me, txt, minutes_ago), ...])
+CONVOS = [
+    ('Чистый двор', 'nko', 'demo-org1', [
+        (False, 'Здравствуйте! Спасибо, что записались на субботник 🙌', 185),
+        (True, 'Привет! Во сколько сбор?', 182),
+        (False, 'В 10:00 у фонтана. Перчатки и мешки будут наши.', 181),
+        (True, 'Отлично, буду!', 180)]),
+    ('Ерлан Мұратов', 'coordinator', 'demo-v1', [
+        (False, 'Можешь взять с собой ещё пару человек?', 1500),
+        (True, 'Да, позову соседей', 1495)]),
+    ('Лапа помощи', 'nko', 'demo-org3', [
+        (False, 'Напоминаем: выгул собак в 9:00', 3000)]),
+    ('Серебряный возраст', 'nko', 'demo-org2', [
+        (False, 'Апа передаёт вам огромное спасибо ❤', 4300)]),
 ]
 
 THEMES = [
@@ -172,7 +195,8 @@ def seed_demo(reset=False):
         # ⚠️ reset ПОЛНОСТЬЮ очищает доменные таблицы (все сборы/НКО/помощь/уведомления),
         # а не только demo-строки. Аккаунты email/пароль (напр. админ) сохраняются.
         # Это команда пересборки ДЕМО-базы — не запускать на данных, которые нужно сохранить.
-        for M in (Donation, CharityRequest, Follow, Notification, Reminder, BadgeAward,
+        for M in (Message, ConversationMember, Conversation, Report,
+                  Donation, CharityRequest, Follow, Notification, Reminder, BadgeAward,
                   AttendanceRecord, Participant, GatheringCoordinator, Gathering):
             M.query.delete()
         Org.query.delete()
@@ -199,8 +223,9 @@ def seed_demo(reset=False):
     # координатор-владелец (ME) со статами профиля
     coord = User.query.filter_by(device_id='demo-coord').first()
     if coord is None:
+        # user_type='admin' — для демо, чтобы этот же пользователь мог открыть «Модерацию»
         coord = User(device_id='demo-coord', full_name='Асхат Жумабеков', role='coord',
-                     city_id='pet', user_type='user', is_active=True,
+                     city_id='pet', user_type='admin', is_active=True,
                      hours_total=47, events_attended=12, reliability=91, rank=34,
                      skills=['Организация', 'Первая помощь', 'Водитель кат. B', 'Фото'])
         db.session.add(coord)
@@ -301,3 +326,28 @@ def _seed_platform():
                             city_id=city, user_type='user', is_active=True,
                             hours_total=hours, events_attended=events, reliability=rel,
                             rank=i + 1))
+    db.session.flush()
+
+    # диалоги demo-coord с НКО/координаторами
+    coord = User.query.filter_by(device_id='demo-coord').first()
+    if coord is not None:
+        for title, role, other_dev, msgs in CONVOS:
+            other = User.query.filter_by(device_id=other_dev).first()
+            if other is None:
+                continue
+            convo = Conversation(title=title, role=role)
+            db.session.add(convo)
+            db.session.flush()
+            db.session.add(ConversationMember(conversation_id=convo.id, user_id=coord.id))
+            db.session.add(ConversationMember(conversation_id=convo.id, user_id=other.id))
+            for me, txt, mins in msgs:
+                db.session.add(Message(
+                    conversation_id=convo.id,
+                    sender_id=coord.id if me else other.id,
+                    body=txt,
+                    created_at=datetime.now(timezone.utc) - timedelta(minutes=mins),
+                ))
+
+    # жалобы для модерации
+    for target, ru, kz, count in REPORTS:
+        db.session.add(Report(target_type=target, text_ru=ru, text_kz=kz, count=count, status='open'))

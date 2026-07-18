@@ -9,12 +9,14 @@ from flask_jwt_extended import jwt_required
 from models import (
     db, User, Theme, City, Badge, Gathering, Participant,
     Org, CharityRequest, Donation, Follow, ANSWERS,
+    Conversation, ConversationMember, Message,
 )
 from services.identity import current_user
 from utils.decorators import profiled_required
 from utils.serializers import (
     serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
+    serialize_conversation,
 )
 
 platform_bp = Blueprint('platform', __name__)
@@ -35,6 +37,15 @@ def themes():
 @platform_bp.route('/badges', methods=['GET'])
 def badges():
     return jsonify({'badges': [b.to_dict() for b in Badge.query.all()]})
+
+
+@platform_bp.route('/users/me', methods=['GET'])
+@jwt_required()
+def user_me():
+    u = current_user()
+    if u is None or not u.is_active:
+        return jsonify({'error': 'Пользователь не найден'}), 404
+    return jsonify({'user': serialize_user_public(u)})
 
 
 @platform_bp.route('/users/<int:uid>', methods=['GET'])
@@ -253,3 +264,82 @@ def leaderboard_orgs():
     data = [serialize_org(o) for o in Org.query.all()]
     data.sort(key=lambda x: x['vol'], reverse=True)
     return jsonify({'orgs': data})
+
+
+# ── сообщения ──
+def _my_convo(cid):
+    """Диалог, если текущий пользователь — его участник; иначе None."""
+    u = current_user()
+    if u is None:
+        return None, None
+    member = ConversationMember.query.filter_by(conversation_id=cid, user_id=u.id).first()
+    if member is None:
+        return u, None
+    return u, db.session.get(Conversation, cid)
+
+
+@platform_bp.route('/conversations', methods=['GET'])
+@profiled_required
+def conversations():
+    ids = [m.conversation_id for m in ConversationMember.query.filter_by(user_id=g.user.id).all()]
+    rows = (Conversation.query.filter(Conversation.id.in_(ids)).all() if ids else [])
+    rows.sort(key=lambda c: (c.messages[-1].created_at if c.messages else c.created_at), reverse=True)
+    return jsonify({'conversations': [serialize_conversation(c, g.user.id) for c in rows]})
+
+
+@platform_bp.route('/conversations/<int:cid>', methods=['GET'])
+@profiled_required
+def conversation_detail(cid):
+    _u, convo = _my_convo(cid)
+    if convo is None:
+        return jsonify({'error': 'Диалог не найден'}), 404
+    return jsonify({'conversation': serialize_conversation(convo, g.user.id)})
+
+
+@platform_bp.route('/conversations/<int:cid>/messages', methods=['POST'])
+@profiled_required
+def send_message(cid):
+    _u, convo = _my_convo(cid)
+    if convo is None:
+        return jsonify({'error': 'Диалог не найден'}), 404
+    text = (request.get_json(silent=True) or {}).get('text', '').strip()
+    if not text:
+        return jsonify({'error': 'Пустое сообщение'}), 400
+    msg = Message(conversation_id=cid, sender_id=g.user.id, body=text)
+    db.session.add(msg)
+    db.session.flush()
+    # отправитель прочитал свой диалог
+    member = ConversationMember.query.filter_by(conversation_id=cid, user_id=g.user.id).first()
+    if member:
+        member.last_read_message_id = msg.id
+    db.session.commit()
+    return jsonify({'message': {'me': True, 'txt': msg.body,
+                                'created_at': msg.created_at.isoformat().replace('+00:00', 'Z')}}), 201
+
+
+@platform_bp.route('/conversations/<int:cid>/read', methods=['POST'])
+@profiled_required
+def read_conversation(cid):
+    member = ConversationMember.query.filter_by(conversation_id=cid, user_id=g.user.id).first()
+    if member is None:
+        return jsonify({'error': 'Диалог не найден'}), 404
+    convo = db.session.get(Conversation, cid)
+    if convo and convo.messages:
+        member.last_read_message_id = convo.messages[-1].id
+        db.session.commit()
+    return '', 204
+
+
+@platform_bp.route('/conversations/unread-count', methods=['GET'])
+@profiled_required
+def conversations_unread():
+    ids = [m.conversation_id for m in ConversationMember.query.filter_by(user_id=g.user.id).all()]
+    count = 0
+    for m in ConversationMember.query.filter_by(user_id=g.user.id).all():
+        convo = db.session.get(Conversation, m.conversation_id)
+        if not convo:
+            continue
+        last = convo.messages[-1] if convo.messages else None
+        if last and last.sender_id != g.user.id and (m.last_read_message_id or 0) < last.id:
+            count += 1
+    return jsonify({'count': count})

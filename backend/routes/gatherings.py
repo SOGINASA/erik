@@ -11,6 +11,8 @@ from flask_jwt_extended import jwt_required
 from models import db, Gathering, GatheringCoordinator, Participant, ANSWERS
 from services.codes import generate_code
 from services.forecast import forecast_payload, finalize_gathering
+from services.context import compute_ctx
+from services.identity import current_user
 from utils.decorators import profiled_required, gathering_owner_required
 from utils.serializers import (
     serialize_gathering_owner, serialize_gathering_card, serialize_participant,
@@ -39,10 +41,16 @@ def _clamp_needed(n, default=20):
 
 # ── создание ──
 @gatherings_bp.route('', methods=['POST'])
-@profiled_required
+@jwt_required()
 def create_gathering():
-    """Тело формы NewGathering: {what, where, date, time, needed, name?}."""
-    user = g.user
+    """Тело формы NewGathering: {what, where, date, time, needed, name?}.
+
+    Device-уровень (имя даётся ЗДЕСЬ, при первом сборе) — поэтому НЕ @profiled_required,
+    иначе новичок без имени не смог бы создать первый сбор.
+    """
+    user = current_user()
+    if user is None or not user.is_active:
+        return jsonify({'error': 'Пользователь не найден'}), 404
     data = request.get_json(silent=True) or {}
 
     what = (data.get('what') or data.get('title') or '').strip()
@@ -66,7 +74,7 @@ def create_gathering():
         starts_at=starts_at,
         needed=_clamp_needed(data.get('needed', 20)),
         format=data.get('format') if data.get('format') in ('one', 'reg') else 'one',
-        status='open', ctx=1.0,
+        status='open', ctx=compute_ctx(starts_at),   # реальный контекст (день недели/lead-time)
     )
     db.session.add(gathering)
     db.session.flush()

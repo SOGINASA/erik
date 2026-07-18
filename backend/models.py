@@ -337,6 +337,7 @@ class BadgeAward(db.Model):
 #  P2a: Соц-платформа — НКО, помощь, подписки
 # ─────────────────────────────────────────────────────────────────────────────
 CHARITY_KINDS = ('money', 'items')
+CONVO_ROLES = ('nko', 'coordinator')
 
 
 class Org(db.Model):
@@ -382,3 +383,60 @@ class Follow(db.Model):
     org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), index=True)
     created_at = db.Column(db.DateTime, default=_now)
     __table_args__ = (db.UniqueConstraint('user_id', 'org_id', name='uq_follow'),)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  P2b: Сообщения
+# ─────────────────────────────────────────────────────────────────────────────
+class Conversation(db.Model):
+    __tablename__ = 'conversations'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120))
+    role = db.Column(db.String(12), default='nko')        # nko | coordinator
+    created_at = db.Column(db.DateTime, default=_now)
+    messages = db.relationship('Message', backref='conversation',
+                               cascade='all, delete-orphan', lazy='selectin',
+                               order_by='Message.created_at')
+    members = db.relationship('ConversationMember', backref='conversation',
+                              cascade='all, delete-orphan', lazy='selectin')
+
+
+class ConversationMember(db.Model):
+    __tablename__ = 'conversation_members'
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    last_read_message_id = db.Column(db.Integer, nullable=True)
+    __table_args__ = (db.UniqueConstraint('conversation_id', 'user_id', name='uq_convo_member'),)
+
+
+class Message(db.Model):
+    __tablename__ = 'messages'
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    body = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  P2b: Модерация (жалобы)
+# ─────────────────────────────────────────────────────────────────────────────
+REPORT_STATUSES = ('open', 'reviewing', 'resolved', 'dismissed')
+
+
+class Report(db.Model):
+    __tablename__ = 'reports'
+    id = db.Column(db.Integer, primary_key=True)
+    target_type = db.Column(db.String(12))                # event | profile | message | org
+    target_id = db.Column(db.Integer, nullable=True)
+    text_ru = db.Column(db.String(300))
+    text_kz = db.Column(db.String(300))
+    count = db.Column(db.Integer, default=1)              # число жалоб
+    status = db.Column(db.String(12), default='open')     # open | reviewing | resolved | dismissed
+    resolved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=_now)
+
+    def to_dict(self):
+        return {'id': self.id, 'targetType': self.target_type, 'ru': self.text_ru,
+                'kz': self.text_kz, 'count': self.count, 'status': self.status}

@@ -1,6 +1,6 @@
+import { useEffect } from 'react';
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
-import { useUiStore } from '../store/useUiStore';
 import { THEMES } from '../lib/data';
 import { Container } from '../components/Container';
 import Button from '../components/ui/Button';
@@ -12,16 +12,17 @@ export default function Admin() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const orgs = usePlatformStore((s) => s.orgs);
-  const showToast = useUiStore((s) => s.showToast);
+  const reports = usePlatformStore((s) => s.reports);
+  const loadReports = usePlatformStore((s) => s.loadReports);
+  const approveOrg = usePlatformStore((s) => s.approveOrg);
+  const rejectOrg = usePlatformStore((s) => s.rejectOrg);
+  const reviewReport = usePlatformStore((s) => s.reviewReport);
+
+  // Реальные жалобы из API (для админа); не админ/офлайн — остаётся демо-набор.
+  useEffect(() => { loadReports(); }, [loadReports]);
 
   // Организации, ожидающие проверки
   const pending = orgs.filter((o) => !o.verified);
-
-  // Демо-жалобы (двуязычные, как в platformVals прототипа)
-  const reports = [
-    { id: 'r1', txt: isRu ? 'Событие «Быстрый заработок» похоже на спам' : '«Тез табыс» іс-шарасы спам сияқты', meta: '3 ' + (isRu ? 'жалобы' : 'шағым') },
-    { id: 'r2', txt: isRu ? 'Профиль с оскорблениями в чате' : 'Чатта дөрекілік көрсеткен профиль', meta: '1 ' + (isRu ? 'жалоба' : 'шағым') },
-  ];
 
   const caption = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 12 };
   const card = { display: 'flex', alignItems: 'center', gap: 14, padding: 14, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)' };
@@ -59,8 +60,8 @@ export default function Admin() {
                   <span style={{ display: 'block', fontSize: 13, color: 'var(--ink-3)' }}>{isRu ? T.ru : T.kz} · {o.city}</span>
                 </span>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  <Button variant="secondary" size="sm" onClick={() => showToast(isRu ? 'Отклонено' : 'Қабылданбады')}>{t.reject}</Button>
-                  <Button variant="primary" size="sm" onClick={() => showToast(isRu ? `${o.name} одобрена` : `${o.name} мақұлданды`)}>{t.approve}</Button>
+                  <Button variant="secondary" size="sm" onClick={() => rejectOrg(o.id)}>{t.reject}</Button>
+                  <Button variant="primary" size="sm" onClick={() => approveOrg(o.id)}>{t.approve}</Button>
                 </div>
               </div>
             );
@@ -84,13 +85,13 @@ export default function Admin() {
                 </svg>
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 14, color: 'var(--ink)', lineHeight: 1.4 }}>{r.txt}</span>
-                <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)' }}>{r.meta}</span>
+                <span style={{ display: 'block', fontSize: 14, color: 'var(--ink)', lineHeight: 1.4 }}>{isRu ? r.ru : r.kz}</span>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)' }}>{r.count} {isRu ? 'жалоб' : 'шағым'}{r.status === 'reviewing' ? (isRu ? ' · на проверке' : ' · тексеруде') : ''}</span>
               </span>
               <button
                 type="button"
                 className="erik-btn"
-                onClick={() => showToast(isRu ? 'Отправлено на проверку' : 'Тексеруге жіберілді')}
+                onClick={() => reviewReport(r.id)}
                 style={{ flex: 'none', height: 36, padding: '0 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', fontFamily: 'var(--fb)', fontSize: 13, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
               >
                 {isRu ? 'Проверить' : 'Тексеру'}
