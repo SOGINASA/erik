@@ -10,6 +10,7 @@ export default function ForecastBlock() {
   const ctx = useGatheringStore((s) => s.gathering.ctx);
   const needed = useGatheringStore((s) => s.gathering.needed);
   const displayE = useGatheringStore((s) => s.displayE);
+  const ml = useGatheringStore((s) => s.mlForecast);
   const t = useT();
   const isRu = useLang() === 'ru';
 
@@ -38,6 +39,17 @@ export default function ForecastBlock() {
         <span style={{ fontFamily: 'var(--fm)', fontWeight: 500, fontSize: 18, color: 'var(--ink-2)' }}>± {sig}</span>
       </div>
       <div style={{ marginTop: 8, fontSize: 15, fontWeight: 500, color }}>{subline}</div>
+
+      {/* Компаньон ML-модели — второе, обучаемое мнение. Подчинён главному числу. */}
+      {ml && ml.available && (
+        <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)' }}>
+          <span style={{ fontFamily: 'var(--fm)', fontSize: 10, fontWeight: 600, letterSpacing: '.04em', color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 4, padding: '1px 4px' }}>ML</span>
+          <span style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+            {isRu ? 'модель оценивает ≈ ' : 'модель бағалауы ≈ '}
+            <span style={{ fontFamily: 'var(--fm)', fontWeight: 600, color: 'var(--ink)' }}>{Math.round(ml.expected)}</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ export default function CoordGathering() {
   const desktop = useIsDesktop();
   const g = useGatheringStore((s) => s.gathering);
   const loadCoord = useGatheringStore((s) => s.loadCoord);
+  const loadMlForecast = useGatheringStore((s) => s.loadMlForecast);
   const animateForecast = useGatheringStore((s) => s.animateForecast);
   const startPoll = useGatheringStore((s) => s.startPoll);
   const stopPoll = useGatheringStore((s) => s.stopPoll);
@@ -29,18 +30,20 @@ export default function CoordGathering() {
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
 
-  // Грузим сбор по :id, затем число прогноза считается от 0; стартует polling.
+  // Грузим сбор по :id, затем число прогноза считается от 0; стартует polling; тянем ML.
   useEffect(() => {
     let alive = true;
     loadCoord(id).finally(() => {
-      if (alive) animateForecast(true);
+      if (!alive) return;
+      animateForecast(true);
+      loadMlForecast();
     });
     startPoll();
     return () => {
       alive = false;
       stopPoll();
     };
-  }, [id, loadCoord, animateForecast, startPoll, stopPoll]);
+  }, [id, loadCoord, loadMlForecast, animateForecast, startPoll, stopPoll]);
 
   const c = counts(g.participants);
   const title = isRu ? g.titleRu : g.titleKz;

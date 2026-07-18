@@ -34,6 +34,7 @@ export const useGatheringStore = create((set, get) => ({
   displayE: null,
   polled: false,
   regs: {}, // ответы на события ленты: { [eventId]: 'yes'|'maybe'|'no' }
+  mlForecast: null, // компаньон-прогноз ML: { available, expected, participants[] } | { available:false }
 
   // --- производные ---
   forecast: () => forecast(get().gathering.participants || [], get().gathering.ctx),
@@ -65,12 +66,23 @@ export const useGatheringStore = create((set, get) => ({
   },
 
   loadCoord: async (id) => {
+    set({ mlForecast: null }); // сбрасываем ML прошлого сбора
     try {
       // id может прийти как 'e5' из ленты — снимаем префикс
       const res = await api.getGathering(String(id).replace(/^\D+/, ''));
       set({ gathering: res.gathering, marks: deriveMarks(res.gathering.participants), polled: false });
     } catch (_) {
       /* оставляем текущий сбор (мок или прошлую загрузку) */
+    }
+  },
+
+  // Компаньон-прогноз ML (обучаемая модель). Мягко: недоступна → { available:false }.
+  loadMlForecast: async () => {
+    try {
+      const r = await api.mlForecast(String(get().gathering.id).replace(/^\D+/, ''));
+      set({ mlForecast: r });
+    } catch (_) {
+      set({ mlForecast: { available: false } });
     }
   },
 
