@@ -10,6 +10,11 @@ export const THEMES = {
   edu: { ru: 'Образование', kz: 'Білім', tint: '#E4EAEE', ink: '#3d5566' },
   trees: { ru: 'Озеленение', kz: 'Көгалдандыру', tint: '#E9EAE2', ink: '#565b40' },
   homeless: { ru: 'Бездомным', kz: 'Панасыздарға', tint: '#E3EBEA', ink: '#356058' },
+  medical: { ru: 'Медпомощь', kz: 'Медкөмек', tint: '#E1ECEE', ink: '#2d6674' },
+  disaster: { ru: 'Помощь при ЧС', kz: 'ТЖ көмегі', tint: '#F5E9DB', ink: '#9a5a24' },
+  sport: { ru: 'Спорт', kz: 'Спорт', tint: '#E6E7F1', ink: '#464a82' },
+  culture: { ru: 'Культура', kz: 'Мәдениет', tint: '#EEE6EF', ink: '#6f4a72' },
+  it: { ru: 'IT-волонтёрство', kz: 'IT-волонтёрлік', tint: '#E3E6EE', ink: '#3a4a6b' },
 };
 
 export const CITIES = [

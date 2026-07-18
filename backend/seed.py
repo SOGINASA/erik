@@ -54,6 +54,21 @@ EVENTS = [
      'Набережная Ишима, левый берег', 'Есіл жағалауы', 2026, 7, 27, 9, 30, 'one', 25, 14),
 ]
 
+# Общественные события новых тем (без НКО, ведёт координатор):
+#   (code, ru, kz, city, theme, placeRu, placeKz, y, mo, d, hh, mm, format, needed, going)
+COMMUNITY_EVENTS = [
+    ('MED22', 'Сопровождение в больницу', 'Ауруханаға дейін алып жүру', 'alm', 'medical',
+     'Городская поликлиника №4', '№4 қалалық емхана', 2026, 7, 22, 10, 0, 'reg', 10, 6),
+    ('DSR23', 'Помощь после паводка', 'Су тасқыннан кейінгі көмек', 'pet', 'disaster',
+     'Штаб волонтёров, ул. Мира 3', 'Волонтёр штабы, Мир к. 3', 2026, 7, 23, 9, 0, 'one', 30, 18),
+    ('SPT24', 'Волонтёры городского забега', 'Қалалық жүгіру волонтёрлері', 'ast', 'sport',
+     'Старт у стелы «Байтерек»', '«Бәйтерек» жанындағы старт', 2026, 7, 24, 8, 0, 'one', 20, 12),
+    ('CUL25', 'Фестиваль книг под открытым небом', 'Ашық аспан астындағы кітап фестивалі', 'shy', 'culture',
+     'Центральный парк, сцена', 'Орталық саябақ, сахна', 2026, 7, 25, 12, 0, 'one', 15, 9),
+    ('ITD26', 'Цифровая грамотность для пожилых', 'Қарттарға цифрлық сауаттылық', 'kar', 'it',
+     'Библиотека им. Гоголя', 'Гоголь атындағы кітапхана', 2026, 7, 26, 14, 0, 'reg', 12, 7),
+]
+
 # Благотворительность: (titleRu, titleKz, org_id, city, kind, goal, raised, unit)
 CHARITY = [
     ('Инвентарь для субботников', 'Сенбілікке құрал-жабдық', 1, 'pet', 'money', 150000, 98000, '₸'),
@@ -78,6 +93,11 @@ THEMES = [
     ('edu', 'Образование', 'Білім', '#E4EAEE', '#3d5566'),
     ('trees', 'Озеленение', 'Көгалдандыру', '#E9EAE2', '#565b40'),
     ('homeless', 'Бездомным', 'Панасыздарға', '#E3EBEA', '#356058'),
+    ('medical', 'Медпомощь', 'Медкөмек', '#E1ECEE', '#2d6674'),
+    ('disaster', 'Помощь при ЧС', 'ТЖ көмегі', '#F5E9DB', '#9a5a24'),
+    ('sport', 'Спорт', 'Спорт', '#E6E7F1', '#464a82'),
+    ('culture', 'Культура', 'Мәдениет', '#EEE6EF', '#6f4a72'),
+    ('it', 'IT-волонтёрство', 'IT-волонтёрлік', '#E3E6EE', '#3a4a6b'),
 ]
 
 CITIES = [
@@ -255,6 +275,20 @@ def _seed_platform():
         db.session.add(g)
         db.session.flush()
         db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=org_owner[org_id], role='owner'))
+
+    # общественные события новых тем (ведёт координатор, без НКО)
+    coord = User.query.filter_by(device_id='demo-coord').first()
+    if coord is not None:
+        for code, ru, kz, city, theme, placeRu, placeKz, y, mo, d, hh, mm, fmt, needed, going in COMMUNITY_EVENTS:
+            g = Gathering(
+                code=code, owner_id=coord.id, org_id=None, city_id=city, theme=theme,
+                title_ru=ru, title_kz=kz, place_ru=placeRu, place_kz=placeKz,
+                starts_at=datetime(y, mo, d, hh, mm, tzinfo=timezone.utc),
+                format=fmt, needed=needed, status='open', ctx=1.0, going_cache=going,
+            )
+            db.session.add(g)
+            db.session.flush()
+            db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=coord.id, role='owner'))
 
     # благотворительность
     for titleRu, titleKz, org_id, city, kind, goal, raised, unit in CHARITY:

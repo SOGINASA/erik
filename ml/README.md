@@ -121,3 +121,27 @@ result = predictor.predict(
   справочник тем-интересов добавится позже)
 - `event.event_type` ← `Gathering.theme`
 - `event.answer` ← `Participant.answer`
+
+## Подключено к бэкенду
+
+Мост: [`backend/services/attendance_ml.py`](../backend/services/attendance_ml.py) —
+изолированно импортирует `inference.py` (у ml свои `config`/`features`, чтобы они не
+столкнулись с `backend/config.py`), грузит модель один раз и **мягко деградирует**: если
+ml-зависимостей нет или модель ещё не обучена, отдаёт `{'available': false, 'reason', 'hint'}`,
+а не роняет сервер.
+
+Эндпоинт (только координатор-владелец):
+
+```
+GET /api/gatherings/:id/ml-forecast
+→ { "available": true, "model": "gboost", "expected": 12.4, "needed": 20,
+    "participants": [ {"id":1,"name":"…","answer":"yes",
+                       "probability":0.87,"willAttend":true,"confidence":"высокая"}, … ] }
+```
+
+`expected` (сумма вероятностей) — ML-компаньон аналитического `E` из `/forecast`.
+Клиент: `api.mlForecast(id)` в [`front/src/lib/api.js`](../front/src/lib/api.js).
+
+> Для инференса **в процессе бэкенда** нужны ml-зависимости в окружении бэкенда
+> (`pip install -r ml/requirements.txt`) и обученный артефакт (`python ml/train.py`).
+> Пока их нет — эндпоинт корректно отвечает `available:false` с подсказкой.

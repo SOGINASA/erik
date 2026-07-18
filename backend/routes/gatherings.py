@@ -95,6 +95,15 @@ def get_forecast(id):
     return jsonify(forecast_payload(g.gathering))
 
 
+@gatherings_bp.route('/<int:id>/ml-forecast', methods=['GET'])
+@gathering_owner_required
+def get_ml_forecast(id):
+    """ML-прогноз явки (обучаемая модель из ml/). Компаньон аналитического /forecast.
+    Если модель не обучена/недоступна — отдаёт {'available': False, ...}, не 5xx."""
+    from services.attendance_ml import forecast_gathering
+    return jsonify(forecast_gathering(g.gathering))
+
+
 @gatherings_bp.route('/<int:id>/poll', methods=['GET'])
 @gathering_owner_required
 def poll(id):

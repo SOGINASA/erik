@@ -51,6 +51,7 @@ export const api = {
   createGathering: (body) => request('/gatherings', { method: 'POST', body }),
   getGathering: (id) => request(`/gatherings/${id}`),
   forecast: (id) => request(`/gatherings/${id}/forecast`),
+  mlForecast: (id) => request(`/gatherings/${id}/ml-forecast`),
   poll: (id, since) => request(`/gatherings/${id}/poll?since=${since}`),
   patchGathering: (id, body) => request(`/gatherings/${id}`, { method: 'PATCH', body }),
   deleteGathering: (id) => request(`/gatherings/${id}`, { method: 'DELETE' }),
