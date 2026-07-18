@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useT } from '../i18n';
+import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useIsDesktop } from '../lib/nav';
@@ -11,14 +11,27 @@ import Button from '../components/ui/Button';
 // Отметка явки: экран «на улице». Крупные строки, тап по всей строке. Работает офлайн.
 export default function CheckIn() {
   const t = useT();
+  const isRu = useLang() === 'ru';
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const g = useGatheringStore((s) => s.gathering);
   const marks = useGatheringStore((s) => s.marks);
   const toggleMark = useGatheringStore((s) => s.toggleMark);
+  const online = useGatheringStore((s) => s.online);
+  const syncing = useGatheringStore((s) => s.syncing);
+  const pending = useGatheringStore((s) => s.checkinQueue.length);
   const search = useUiStore((s) => s.search);
   const setSearch = useUiStore((s) => s.setSearch);
   const openSheet = useUiStore((s) => s.openSheet);
+
+  // Статус синхронизации отметок (офлайн-first).
+  const sync = !online
+    ? { dot: 'var(--maybe)', text: isRu ? `Офлайн · ${pending} отметок сохранятся при появлении сети` : `Офлайн · ${pending} белгі желі пайда болғанда сақталады` }
+    : syncing
+      ? { dot: 'var(--maybe)', text: isRu ? 'Синхронизация…' : 'Синхрондау…' }
+      : pending
+        ? { dot: 'var(--maybe)', text: t.offlineNote }
+        : { dot: 'var(--yard)', text: isRu ? 'Все отметки сохранены' : 'Барлық белгі сақталды' };
 
   const pool = g.participants.filter((p) => p.answer !== 'no');
   const q = (search || '').trim().toLowerCase();
@@ -40,7 +53,7 @@ export default function CheckIn() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 2px 10px', fontSize: 12, color: 'var(--ink-3)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--maybe)', display: 'inline-block' }} />{t.offlineNote}
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: sync.dot, display: 'inline-block', animation: syncing ? 'erik-pulse 1.2s var(--ease-soft) infinite' : 'none' }} />{sync.text}
           </div>
           <input
             type="search"

@@ -26,6 +26,21 @@ const mergeChanged = (current = [], changed = []) => {
   return Array.from(byId.values());
 };
 
+// --- офлайн-отметка явки: очередь операций + снапшот сбора в localStorage (ТЗ §5.5) ---
+const CI_Q = (gid) => `erik-ci-q-${gid}`;   // очередь несинканных отметок
+const CI_G = (gid) => `erik-ci-g-${gid}`;   // снапшот сбора (для перезагрузки офлайн)
+const readJSON = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (_) { return fb; } };
+const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* quota */ } };
+const dropKey = (k) => { try { localStorage.removeItem(k); } catch (_) { /* noop */ } };
+const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+// op = { clientMarkId, pid?, present, ts, guestName? }; дедуп по clientMarkId (последнее состояние).
+const upsertOp = (queue, op) => {
+  const i = queue.findIndex((x) => x.clientMarkId === op.clientMarkId);
+  const n = queue.slice();
+  if (i >= 0) n[i] = op; else n.push(op);
+  return n;
+};
+
 // Данные текущего сбора + отметки явки + анимация числа прогноза.
 // Оптимистичные мутации: сначала локально, затем в API; при офлайне остаёмся на моках.
 export const useGatheringStore = create((set, get) => ({
@@ -35,6 +50,9 @@ export const useGatheringStore = create((set, get) => ({
   polled: false,
   regs: {}, // ответы на события ленты: { [eventId]: 'yes'|'maybe'|'no' }
   mlForecast: null, // компаньон-прогноз ML: { available, expected, participants[] } | { available:false }
+  checkinQueue: [], // несинканные офлайн-отметки явки
+  syncing: false,   // идёт batch-синк
+  online: isOnline(),
 
   // --- производные ---
   forecast: () => forecast(get().gathering.participants || [], get().gathering.ctx),
@@ -67,12 +85,24 @@ export const useGatheringStore = create((set, get) => ({
 
   loadCoord: async (id) => {
     set({ mlForecast: null }); // сбрасываем ML прошлого сбора
+    const numeric = String(id).replace(/^\D+/, ''); // 'e5' из ленты → '5'
     try {
-      // id может прийти как 'e5' из ленты — снимаем префикс
-      const res = await api.getGathering(String(id).replace(/^\D+/, ''));
-      set({ gathering: res.gathering, marks: deriveMarks(res.gathering.participants), polled: false });
+      const res = await api.getGathering(numeric);
+      const gid = res.gathering.id;
+      const queue = readJSON(CI_Q(gid), []);
+      // накатываем несинканные офлайн-отметки поверх серверной правды
+      let participants = res.gathering.participants;
+      for (const op of queue) {
+        if (op.pid != null) participants = participants.map((p) => (p.id === op.pid ? { ...p, presence: op.present ? 'came' : null } : p));
+      }
+      const gathering = { ...res.gathering, participants };
+      writeJSON(CI_G(gid), gathering); // снапшот для перезагрузки офлайн
+      set({ gathering, marks: deriveMarks(participants), checkinQueue: queue, polled: false });
+      if (queue.length) get().flushCheckin();
     } catch (_) {
-      /* оставляем текущий сбор (мок или прошлую загрузку) */
+      // офлайн: восстанавливаем сбор и очередь из localStorage
+      const snap = readJSON(CI_G(numeric), null);
+      if (snap) set({ gathering: snap, marks: deriveMarks(snap.participants), checkinQueue: readJSON(CI_Q(numeric), []) });
     }
   },
 
@@ -130,57 +160,74 @@ export const useGatheringStore = create((set, get) => ({
     api.setAnswer(get().gathering.id, id, a).catch(() => {});
   },
 
+  // Отметка явки — офлайн-first: пишем в очередь (localStorage), затем пытаемся синкнуть.
   toggleMark: (id) => {
     const willMark = !get().marks[id];
+    const gid = get().gathering.id;
     set((s) => {
       const m = { ...s.marks };
-      if (willMark) m[id] = 'came';
-      else delete m[id];
-      return {
-        marks: m,
-        gathering: {
-          ...s.gathering,
-          participants: s.gathering.participants.map((p) => (p.id === id ? { ...p, presence: willMark ? 'came' : null } : p)),
-        },
-      };
+      if (willMark) m[id] = 'came'; else delete m[id];
+      const participants = s.gathering.participants.map((p) => (p.id === id ? { ...p, presence: willMark ? 'came' : null } : p));
+      const q = upsertOp(s.checkinQueue, { clientMarkId: `m-${gid}-${id}`, pid: id, present: willMark, ts: Date.now() });
+      writeJSON(CI_Q(gid), q);
+      const gathering = { ...s.gathering, participants };
+      writeJSON(CI_G(gid), gathering);
+      return { marks: m, gathering, checkinQueue: q };
     });
-    const gid = get().gathering.id;
-    api.setPresence(gid, id, willMark, `m-${gid}-${id}`).catch(() => {});
+    get().flushCheckin();
   },
 
-  addGuestMark: async (name) => {
+  addGuestMark: (name) => {
     const nm = (name || '').trim();
     if (!nm) return;
     const gid = get().gathering.id;
     const tempId = 'g' + Date.now();
-    set((s) => ({
-      gathering: {
+    const cmid = 'g-' + tempId;
+    set((s) => {
+      const q = upsertOp(s.checkinQueue, { clientMarkId: cmid, guestName: nm, present: true, ts: Date.now() });
+      writeJSON(CI_Q(gid), q);
+      const gathering = {
         ...s.gathering,
         participants: [
           ...s.gathering.participants,
-          { id: tempId, name: nm, phone: null, answer: 'yes', presence: 'came', isGuest: true, history: { total: 0, came: 0 } },
+          { id: tempId, name: nm, phone: null, answer: 'yes', presence: 'came', isGuest: true, history: { total: 0, came: 0 }, cmid },
         ],
-      },
-      marks: { ...s.marks, [tempId]: 'came' },
-    }));
+      };
+      writeJSON(CI_G(gid), gathering);
+      return { gathering, marks: { ...s.marks, [tempId]: 'came' }, checkinQueue: q };
+    });
     toast(isRu() ? 'Добавлен и отмечен' : 'Қосылды және белгіленді');
+    get().flushCheckin();
+  },
+
+  // Синк очереди отметок идемпотентным batch-эндпоинтом. Гости: temp id → реальный pid.
+  flushCheckin: async () => {
+    const st = get();
+    if (st.syncing || !st.checkinQueue.length || !isOnline()) return;
+    const gid = st.gathering.id;
+    const flushed = new Set(st.checkinQueue.map((o) => o.clientMarkId));
+    set({ syncing: true });
     try {
-      const res = await api.addGuest(gid, { name: nm, present: true, clientMarkId: 'g-' + tempId });
-      const real = res.participant;
+      const res = await api.presenceBatch(gid, st.checkinQueue, st.gathering.revision);
       set((s) => {
-        const m = { ...s.marks };
-        delete m[tempId];
-        m[real.id] = 'came';
-        return {
-          gathering: {
-            ...s.gathering,
-            participants: s.gathering.participants.map((p) => (p.id === tempId ? { ...p, id: real.id } : p)),
-          },
-          marks: m,
-        };
+        let participants = s.gathering.participants;
+        const marks = { ...s.marks };
+        for (const a of res.applied || []) {
+          if (a.clientMarkId && a.clientMarkId.startsWith('g-')) {
+            participants = participants.map((p) => (p.cmid === a.clientMarkId ? { ...p, id: a.pid, cmid: undefined } : p));
+            const tempId = a.clientMarkId.slice(2);
+            if (marks[tempId]) { delete marks[tempId]; marks[a.pid] = 'came'; }
+          }
+        }
+        const remaining = s.checkinQueue.filter((o) => !flushed.has(o.clientMarkId));
+        writeJSON(CI_Q(gid), remaining);
+        const gathering = { ...s.gathering, participants, revision: typeof res.revision === 'number' ? res.revision : s.gathering.revision };
+        writeJSON(CI_G(gid), gathering);
+        return { gathering, marks, checkinQueue: remaining, syncing: false };
       });
+      if (get().checkinQueue.length) get().flushCheckin(); // накопилось за время синка
     } catch (_) {
-      /* остаёмся с временным id */
+      set({ syncing: false }); // офлайн — очередь ждёт события 'online'
     }
   },
 
@@ -192,7 +239,8 @@ export const useGatheringStore = create((set, get) => ({
     api.removeParticipant(get().gathering.id, id).catch(() => {});
   },
 
-  finishGathering: () => {
+  finishGathering: async () => {
+    await get().flushCheckin(); // синкаем отметки ПЕРЕД финализацией
     set((s) => {
       const parts = s.gathering.participants.map((p) => ({
         ...p,
@@ -201,7 +249,9 @@ export const useGatheringStore = create((set, get) => ({
       return { gathering: { ...s.gathering, participants: parts, status: 'done' } };
     });
     toast(isRu() ? 'Сбор завершён' : 'Жиын аяқталды');
-    api.finalize(get().gathering.id).catch(() => {});
+    const gid = get().gathering.id;
+    dropKey(CI_Q(gid)); dropKey(CI_G(gid)); // сбор закрыт — чистим офлайн-кэш
+    api.finalize(gid).catch(() => {});
   },
 
   deleteGathering: () => {
@@ -294,3 +344,12 @@ export const useGatheringStore = create((set, get) => ({
     pollTimer = null;
   },
 }));
+
+// Появилась сеть → флашим офлайн-очередь отметок; пропала → помечаем офлайн.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    useGatheringStore.setState({ online: true });
+    useGatheringStore.getState().flushCheckin();
+  });
+  window.addEventListener('offline', () => useGatheringStore.setState({ online: false }));
+}

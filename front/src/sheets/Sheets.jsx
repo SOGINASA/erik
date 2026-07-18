@@ -13,6 +13,8 @@ import { useGatheringStore } from '../store/useGatheringStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { counts } from '../lib/forecast';
 import { useGuardedNav } from '../lib/nav';
+import { copyToClipboard } from '../lib/share';
+import { api } from '../lib/api';
 
 // Единый диспетчер листов/модалок по ui.sheet.
 export default function Sheets() {
@@ -29,8 +31,54 @@ export default function Sheets() {
     case 'guest': return <GuestSheet />;
     case 'register': return <RegisterSheet />;
     case 'donate': return <DonateSheet />;
+    case 'editprofile': return <EditProfileSheet />;
     default: return null;
   }
+}
+
+function EditProfileSheet() {
+  const t = useT();
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const me = usePlatformStore((s) => s.me);
+  const cities = usePlatformStore((s) => s.cities);
+  const loadMe = usePlatformStore((s) => s.loadMe);
+  const setIdentity = useSessionStore((s) => s.setIdentity);
+  const phone = useSessionStore((s) => s.phone);
+  const [name, setName] = useState(me.name || '');
+  const [cityId, setCityId] = useState(me.cityId || '');
+  const [skills, setSkills] = useState((me.skills || []).join(', '));
+
+  const save = async () => {
+    const payload = {
+      name: name.trim() || undefined,
+      cityId: cityId || undefined,
+      skills: skills.split(',').map((x) => x.trim()).filter(Boolean),
+    };
+    try { await api.updateMe(payload); } catch (_) { /* офлайн */ }
+    if (payload.name) setIdentity(payload.name, phone);
+    loadMe();
+    close();
+    showToast(isRu ? 'Профиль сохранён' : 'Профиль сақталды');
+  };
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Редактировать профиль' : 'Профильді өңдеу'} maxWidth={440}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Field label={isRu ? 'Имя' : 'Аты'} value={name} onChange={(e) => setName(e.target.value)} placeholder={t.fNamePh} />
+        <div>
+          <FieldLabel>{isRu ? 'Город' : 'Қала'}</FieldLabel>
+          <select value={cityId} onChange={(e) => setCityId(e.target.value)} className="erik-input" style={{ width: '100%', height: 48, padding: '0 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 16 }}>
+            <option value="">{isRu ? 'Не указан' : 'Көрсетілмеген'}</option>
+            {cities.map((c) => <option key={c.id} value={c.id}>{isRu ? c.ru : c.kz}</option>)}
+          </select>
+        </div>
+        <Field label={isRu ? 'Навыки (через запятую)' : 'Дағдылар (үтір арқылы)'} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder={isRu ? 'Организация, Первая помощь' : 'Ұйымдастыру, Алғашқы көмек'} />
+      </div>
+      <Button full size="lg" style={{ marginTop: 20 }} onClick={save}>{t.save}</Button>
+    </Sheet>
+  );
 }
 
 function AuthSheet() {
@@ -86,7 +134,7 @@ function ShareSheet() {
       <FieldLabel>{t.shareChatLabel}</FieldLabel>
       <div style={{ padding: '12px 14px', borderRadius: 'var(--r-s)', border: '1px solid var(--line)', background: 'var(--paper)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)', marginBottom: 16 }}>{chatText}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button full size="lg" icon="copy" onClick={() => { close(); showToast(isRu ? 'Текст скопирован' : 'Мәтін көшірілді'); }}>{t.copyText}</Button>
+        <Button full size="lg" icon="copy" onClick={async () => { await copyToClipboard(chatText); close(); showToast(isRu ? 'Текст скопирован' : 'Мәтін көшірілді'); }}>{t.copyText}</Button>
         <Button full variant="secondary" onClick={() => { close(); navigate(`/c/${g.id}`); }}>{t.openAsCoord}</Button>
       </div>
     </Sheet>

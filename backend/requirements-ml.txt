@@ -1,0 +1,15 @@
+# Зависимости ML-инференса прогноза явки (services/attendance_ml.py → ml/inference.py).
+#
+# ОПЦИОНАЛЬНО. Без этих пакетов эндпоинт /api/gatherings/<id>/ml-forecast мягко
+# отдаёт {"available": false, "hint": ...}, а бэкенд НЕ падает (см. attendance_ml.py).
+#
+# Чтобы включить ML в процессе бэкенда — установить в ОКРУЖЕНИЕ БЭКЕНДА:
+#   pip install -r requirements-ml.txt
+# и иметь обученный артефакт ml/artifacts/attendance_model.joblib (cd ml && python train.py).
+#
+# Намеренно вынесено из requirements.txt, чтобы бэкенд оставался лёгким, а ML — опциональным.
+
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+joblib>=1.3

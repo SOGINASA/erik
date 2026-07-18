@@ -172,6 +172,7 @@ def serialize_user_public(u):
         history.append({'t': gath.title_ru if gath else '—', 'd': dru or '', 'came': r.presence == 'came'})
     return {
         'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
+        'cityId': u.city_id,
         'hours': u.hours_total or 0, 'events': u.events_attended or 0,
         'reliability': u.reliability or 0, 'rank': u.rank, 'skills': u.skills or [],
         'badges': badges, 'history': history,
