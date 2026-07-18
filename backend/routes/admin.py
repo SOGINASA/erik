@@ -1,7 +1,10 @@
+from datetime import datetime, timezone
+
 from flask import Blueprint, request, jsonify
 
-from models import db, User
+from models import db, User, Org, Report
 from utils.decorators import admin_required
+from utils.serializers import serialize_org
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -56,3 +59,78 @@ def update_user(user_id):
     db.session.commit()
 
     return jsonify({'user': user.to_dict(include_sensitive=True)})
+
+
+# ── Модерация (P2b) ──
+@admin_bp.route('/stats', methods=['GET'])
+@admin_required
+def moderation_stats():
+    pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
+    open_reports = db.session.query(db.func.count(Report.id)).filter(Report.status != 'resolved').scalar() or 0
+    return jsonify({'pendingOrgs': pending_orgs, 'openReports': open_reports})
+
+
+@admin_bp.route('/orgs', methods=['GET'])
+@admin_required
+def admin_orgs():
+    status = request.args.get('status', 'pending')
+    q = Org.query
+    if status == 'pending':
+        q = q.filter(Org.verified.is_(False))
+    return jsonify({'orgs': [serialize_org(o) for o in q.all()]})
+
+
+@admin_bp.route('/orgs/<int:oid>/approve', methods=['POST'])
+@admin_required
+def approve_org(oid):
+    org = db.session.get(Org, oid)
+    if org is None:
+        return jsonify({'error': 'Организация не найдена'}), 404
+    org.verified = True
+    db.session.commit()
+    return jsonify({'org': serialize_org(org)})
+
+
+@admin_bp.route('/orgs/<int:oid>/reject', methods=['POST'])
+@admin_required
+def reject_org(oid):
+    org = db.session.get(Org, oid)
+    if org is None:
+        return jsonify({'error': 'Организация не найдена'}), 404
+    org.verified = False
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@admin_bp.route('/reports', methods=['GET'])
+@admin_required
+def admin_reports():
+    rows = Report.query.order_by(Report.created_at.desc()).all()
+    return jsonify({'reports': [r.to_dict() for r in rows]})
+
+
+@admin_bp.route('/reports/<int:rid>/review', methods=['POST'])
+@admin_required
+def review_report(rid):
+    r = db.session.get(Report, rid)
+    if r is None:
+        return jsonify({'error': 'Жалоба не найдена'}), 404
+    r.status = 'reviewing'
+    db.session.commit()
+    return jsonify({'report': r.to_dict()})
+
+
+@admin_bp.route('/reports/<int:rid>/resolve', methods=['POST'])
+@admin_required
+def resolve_report(rid):
+    r = db.session.get(Report, rid)
+    if r is None:
+        return jsonify({'error': 'Жалоба не найдена'}), 404
+    from flask_jwt_extended import get_jwt_identity
+    r.status = 'resolved'
+    try:
+        r.resolved_by = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        pass
+    db.session.commit()
+    return jsonify({'report': r.to_dict()})

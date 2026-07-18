@@ -159,15 +159,37 @@ def serialize_volunteer(u):
 
 
 def serialize_user_public(u):
-    from models import db, City, BadgeAward
+    from models import db, City, BadgeAward, AttendanceRecord, Gathering
     city = db.session.get(City, u.city_id) if u.city_id else None
     badges = [b.badge_id for b in BadgeAward.query.filter_by(user_id=u.id).all()]
+    # история участия из журнала явки (последние 10)
+    recs = (AttendanceRecord.query.filter_by(user_id=u.id)
+            .order_by(AttendanceRecord.created_at.desc()).limit(10).all())
+    history = []
+    for r in recs:
+        gath = db.session.get(Gathering, r.gathering_id)
+        dru, _dkz, _t = date_labels(gath.starts_at) if (gath and gath.starts_at) else (None, None, None)
+        history.append({'t': gath.title_ru if gath else '—', 'd': dru or '', 'came': r.presence == 'came'})
     return {
         'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
         'hours': u.hours_total or 0, 'events': u.events_attended or 0,
         'reliability': u.reliability or 0, 'rank': u.rank, 'skills': u.skills or [],
-        'badges': badges,
+        'badges': badges, 'history': history,
     }
+
+
+def serialize_conversation(convo, viewer_id):
+    from models import db, User
+    other = None
+    for m in convo.members:
+        if m.user_id != viewer_id:
+            other = db.session.get(User, m.user_id)
+            break
+    name = other.full_name if (other and other.full_name) else convo.title
+    role_label = 'НКО' if convo.role == 'nko' else 'Координатор'
+    msgs = [{'me': msg.sender_id == viewer_id, 'txt': msg.body, 'created_at': _iso(msg.created_at)}
+            for msg in convo.messages]
+    return {'id': convo.id, 'name': name, 'role': role_label, 'msgs': msgs}
 
 
 def serialize_city_stats(c):

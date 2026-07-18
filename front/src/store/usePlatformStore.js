@@ -23,6 +23,10 @@ const numId = (id) => String(id).replace(/^\D+/, '');
 const mapEvent = (e) => ({ ...e, id: 'e' + e.id, orgId: e.orgId != null ? 'o' + e.orgId : null });
 const mapOrg = (o) => ({ ...o, id: 'o' + o.id });
 const mapCharity = (c) => ({ ...c, id: 'ch' + c.id, org: c.org != null ? 'o' + c.org : null });
+const mapConvo = (c) => ({
+  id: 'c' + c.id, name: c.name, role: c.role,
+  msgs: (c.msgs || []).map((m) => ({ me: m.me, txt: m.txt, t: rel(m.created_at) })),
+});
 
 // Данные платформы (лента, карта, НКО, рейтинг, помощь, сообщения, уведомления)
 // и их интерактивное состояние.
@@ -36,6 +40,10 @@ export const usePlatformStore = create((set, get) => ({
   notifs: NOTIFS,
   convos: CONVOS,
   charity: CHARITY,
+  reports: [
+    { id: 'r1', ru: 'Событие «Быстрый заработок» похоже на спам', kz: '«Тез табыс» іс-шарасы спам сияқты', count: 3, status: 'open' },
+    { id: 'r2', ru: 'Профиль с оскорблениями в чате', kz: 'Чатта дөрекілік көрсеткен профиль', count: 1, status: 'open' },
+  ],
 
   followed: {},
   notifRead: {},
@@ -88,10 +96,51 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
+  // Профиль текущего пользователя (реальные часы/надёжность/бейджи/история).
+  // Мок остаётся, только если пользователь без имени (сохраняем демо-ME).
+  loadMe: async () => {
+    try {
+      const res = await api.userMe();
+      if (res.user && res.user.name) {
+        set({ me: { ...res.user, historyRu: res.user.history || [] } });
+      }
+    } catch (_) {
+      /* keep mock */
+    }
+  },
+
   toggleFollow: (id) => {
     const willFollow = !get().followed[id];
     set((s) => ({ followed: { ...s.followed, [id]: willFollow } }));
     (willFollow ? api.followOrg(numId(id)) : api.unfollowOrg(numId(id))).catch(() => {});
+  },
+
+  // Модерация (admin): жалобы из API (мок-фолбэк), одобрение/отклонение НКО, проверка жалоб.
+  loadReports: async () => {
+    try {
+      const res = await api.adminReports();
+      if (Array.isArray(res.reports)) set({ reports: res.reports.map((r) => ({ ...r, id: 'r' + r.id })) });
+    } catch (_) {
+      /* не админ/офлайн — оставляем демо-жалобы */
+    }
+  },
+
+  approveOrg: (orgId) => {
+    set((s) => ({ orgs: s.orgs.map((o) => (o.id === orgId ? { ...o, verified: true } : o)) }));
+    toast(isRu() ? 'Организация одобрена' : 'Ұйым мақұлданды');
+    api.approveOrg(numId(orgId)).catch(() => {});
+  },
+
+  rejectOrg: (orgId) => {
+    set((s) => ({ orgs: s.orgs.filter((o) => o.id !== orgId) }));
+    toast(isRu() ? 'Отклонено' : 'Қабылданбады');
+    api.rejectOrg(numId(orgId)).catch(() => {});
+  },
+
+  reviewReport: (reportId) => {
+    set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'reviewing' } : r)) }));
+    toast(isRu() ? 'Отправлено на проверку' : 'Тексеруге жіберілді');
+    api.reviewReport(numId(reportId)).catch(() => {});
   },
 
   // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
@@ -122,6 +171,15 @@ export const usePlatformStore = create((set, get) => ({
     return s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length;
   },
 
+  loadConversations: async () => {
+    try {
+      const res = await api.getConversations();
+      if (Array.isArray(res.conversations)) set({ convos: res.conversations.map(mapConvo) });
+    } catch (_) {
+      /* офлайн/ошибка — оставляем демо-диалоги */
+    }
+  },
+
   sendMsg: (convoId) => {
     const d = (get().msgDraft || '').trim();
     if (!d) return;
@@ -131,6 +189,7 @@ export const usePlatformStore = create((set, get) => ({
       ),
       msgDraft: '',
     }));
+    api.sendConversationMessage(String(convoId).replace(/^\D+/, ''), d).catch(() => {});
   },
 
   donate: () => {
