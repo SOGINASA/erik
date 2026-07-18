@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Shell from './components/shell/Shell';
 import Sheets from './sheets/Sheets';
 import { Toast } from './components/ui/feedback';
+import { useSessionStore } from './store/useSessionStore';
 
 import Home from './pages/Home';
 import Onboarding from './pages/Onboarding';
@@ -24,6 +26,11 @@ import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
 
 export default function App() {
+  // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP).
+  useEffect(() => {
+    useSessionStore.getState().boot();
+  }, []);
+
   return (
     <>
       <Routes>

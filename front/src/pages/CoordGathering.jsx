@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
@@ -18,8 +18,10 @@ export default function CoordGathering() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
+  const { id } = useParams();
   const desktop = useIsDesktop();
   const g = useGatheringStore((s) => s.gathering);
+  const loadCoord = useGatheringStore((s) => s.loadCoord);
   const animateForecast = useGatheringStore((s) => s.animateForecast);
   const startPoll = useGatheringStore((s) => s.startPoll);
   const stopPoll = useGatheringStore((s) => s.stopPoll);
@@ -27,12 +29,18 @@ export default function CoordGathering() {
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
 
-  // Первое появление: число прогноза считается от 0, стартует polling.
+  // Грузим сбор по :id, затем число прогноза считается от 0; стартует polling.
   useEffect(() => {
-    animateForecast(true);
+    let alive = true;
+    loadCoord(id).finally(() => {
+      if (alive) animateForecast(true);
+    });
     startPoll();
-    return () => stopPoll();
-  }, [animateForecast, startPoll, stopPoll]);
+    return () => {
+      alive = false;
+      stopPoll();
+    };
+  }, [id, loadCoord, animateForecast, startPoll, stopPoll]);
 
   const c = counts(g.participants);
   const title = isRu ? g.titleRu : g.titleKz;

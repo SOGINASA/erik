@@ -217,12 +217,12 @@ function SettingsSheet() {
   const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
   const openSheet = useUiStore((s) => s.openSheet);
-  const showToast = useUiStore((s) => s.showToast);
   const g = useGatheringStore((s) => s.gathering);
   const setTitle = useGatheringStore((s) => s.setTitle);
   const setPlace = useGatheringStore((s) => s.setPlace);
   const incNeeded = useGatheringStore((s) => s.incNeeded);
   const decNeeded = useGatheringStore((s) => s.decNeeded);
+  const saveGathering = useGatheringStore((s) => s.saveGathering);
   return (
     <Sheet open onClose={close} title={t.settingsTitle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -234,7 +234,7 @@ function SettingsSheet() {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
-        <Button full size="lg" onClick={() => { close(); showToast(isRu ? 'Изменения сохранены' : 'Өзгерістер сақталды'); }}>{t.save}</Button>
+        <Button full size="lg" onClick={() => { saveGathering(); close(); }}>{t.save}</Button>
         <Button full variant="ghost" onClick={() => openSheet('confirm', 'delete')} style={{ color: 'var(--danger)' }}>{t.deleteGathering}</Button>
       </div>
     </Sheet>

@@ -15,18 +15,14 @@ export default function NewGathering() {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const hasName = !!useSessionStore((s) => s.name);
-  const setTitle = useGatheringStore((s) => s.setTitle);
-  const setPlace = useGatheringStore((s) => s.setPlace);
-  const setNeeded = useGatheringStore((s) => s.setNeeded);
+  const createGathering = useGatheringStore((s) => s.create);
   const openSheet = useUiStore((s) => s.openSheet);
 
   const [form, setForm] = useState({ what: '', where: '', date: '2026-07-18', time: '10:00', needed: 20, name: '' });
   const up = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const create = () => {
-    if (form.what.trim()) setTitle(form.what.trim());
-    if (form.where.trim()) setPlace(form.where.trim());
-    setNeeded(form.needed);
+  const create = async () => {
+    await createGathering(form);
     openSheet('share');
   };
 

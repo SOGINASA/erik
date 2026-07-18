@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
@@ -13,17 +13,33 @@ export default function GuestGathering() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
+  const { code } = useParams();
   const g = useGatheringStore((s) => s.gathering);
+  const loadGuest = useGatheringStore((s) => s.loadGuest);
+  const rsvp = useGatheringStore((s) => s.rsvp);
   const showToast = useUiStore((s) => s.showToast);
   const [answer, setAnswer] = useState(null);
+
+  useEffect(() => {
+    loadGuest(code);
+  }, [code, loadGuest]);
+  useEffect(() => {
+    if (g.myAnswer) setAnswer(g.myAnswer);
+  }, [g.myAnswer]);
+
+  const pick = (a) => {
+    setAnswer(a);
+    rsvp(code, a);
+  };
 
   const title = isRu ? g.titleRu : g.titleKz;
   const place = isRu ? g.placeRu : g.placeKz;
   const when = `${isRu ? g.dateRu : g.dateKz} · ${g.time}`;
-  const c = counts(g.participants);
+  // Публичный вид отдаёт comingCount; на моке считаем из ростера.
+  const coming = g.comingCount != null ? g.comingCount : counts(g.participants || []).yes;
   const needLine = isRu
-    ? `Нужно ${g.needed} человек · сейчас придут ${c.yes + (answer === 'yes' ? 1 : 0)}`
-    : `${g.needed} адам керек · қазір ${c.yes + (answer === 'yes' ? 1 : 0)} келеді`;
+    ? `Нужно ${g.needed} человек · сейчас придут ${coming}`
+    : `${g.needed} адам керек · қазір ${coming} келеді`;
 
   const statusMap = { yes: ['var(--yard-soft)', 'var(--yard)', 'var(--yard)'], maybe: ['var(--maybe-soft)', 'var(--maybe)', '#8a5a17'], no: ['#EEF0EC', 'var(--line)', 'var(--ink-2)'] };
   const gsm = statusMap[answer || 'yes'];
@@ -43,9 +59,9 @@ export default function GuestGathering() {
 
         {answer === null ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 28 }}>
-            <AnswerButton kind="yes" label={t.ansYes} selected={false} onClick={() => setAnswer('yes')} />
-            <AnswerButton kind="maybe" label={t.ansMaybe} selected={false} onClick={() => setAnswer('maybe')} />
-            <AnswerButton kind="no" label={t.ansNo} selected={false} onClick={() => setAnswer('no')} />
+            <AnswerButton kind="yes" label={t.ansYes} selected={false} onClick={() => pick('yes')} />
+            <AnswerButton kind="maybe" label={t.ansMaybe} selected={false} onClick={() => pick('maybe')} />
+            <AnswerButton kind="no" label={t.ansNo} selected={false} onClick={() => pick('no')} />
           </div>
         ) : (
           <div style={{ marginTop: 28, animation: 'erik-rise var(--t-base) var(--ease-out)' }}>
