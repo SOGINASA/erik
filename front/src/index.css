@@ -1,0 +1,23 @@
+/*
+ * Исходный файл стилей. Его компилирует Tailwind CLI в ./output.css
+ * (скрипты tw:watch / tw:build в package.json). Именно этот файл нужно
+ * редактировать; output.css — сгенерированный и в git не попадает.
+ */
+@import "tailwindcss";
+
+/* Где Tailwind ищет используемые классы. */
+@source "./**/*.{js,jsx,ts,tsx}";
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
