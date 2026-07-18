@@ -22,6 +22,7 @@ __pycache__/
 Thumbs.db
 
 /backend/PLAN.md
+/backend/PLAN2.md
 
 # ML — окружение, сгенерированные данные и артефакты модели
 /ml/.venv/
