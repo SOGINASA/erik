@@ -12,6 +12,9 @@ import { useSessionStore } from '../store/useSessionStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { counts } from '../lib/forecast';
+import { SKILL_LIST, skillLabel } from '../lib/data';
+import { useOrganizerStore } from '../store/useOrganizerStore';
+import { RelChip, SkillTags } from '../components/manage/parts';
 import { useGuardedNav } from '../lib/nav';
 import { copyToClipboard } from '../lib/share';
 import { api } from '../lib/api';
@@ -32,6 +35,8 @@ export default function Sheets() {
     case 'register': return <RegisterSheet />;
     case 'donate': return <DonateSheet />;
     case 'editprofile': return <EditProfileSheet />;
+    case 'apply': return <ApplySheet />;
+    case 'applicant': return <ApplicantSheet />;
     default: return null;
   }
 }
@@ -83,17 +88,14 @@ function EditProfileSheet() {
 
 function AuthSheet() {
   const t = useT();
-  const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
-  const showToast = useUiStore((s) => s.showToast);
-  const login = useSessionStore((s) => s.login);
   const navigate = useNavigate();
   return (
     <Sheet open onClose={close} title={t.authTitle}>
       <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 20px' }}>{t.authSub}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button full size="lg" onClick={() => { close(); navigate('/onboarding'); }}>{t.authRegister}</Button>
-        <Button full variant="secondary" onClick={() => { login(); close(); navigate('/feed'); showToast(isRu ? 'С возвращением!' : 'Қайта келдіңіз!'); }}>{t.authLogin}</Button>
+        <Button full size="lg" onClick={() => { close(); navigate('/register'); }}>{t.authRegister}</Button>
+        <Button full variant="secondary" onClick={() => { close(); navigate('/login'); }}>{t.authLogin}</Button>
       </div>
     </Sheet>
   );
@@ -159,6 +161,7 @@ function MoreSheet() {
   return (
     <Sheet open onClose={close} title={t.moreMenuTitle}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {loggedIn && item('calendar', t.manageEyebrow, () => goClose('/manage', 'manage'))}
         {item('list', t.myGatherings, () => goClose('/me', 'me'))}
         {item('users', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
@@ -344,6 +347,128 @@ function DonateSheet() {
         ))}
       </div>
       <Button full size="lg" onClick={() => { donate(); close(); }}>{t.help}</Button>
+    </Sheet>
+  );
+}
+
+// Заявка волонтёра организатору: навыки + сообщение. Открывается со страницы события.
+function ApplySheet() {
+  const t = useT();
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const eventId = useUiStore((s) => s.sheetPayload);
+  const events = usePlatformStore((s) => s.events);
+  const me = usePlatformStore((s) => s.me);
+  const name = useSessionStore((s) => s.name);
+  const phone = useSessionStore((s) => s.phone);
+  const addApplication = useOrganizerStore((s) => s.addApplication);
+
+  const ev = events.find((e) => e.id === eventId);
+  const title = ev ? (isRu ? ev.titleRu : ev.titleKz) : '';
+  const [skills, setSkills] = useState([]);
+  const [message, setMessage] = useState('');
+  const toggle = (id) => setSkills((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const send = () => {
+    addApplication({ eventId, name: name || me.name, phone, city: me.city, skills, message });
+    close();
+    showToast(t.mgApplySent);
+  };
+
+  return (
+    <Sheet open onClose={close} title={t.mgApplyTitle}>
+      {title && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--ink-2)', marginBottom: 18 }}>
+          <Icon name="calendar" size={16} stroke={1.7} />
+          <span>«{title}»</span>
+        </div>
+      )}
+      <FieldLabel>{t.mgApplySkills}</FieldLabel>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+        {SKILL_LIST.map((id) => {
+          const on = skills.includes(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              className="erik-btn"
+              onClick={() => toggle(id)}
+              style={{ height: 38, padding: '0 14px', borderRadius: 999, border: `1.5px solid ${on ? 'var(--yard)' : 'var(--line)'}`, background: on ? 'var(--yard-soft)' : 'var(--surface)', color: on ? 'var(--yard)' : 'var(--ink-2)', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+            >
+              {skillLabel(id, isRu)}
+            </button>
+          );
+        })}
+      </div>
+      <Textarea label={t.mgApplyMsg} value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder={t.mgApplyMsgPh} />
+      <Button full size="lg" style={{ marginTop: 18 }} onClick={send}>{t.mgApplySend}</Button>
+    </Sheet>
+  );
+}
+
+// Организатор рассматривает одну заявку: детали волонтёра + принять/отклонить.
+function ApplicantSheet() {
+  const t = useT();
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const a = useUiStore((s) => s.sheetPayload) || {};
+  const events = useOrganizerStore((s) => s.events);
+  const accept = useOrganizerStore((s) => s.acceptApplication);
+  const decline = useOrganizerStore((s) => s.declineApplication);
+
+  const ev = events.find((e) => e.id === a.eventId);
+  const evTitle = ev ? (isRu ? ev.titleRu : ev.titleKz) : '';
+  const hist = a.history && a.history.total > 0
+    ? isRu ? `был ${a.history.came} из ${a.history.total} раз` : `${a.history.total} реттен ${a.history.came} рет келген`
+    : t.mgNewVol;
+  const msg = isRu ? a.messageRu : a.messageKz;
+  const pending = a.status === 'pending';
+
+  return (
+    <Sheet open onClose={close} title={a.name || ''}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+        <Avatar name={a.name} size={52} fontScale={0.4} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--fm)', fontSize: 14, color: 'var(--ink-2)' }}>{a.phone || '—'}</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{a.city} · {hist}</div>
+        </div>
+        <span style={{ marginLeft: 'auto' }}><RelChip value={a.reliability} label={t.mgReliability} /></span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--ink-2)', marginBottom: 16 }}>
+        <Icon name="calendar" size={16} stroke={1.7} />
+        <span>{t.mgAppliedTo} <span style={{ color: 'var(--ink)', fontWeight: 500 }}>«{evTitle}»</span></span>
+      </div>
+
+      {a.skills && a.skills.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <FieldLabel>{t.mgSkills}</FieldLabel>
+          <SkillTags ids={a.skills} />
+        </div>
+      )}
+
+      {msg && (
+        <div style={{ marginBottom: 20 }}>
+          <FieldLabel>{t.mgMessage}</FieldLabel>
+          <div style={{ padding: '12px 14px', borderRadius: 'var(--r-s)', background: 'var(--paper)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)' }}>{msg}</div>
+        </div>
+      )}
+
+      {pending ? (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Button full size="lg" icon="check" onClick={() => accept(a.id)}>{t.mgAccept}</Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button variant="secondary" icon="phone" onClick={() => showToast(isRu ? `Звоним ${a.name || ''}` : `${a.name || ''} қоңырау шалудамыз`)} style={{ flex: 1 }}>{t.personCall}</Button>
+              <Button variant="ghost" onClick={() => decline(a.id)} style={{ color: 'var(--ink-2)' }}>{t.mgDecline}</Button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 14, color: 'var(--ink-3)' }}>{a.status === 'accepted' ? t.mgStatusAccepted : t.mgStatusDeclined}</div>
+      )}
     </Sheet>
   );
 }

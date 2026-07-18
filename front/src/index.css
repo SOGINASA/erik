@@ -133,3 +133,9 @@ input::placeholder, textarea::placeholder { color: var(--ink-3); }
 .erik-anim-rise { animation: erik-rise var(--t-base) var(--ease-out) both; }
 .erik-anim-fade { animation: erik-fade var(--t-base) var(--ease-out) both; }
 .erik-anim-pop { animation: erik-pop var(--t-base) var(--ease-out) both; }
+
+@keyframes erik-slide-r { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes erik-slide-l { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes erik-scale-in { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+@keyframes erik-check-pop { 0% { transform: scale(0); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes erik-ring-draw { from { stroke-dashoffset: var(--dash, 300); } to { stroke-dashoffset: 0; } }

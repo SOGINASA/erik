@@ -1,8 +1,8 @@
-# Python
-/backend/__pycache__/
-/backend/*.py[cod]
-/backend/*.egg-info/
-/backend/.pytest_cache/
+# Python — байткод-кэш и артефакты генерируются при каждом запуске, в git не нужны
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
 
 # Виртуальные окружения
 /backend/venv/

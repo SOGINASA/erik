@@ -8,6 +8,8 @@ import { usePlatformStore } from './store/usePlatformStore';
 import { useGatheringStore } from './store/useGatheringStore';
 
 import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import Onboarding from './pages/Onboarding';
 import Feed from './pages/Feed';
 import MapPage from './pages/MapPage';
@@ -17,6 +19,9 @@ import GuestGathering from './pages/GuestGathering';
 import CoordGathering from './pages/CoordGathering';
 import CheckIn from './pages/CheckIn';
 import MyGatherings from './pages/MyGatherings';
+import Manage from './pages/Manage';
+import ManageRequests from './pages/ManageRequests';
+import ManageVolunteers from './pages/ManageVolunteers';
 import Profile from './pages/Profile';
 import Org from './pages/Org';
 import Leaderboard from './pages/Leaderboard';
@@ -60,6 +65,8 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/g/:code" element={<GuestGathering />} />
         <Route element={<Shell />}>
@@ -70,6 +77,9 @@ export default function App() {
           <Route path="/c/:id" element={<CoordGathering />} />
           <Route path="/c/:id/check" element={<CheckIn />} />
           <Route path="/me" element={<MyGatherings />} />
+          <Route path="/manage" element={<Manage />} />
+          <Route path="/manage/requests" element={<ManageRequests />} />
+          <Route path="/manage/volunteers" element={<ManageVolunteers />} />
           <Route path="/u/:id" element={<Profile />} />
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
@@ -78,6 +88,7 @@ export default function App() {
           <Route path="/messages/:id" element={<Convo />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/:section" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
