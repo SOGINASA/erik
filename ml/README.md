@@ -44,7 +44,7 @@ pip install -r requirements.txt
 
 ```bash
 python data_gen.py            # (необязательно) сгенерировать журнал явки → data/events.csv
-python train.py               # обучить модель (по умолчанию — градиентный бустинг)
+python train.py               # обучить модель (градиентный бустинг)
 python evaluate.py            # полные метрики + графики в artifacts/
 python inference.py --demo    # показательные предсказания
 ```
