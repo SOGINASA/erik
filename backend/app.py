@@ -36,12 +36,15 @@ def create_app(config_object=None):
         db.create_all()
 
     # Регистрация блюпринтов
-    from routes import auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp
+    from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
+                        notifications_bp, platform_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(session_bp, url_prefix='/api')          # /api/session, /api/me, /api/logout
     app.register_blueprint(gatherings_bp, url_prefix='/api/gatherings')
     app.register_blueprint(guest_bp, url_prefix='/api')            # /api/g/<code>, /api/gatherings/by-code
+    app.register_blueprint(notifications_bp, url_prefix='/api')    # /api/notifications*
+    app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /charity, /leaderboard, /cities…
 
     # Главная страница API
     @app.route('/api')
@@ -105,7 +108,8 @@ def init_db():
 
 
 @app.cli.command('seed-demo')
-@click.option('--reset', is_flag=True, default=False, help='Пересоздать демо-данные')
+@click.option('--reset', is_flag=True, default=False,
+              help='Полностью очистить доменные таблицы и пересоздать демо (аккаунты сохраняются)')
 def seed_demo_cmd(reset):
     """Засеять детерминированную демо-синтетику (сбор PARK18 и участники)."""
     from seed import seed_demo

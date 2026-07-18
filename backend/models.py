@@ -26,6 +26,8 @@ PRESENCES = ('came', 'missed')
 GATHERING_STATUSES = ('open', 'done', 'deleted')
 GATHERING_FORMATS = ('one', 'reg')
 USER_ROLES = ('vol', 'coord', 'org')
+NOTIF_TYPES = ('answer', 'reminder', 'badge', 'event', 'system')
+REMIND_AUDIENCES = ('maybe', 'all')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,7 +161,7 @@ class Gathering(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(12), unique=True, index=True, nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
-    org_id = db.Column(db.Integer, nullable=True)   # FK orgs.id — появится в P2
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), nullable=True)
     city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
     theme = db.Column(db.String(16), db.ForeignKey('themes.id'), nullable=True)
 
@@ -173,6 +175,7 @@ class Gathering(db.Model):
     status = db.Column(db.String(8), default='open')      # open | done | deleted
     ctx = db.Column(db.Float, default=1.0)
     revision = db.Column(db.Integer, default=0)           # для delta-поллинга
+    going_cache = db.Column(db.Integer, nullable=True)    # демо-события ленты без реального ростера
 
     created_at = db.Column(db.DateTime, default=_now)
     finalized_at = db.Column(db.DateTime)
@@ -273,3 +276,109 @@ class ForecastParams(db.Model):
 
     def base(self, answer):
         return {'yes': self.base_yes, 'maybe': self.base_maybe, 'no': self.base_no}.get(answer, self.base_no)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  P1: Уведомления, напоминания, бейджи
+# ─────────────────────────────────────────────────────────────────────────────
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
+    type = db.Column(db.String(10))                       # answer|reminder|badge|event|system
+    text_ru = db.Column(db.String(300))
+    text_kz = db.Column(db.String(300))
+    read = db.Column(db.Boolean, default=False)
+    read_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=_now)
+    __table_args__ = (db.Index('ix_notif_user_read', 'user_id', 'read', 'created_at'),)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'type': self.type,
+            'ru': self.text_ru, 'kz': self.text_kz,
+            'read': self.read, 'created_at': _utc_iso(self.created_at),
+        }
+
+
+class Reminder(db.Model):
+    __tablename__ = 'reminders'
+    id = db.Column(db.Integer, primary_key=True)
+    gathering_id = db.Column(db.Integer, db.ForeignKey('gatherings.id', ondelete='CASCADE'), index=True)
+    sent_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    audience = db.Column(db.String(5), default='maybe')   # maybe | all
+    text_ru = db.Column(db.String(300))
+    text_kz = db.Column(db.String(300))
+    recipient_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Badge(db.Model):
+    __tablename__ = 'badges'
+    id = db.Column(db.String(16), primary_key=True)       # first|ten|reliable|eco|night|lead
+    label_ru = db.Column(db.String(60))
+    label_kz = db.Column(db.String(60))
+    glyph = db.Column(db.String(8))
+
+    def to_dict(self):
+        return {'id': self.id, 'ru': self.label_ru, 'kz': self.label_kz, 'glyph': self.glyph}
+
+
+class BadgeAward(db.Model):
+    __tablename__ = 'badge_awards'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    badge_id = db.Column(db.String(16), db.ForeignKey('badges.id'))
+    awarded_at = db.Column(db.DateTime, default=_now)
+    __table_args__ = (db.UniqueConstraint('user_id', 'badge_id', name='uq_badge_award'),)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  P2a: Соц-платформа — НКО, помощь, подписки
+# ─────────────────────────────────────────────────────────────────────────────
+CHARITY_KINDS = ('money', 'items')
+
+
+class Org(db.Model):
+    __tablename__ = 'orgs'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200))
+    cat = db.Column(db.String(16), db.ForeignKey('themes.id'))
+    city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
+    verified = db.Column(db.Boolean, default=False)
+    about_ru = db.Column(db.Text)
+    about_kz = db.Column(db.Text)
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class CharityRequest(db.Model):
+    __tablename__ = 'charity_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    title_ru = db.Column(db.String(200))
+    title_kz = db.Column(db.String(200))
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), nullable=True)
+    city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
+    kind = db.Column(db.String(6), default='money')       # money | items
+    unit = db.Column(db.String(16))                       # ₸ | вещей | книг
+    goal = db.Column(db.Integer, default=0)
+    raised = db.Column(db.Integer, default=0)             # сервер-авторитетно
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Donation(db.Model):
+    __tablename__ = 'donations'
+    id = db.Column(db.Integer, primary_key=True)
+    charity_id = db.Column(db.Integer, db.ForeignKey('charity_requests.id'), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    amount = db.Column(db.Integer, default=0)             # ₸ для money, количество для items
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Follow(db.Model):
+    __tablename__ = 'follows'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), index=True)
+    created_at = db.Column(db.DateTime, default=_now)
+    __table_args__ = (db.UniqueConstraint('user_id', 'org_id', name='uq_follow'),)

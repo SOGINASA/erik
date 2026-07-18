@@ -3,6 +3,8 @@ from routes.admin import admin_bp
 from routes.session import session_bp
 from routes.gatherings import gatherings_bp
 from routes.guest import guest_bp
+from routes.notifications import notifications_bp
+from routes.platform import platform_bp
 
 
 __all__ = [
@@ -11,4 +13,6 @@ __all__ = [
     'session_bp',
     'gatherings_bp',
     'guest_bp',
+    'notifications_bp',
+    'platform_bp',
 ]

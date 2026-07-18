@@ -7,8 +7,68 @@ import math
 from datetime import datetime, timezone
 
 from models import (
-    db, User, Theme, City, Gathering, GatheringCoordinator, Participant, ForecastParams,
+    db, User, Theme, City, Gathering, GatheringCoordinator, Participant, ForecastParams, Badge,
+    Org, CharityRequest, Donation, Follow, AttendanceRecord, Notification, Reminder, BadgeAward,
 )
+
+# Города: имя → id (для нормализации free-text из моков).
+CITY_ID = {'Алматы': 'alm', 'Астана': 'ast', 'Шымкент': 'shy', 'Караганда': 'kar',
+           'Петропавловск': 'pet', 'Актобе': 'akt', 'Павлодар': 'pav', 'Тараз': 'tar',
+           'Усть-Каменогорск': 'ukk'}
+
+# НКО: (id, name, cat, city_id, verified, aboutRu, aboutKz)
+ORGS = [
+    (1, 'Чистый двор', 'eco', 'pet', True,
+     'Соседские субботники, уборка дворов, парков и берегов рек.',
+     'Көршілік сенбіліктер, аула мен саябақтарды тазалау.'),
+    (2, 'Серебряный возраст', 'elderly', 'ast', True,
+     'Помощь одиноким пожилым: продукты, уборка, общение.',
+     'Жалғызбасты қарттарға көмек: азық-түлік, тазалық, қарым-қатынас.'),
+    (3, 'Лапа помощи', 'animals', 'alm', True,
+     'Уход за животными в приютах, пристрой, выгул, корм.',
+     'Баспаналардағы жануарларға күтім, серуен, жем.'),
+    (4, 'Кровь героев', 'blood', 'kar', False,
+     'Дни донора и экстренные сборы крови по больницам.',
+     'Донор күндері және шұғыл қан жинау.'),
+    (5, 'Дети будущего', 'edu', 'shy', True,
+     'Наставничество и репетиторство для сельских школьников.',
+     'Ауыл оқушыларына тәлімгерлік және репетиторлық.'),
+]
+
+# События ленты e2–e8 (e1=PARK18 сеется отдельно): (code, ru, kz, org_id, city, theme,
+#   placeRu, placeKz, y, mo, d, hh, mm, format, needed, going)
+EVENTS = [
+    ('ELD19', 'Навестить одиноких пожилых', 'Жалғыз қарттарды аралау', 2, 'ast', 'elderly',
+     'ул. Кенесары 40, сбор у входа', 'Кенесары к. 40', 2026, 7, 19, 11, 0, 'reg', 12, 8),
+    ('PAW20', 'День в приюте «Лапа»', 'Баспанадағы күн', 3, 'alm', 'animals',
+     'Приют «Лапа», Наурызбайский р-н', '«Лапа» баспанасы', 2026, 7, 20, 9, 0, 'one', 15, 11),
+    ('BLD21', 'День донора', 'Донор күні', 4, 'kar', 'blood',
+     'Центр крови, пр. Бухар-жырау 12', 'Қан орталығы', 2026, 7, 21, 8, 30, 'one', 30, 22),
+    ('EDU24', 'Репетиторство детям', 'Балаларға репетиторлық', 5, 'shy', 'edu',
+     'Школа №12, кабинет 3', '№12 мектеп', 2026, 7, 24, 15, 0, 'reg', 8, 5),
+    ('TRE25', 'Посадка деревьев в сквере', 'Скверде ағаш отырғызу', 1, 'ast', 'trees',
+     'Сквер у ТРЦ «Керуен»', '«Керуен» жанындағы сквер', 2026, 7, 25, 10, 0, 'one', 40, 27),
+    ('WRM26', 'Сбор тёплых вещей', 'Жылы киім жинау', 2, 'alm', 'homeless',
+     'Пункт сбора, ул. Абая 90', 'Абай к. 90', 2026, 7, 26, 12, 0, 'reg', 10, 6),
+    ('RIV27', 'Уборка берега Ишима', 'Есіл жағасын тазалау', 1, 'ast', 'eco',
+     'Набережная Ишима, левый берег', 'Есіл жағалауы', 2026, 7, 27, 9, 30, 'one', 25, 14),
+]
+
+# Благотворительность: (titleRu, titleKz, org_id, city, kind, goal, raised, unit)
+CHARITY = [
+    ('Инвентарь для субботников', 'Сенбілікке құрал-жабдық', 1, 'pet', 'money', 150000, 98000, '₸'),
+    ('Тёплые вещи для приюта', 'Баспанаға жылы киім', 2, 'alm', 'items', 200, 134, 'вещей'),
+    ('Корм для приюта «Лапа»', '«Лапа» баспанасына жем', 3, 'alm', 'money', 90000, 71500, '₸'),
+    ('Учебники сельским школам', 'Ауыл мектептеріне оқулық', 5, 'shy', 'items', 500, 210, 'книг'),
+]
+
+# Волонтёры-лидеры: (name, city_id, hours, events, rel)
+VOLUNTEERS = [
+    ('Аружан Сапарова', 'alm', 186, 41, 96), ('Ерлан Мұратов', 'ast', 174, 38, 93),
+    ('Динара Ким', 'shy', 159, 35, 90), ('Тимур Ли', 'alm', 148, 33, 88),
+    ('Гүлнара Ахметова', 'kar', 132, 29, 91), ('Данияр Оспанов', 'ast', 121, 27, 85),
+    ('Мария Волкова', 'pet', 108, 24, 89), ('Санжар Тлеу', 'tar', 97, 22, 82),
+]
 
 THEMES = [
     ('eco', 'Экология', 'Экология', '#E8F1EB', '#2F6F4F'),
@@ -26,6 +86,15 @@ CITIES = [
     ('pet', 'Петропавловск', 'Петропавл', 47, 9), ('akt', 'Актобе', 'Ақтөбе', 19, 43),
     ('pav', 'Павлодар', 'Павлодар', 65, 28), ('tar', 'Тараз', 'Тараз', 58, 84),
     ('ukk', 'Усть-Каменогорск', 'Өскемен', 84, 38),
+]
+
+BADGES = [
+    ('first', 'Первый выход', 'Алғашқы шығу', '1'),
+    ('ten', '10 сборов', '10 жиын', '10'),
+    ('reliable', 'Надёжный', 'Сенімді', '✓'),
+    ('eco', 'Эко-герой', 'Эко-батыр', '♻'),
+    ('night', 'Ночная смена', 'Түнгі ауысым', '☾'),
+    ('lead', 'Координатор', 'Үйлестіруші', '★'),
 ]
 
 NAMES = ['Айгерім', 'Данияр', 'Ольга', 'Тимур', 'Асхат', 'Марина', 'Ерлан', 'Гүлнара',
@@ -80,10 +149,13 @@ def build_participants():
 
 def seed_demo(reset=False):
     if reset:
-        # чистим только доменные таблицы, аккаунты/админов не трогаем
-        Participant.query.delete()
-        GatheringCoordinator.query.delete()
-        Gathering.query.filter_by(code='PARK18').delete()
+        # ⚠️ reset ПОЛНОСТЬЮ очищает доменные таблицы (все сборы/НКО/помощь/уведомления),
+        # а не только demo-строки. Аккаунты email/пароль (напр. админ) сохраняются.
+        # Это команда пересборки ДЕМО-базы — не запускать на данных, которые нужно сохранить.
+        for M in (Donation, CharityRequest, Follow, Notification, Reminder, BadgeAward,
+                  AttendanceRecord, Participant, GatheringCoordinator, Gathering):
+            M.query.delete()
+        Org.query.delete()
         User.query.filter(User.device_id.like('demo-%')).delete()
         db.session.commit()
 
@@ -95,17 +167,22 @@ def seed_demo(reset=False):
     for cid, ru, kz, x, y in CITIES:
         if not db.session.get(City, cid):
             db.session.add(City(id=cid, name_ru=ru, name_kz=kz, map_x=x, map_y=y))
+    for bid, ru, kz, glyph in BADGES:
+        if not db.session.get(Badge, bid):
+            db.session.add(Badge(id=bid, label_ru=ru, label_kz=kz, glyph=glyph))
     db.session.commit()
 
     if Gathering.query.filter_by(code='PARK18').first():
         print('PARK18 уже есть — пропускаю (используй --reset для пересоздания)')
         return
 
-    # координатор-владелец (ME)
+    # координатор-владелец (ME) со статами профиля
     coord = User.query.filter_by(device_id='demo-coord').first()
     if coord is None:
         coord = User(device_id='demo-coord', full_name='Асхат Жумабеков', role='coord',
-                     city_id='pet', user_type='user', is_active=True)
+                     city_id='pet', user_type='user', is_active=True,
+                     hours_total=47, events_attended=12, reliability=91, rank=34,
+                     skills=['Организация', 'Первая помощь', 'Водитель кат. B', 'Фото'])
         db.session.add(coord)
         db.session.flush()
 
@@ -138,7 +215,55 @@ def seed_demo(reset=False):
 
     db.session.commit()
 
+    # PARK18 (e1) как событие ленты — привязываем к НКО «Чистый двор».
+    # going_cache НЕ ставим: у PARK18 реальный ростер, going считается по нему (14 «да»).
+    gathering.org_id = 1
+
+    _seed_platform()
+    db.session.commit()
+
     from services.forecast import forecast_payload
     f = forecast_payload(gathering)
     print(f"PARK18 засеян: 45 участников (14 yes / 24 maybe / 7 no)")
     print(f"Прогноз: E={f['E']}  ±{f['sigma']}  [{f['lo']}..{f['hi']}]  ctx={gathering.ctx}")
+    print(f"Платформа: {Org.query.count()} НКО, {Gathering.query.count()} событий, "
+          f"{CharityRequest.query.count()} сборов помощи, {User.query.filter(User.device_id.like('demo-v%')).count()} волонтёров")
+
+
+def _seed_platform():
+    """НКО, события ленты e2–e8, благотворительность, волонтёры-лидеры."""
+    # НКО + их владельцы
+    for oid, name, cat, city, verified, aboutRu, aboutKz in ORGS:
+        owner = User(device_id=f'demo-org{oid}', full_name=name, role='org',
+                     city_id=city, user_type='user', is_active=True)
+        db.session.add(owner)
+        db.session.flush()
+        db.session.add(Org(id=oid, name=name, cat=cat, city_id=city, verified=verified,
+                           about_ru=aboutRu, about_kz=aboutKz, owner_id=owner.id))
+    db.session.flush()
+
+    org_owner = {o.id: o.owner_id for o in Org.query.all()}
+
+    # события ленты (e2–e8) как открытые сборы
+    for code, ru, kz, org_id, city, theme, placeRu, placeKz, y, mo, d, hh, mm, fmt, needed, going in EVENTS:
+        g = Gathering(
+            code=code, owner_id=org_owner[org_id], org_id=org_id, city_id=city, theme=theme,
+            title_ru=ru, title_kz=kz, place_ru=placeRu, place_kz=placeKz,
+            starts_at=datetime(y, mo, d, hh, mm, tzinfo=timezone.utc),
+            format=fmt, needed=needed, status='open', ctx=1.0, going_cache=going,
+        )
+        db.session.add(g)
+        db.session.flush()
+        db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=org_owner[org_id], role='owner'))
+
+    # благотворительность
+    for titleRu, titleKz, org_id, city, kind, goal, raised, unit in CHARITY:
+        db.session.add(CharityRequest(title_ru=titleRu, title_kz=titleKz, org_id=org_id,
+                                      city_id=city, kind=kind, goal=goal, raised=raised, unit=unit))
+
+    # волонтёры-лидеры
+    for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):
+        db.session.add(User(device_id=f'demo-v{i}', full_name=name, role='vol',
+                            city_id=city, user_type='user', is_active=True,
+                            hours_total=hours, events_attended=events, reliability=rel,
+                            rank=i + 1))

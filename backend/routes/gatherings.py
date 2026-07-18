@@ -166,6 +166,20 @@ def finalize(id):
     return jsonify(summary)
 
 
+@gatherings_bp.route('/<int:id>/remind', methods=['POST'])
+@gathering_owner_required
+def remind(id):
+    """RemindSheet: напомнить сомневающимся (или всем). Создаёт уведомления."""
+    from services.notifications import notify_reminder
+    from models import REMIND_AUDIENCES
+    data = request.get_json(silent=True) or {}
+    audience = data.get('audience') if data.get('audience') in REMIND_AUDIENCES else 'maybe'
+    text_ru = (data.get('text_ru') or data.get('text') or '').strip() or None
+    text_kz = (data.get('text_kz') or data.get('text') or '').strip() or None
+    count = notify_reminder(g.gathering, audience, text_ru, text_kz, g.user.id)
+    return jsonify({'recipient_count': count, 'audience': audience})
+
+
 # ── ростер (координатор) ──
 @gatherings_bp.route('/<int:id>/participants/<int:pid>', methods=['PATCH'])
 @gathering_owner_required

@@ -1,9 +1,11 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
-import { THEMES, CITIES, ORGS, avatarOf, initialOf } from '../lib/data';
+import { api } from '../lib/api';
+import { THEMES, CITIES, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 
 // Страница события: обложка темы, детали, участники, запись/ответ.
@@ -13,14 +15,24 @@ export default function Event() {
   const navigate = useNavigate();
   const { id } = useParams();
   const events = usePlatformStore((s) => s.events);
-  const gathering = useGatheringStore((s) => s.gathering);
+  const orgs = usePlatformStore((s) => s.orgs);
   const regs = useGatheringStore((s) => s.regs);
   const openSheet = useUiStore((s) => s.openSheet);
+  const [participants, setParticipants] = useState([]);
 
   const ev = events.find((e) => e.id === id) || events[0];
   const theme = THEMES[ev.theme] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
-  const org = ORGS.find((o) => o.id === ev.orgId) || {};
+  const org = orgs.find((o) => o.id === ev.orgId) || {};
   const city = CITIES.find((c) => c.id === ev.cityId) || { ru: '', kz: '' };
+
+  // Реальные участники события (стопка аватаров) — по id события, а не из демо-сбора.
+  useEffect(() => {
+    let alive = true;
+    api.eventParticipants(String(ev.id).replace(/^\D+/, ''))
+      .then((r) => { if (alive) setParticipants(r.participants || []); })
+      .catch(() => { if (alive) setParticipants([]); });
+    return () => { alive = false; };
+  }, [ev.id]);
 
   const title = isRu ? ev.titleRu : ev.titleKz;
   const when = `${isRu ? ev.dateRu : ev.dateKz} · ${ev.time}`;
@@ -33,7 +45,6 @@ export default function Event() {
   const reg = regs[ev.id];
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 
-  const participants = gathering.participants.slice(0, 7); // стопка аватаров из демо-сбора
   const openRegister = () => openSheet('register', ev.id);
 
   // Иконка строки-детали (line-стиль, цвет var(--ink-3)) — как в дизайне.
@@ -55,7 +66,9 @@ export default function Event() {
         </div>
 
         <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 28, lineHeight: 1.15, letterSpacing: '-.02em', margin: '20px 0 8px', textWrap: 'balance' }}>{title}</h1>
-        <button onClick={() => navigate(`/o/${org.id}`)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: 15, color: 'var(--yard)', fontWeight: 500 }}>{org.name}</button>
+        {org.id && (
+          <button onClick={() => navigate(`/o/${org.id}`)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: 15, color: 'var(--yard)', fontWeight: 500 }}>{org.name}</button>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '18px 0 22px' }}>
           <div style={infoRowStyle}>

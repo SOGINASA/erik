@@ -195,7 +195,8 @@ function RemindSheet() {
   const close = useUiStore((s) => s.closeSheet);
   const showToast = useUiStore((s) => s.showToast);
   const g = useGatheringStore((s) => s.gathering);
-  const maybeCount = counts(g.participants).maybe;
+  const remind = useGatheringStore((s) => s.remind);
+  const maybeCount = counts(g.participants || []).maybe;
   const def = isRu
     ? `Напоминаю про завтрашний сбор «${g.titleRu}». Если планы поменялись — просто поменяйте ответ по ссылке, это ок.`
     : `Ертеңгі «${g.titleKz}» жиынын еске саламын. Жоспар өзгерсе — сілтеме арқылы жауабыңызды өзгертіңіз, бұл қалыпты жағдай.`;
@@ -205,7 +206,7 @@ function RemindSheet() {
       <div style={{ fontSize: 14, color: 'var(--ink-2)', marginBottom: 14 }}>{isRu ? `Уйдёт ${maybeCount} участникам «под вопросом»` : `${maybeCount} «белгісіз» қатысушыға жіберіледі`}</div>
       <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
-        <Button full size="lg" onClick={() => { close(); showToast(isRu ? 'Напоминание отправлено' : 'Еске салу жіберілді'); }}>{t.send}</Button>
+        <Button full size="lg" onClick={async () => { await remind(text); close(); showToast(isRu ? 'Напоминание отправлено' : 'Еске салу жіберілді'); }}>{t.send}</Button>
         <Button full variant="ghost" onClick={close}>{t.cancel}</Button>
       </div>
     </Sheet>

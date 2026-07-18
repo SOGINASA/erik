@@ -79,6 +79,32 @@ export const api = {
   getRsvp: (code) => request(`/g/${code}/rsvp`),
   putRsvp: (code, answer, extra = {}) =>
     request(`/g/${code}/rsvp`, { method: 'PUT', body: { answer, ...extra } }),
+
+  // напоминания и уведомления (P1)
+  remind: (id, body) => request(`/gatherings/${id}/remind`, { method: 'POST', body }),
+  notifications: () => request('/notifications'),
+  unreadCount: () => request('/notifications/unread-count'),
+  readNotification: (nid) => request(`/notifications/${nid}/read`, { method: 'POST' }),
+  readAllNotifications: () => request('/notifications/read-all', { method: 'POST' }),
+
+  // платформа (P2a): каталог, лента, НКО, помощь, рейтинг, подписки
+  getCities: () => request('/cities'),
+  getThemes: () => request('/themes'),
+  getBadges: () => request('/badges'),
+  getEvents: (qs = '') => request('/events' + qs),
+  getEvent: (id) => request(`/events/${id}`),
+  eventParticipants: (id, limit = 7) => request(`/events/${id}/participants?limit=${limit}`),
+  setEventReg: (id, answer) => request(`/events/${id}/registration`, { method: 'PUT', body: { answer } }),
+  myRegistrations: () => request('/me/registrations'),
+  getOrgs: () => request('/orgs'),
+  getOrg: (id) => request(`/orgs/${id}`),
+  followOrg: (id) => request(`/orgs/${id}/follow`, { method: 'POST' }),
+  unfollowOrg: (id) => request(`/orgs/${id}/follow`, { method: 'DELETE' }),
+  myFollows: () => request('/me/follows'),
+  getCharity: () => request('/charity'),
+  donateCharity: (id, body) => request(`/charity/${id}/donate`, { method: 'POST', body }),
+  leaderboardVolunteers: () => request('/leaderboard/volunteers'),
+  userPublic: (id) => request(`/users/${id}`),
 };
 
 export { BASE };

@@ -1,10 +1,28 @@
 import { create } from 'zustand';
 import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES, NOTIFS, CONVOS, CHARITY } from '../lib/data';
+import { api } from '../lib/api';
 import { useUiStore } from './useUiStore';
 import { useSessionStore } from './useSessionStore';
 
 const isRu = () => useSessionStore.getState().lang === 'ru';
 const toast = (text) => useUiStore.getState().showToast(text);
+
+// Грубое относительное время из ISO (для карточек уведомлений).
+const rel = (iso) => {
+  if (!iso) return '';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'сейчас';
+  if (diff < 3600) return Math.floor(diff / 60) + ' мин';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' ч';
+  return Math.floor(diff / 86400) + ' дн';
+};
+
+// API отдаёт целочисленные id; фронт-экраны ждут строковые id мока ('e1','o1','ch1').
+// Адаптер переводит один в другой; мутации снимают префикс обратно.
+const numId = (id) => String(id).replace(/^\D+/, '');
+const mapEvent = (e) => ({ ...e, id: 'e' + e.id, orgId: e.orgId != null ? 'o' + e.orgId : null });
+const mapOrg = (o) => ({ ...o, id: 'o' + o.id });
+const mapCharity = (c) => ({ ...c, id: 'ch' + c.id, org: c.org != null ? 'o' + c.org : null });
 
 // Данные платформы (лента, карта, НКО, рейтинг, помощь, сообщения, уведомления)
 // и их интерактивное состояние.
@@ -35,14 +53,69 @@ export const usePlatformStore = create((set, get) => ({
   setDonateId: (donateId) => set({ donateId }),
   setMsgDraft: (msgDraft) => set({ msgDraft }),
 
-  toggleFollow: (id) => set((s) => ({ followed: { ...s.followed, [id]: !s.followed[id] } })),
+  // Загрузка платформы из API (мок-фолбэк: пусто/офлайн — остаёмся на демо-данных).
+  loadPlatform: async () => {
+    const jobs = [
+      ['cities', api.getCities(), 'cities', null],
+      ['orgs', api.getOrgs(), 'orgs', mapOrg],
+      ['events', api.getEvents(), 'events', mapEvent],
+      ['volunteers', api.leaderboardVolunteers(), 'volunteers', null],
+      ['charity', api.getCharity(), 'charity', mapCharity],
+      ['badges', api.getBadges(), 'badges', null],
+    ];
+    await Promise.allSettled(
+      jobs.map(async ([key, p, respKey, mapFn]) => {
+        try {
+          const res = await p;
+          const arr = res[respKey];
+          // Успех (даже пустой массив) заменяет мок; мок остаётся только при ошибке/офлайне.
+          if (Array.isArray(arr)) set({ [key]: mapFn ? arr.map(mapFn) : arr });
+        } catch (_) {
+          /* офлайн/ошибка — оставляем демо-данные */
+        }
+      })
+    );
+  },
 
-  markAllRead: () =>
+  loadFollows: async () => {
+    try {
+      const res = await api.myFollows();
+      const map = {};
+      (res.follows || []).forEach((id) => { map['o' + id] = true; });
+      set({ followed: map });
+    } catch (_) {
+      /* keep mock */
+    }
+  },
+
+  toggleFollow: (id) => {
+    const willFollow = !get().followed[id];
+    set((s) => ({ followed: { ...s.followed, [id]: willFollow } }));
+    (willFollow ? api.followOrg(numId(id)) : api.unfollowOrg(numId(id))).catch(() => {});
+  },
+
+  // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
+  loadNotifications: async () => {
+    try {
+      const res = await api.notifications();
+      const list = (res.notifications || []).map((n) => ({
+        id: n.id, type: n.type, ru: n.ru, kz: n.kz, read: n.read, time: rel(n.created_at),
+      }));
+      // Успех (даже пусто) — берём серверные; мок остаётся только при ошибке/офлайне.
+      set({ notifs: list, notifRead: {} });
+    } catch (_) {
+      /* офлайн/ошибка — оставляем демо-уведомления */
+    }
+  },
+
+  markAllRead: () => {
     set((s) => {
       const r = { ...s.notifRead };
       s.notifs.forEach((n) => (r[n.id] = true));
       return { notifRead: r };
-    }),
+    });
+    api.readAllNotifications().catch(() => {});
+  },
 
   unreadCount: () => {
     const s = get();
@@ -62,6 +135,7 @@ export const usePlatformStore = create((set, get) => ({
 
   donate: () => {
     const { donateId, donateAmt } = get();
+    const item = get().charity.find((c) => c.id === donateId);
     set((s) => ({
       charity: s.charity.map((c) =>
         c.id === donateId
@@ -70,5 +144,7 @@ export const usePlatformStore = create((set, get) => ({
       ),
     }));
     toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
+    const body = item && item.kind === 'money' ? { amount: donateAmt } : { quantity: 1 };
+    api.donateCharity(numId(donateId), body).catch(() => {});
   },
 }));

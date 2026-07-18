@@ -138,10 +138,15 @@ def finalize_gathering(gathering):
     gathering.bump()
     db.session.flush()
 
+    from services.notifications import award_badges
     for uid in affected_user_ids:
         user = db.session.get(User, uid)
         if user:
             recompute_user_trust(user)
+            award_badges(user)
+    owner = db.session.get(User, gathering.owner_id)
+    if owner and owner.id not in affected_user_ids:
+        award_badges(owner)   # 'lead' за проведённый сбор
 
     db.session.commit()
     return {
