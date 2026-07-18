@@ -71,7 +71,7 @@ export default function Register() {
     setIdentity(displayName, form.phone.trim() || null);
     setRole(form.role);
     await login();
-    navigate('/feed');
+    navigate(form.role === 'vol' ? '/feed' : '/manage');
     showToast('Аккаунт создан. Добро пожаловать в erik!');
   };
 

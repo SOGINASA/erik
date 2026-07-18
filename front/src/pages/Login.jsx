@@ -9,9 +9,9 @@ import Icon from '../components/Icon';
 
 // Быстрый вход по типу пользователя (демо).
 const PERSONAS = [
-  { role: 'vol', label: 'Волонтёр', icon: 'users' },
-  { role: 'coord', label: 'Координатор', icon: 'calendar' },
-  { role: 'org', label: 'НКО', icon: 'shield' },
+  { role: 'vol', label: 'Волонтёр', icon: 'users', to: '/feed' },
+  { role: 'coord', label: 'Координатор', icon: 'calendar', to: '/manage' },
+  { role: 'org', label: 'НКО', icon: 'shield', to: '/manage' },
 ];
 
 function AuthField({ icon, right, ...props }) {
@@ -49,11 +49,11 @@ export default function Login() {
     showToast('С возвращением!');
   };
 
-  const quick = async (role, label) => {
-    setRole(role);
+  const quick = async (p) => {
+    setRole(p.role);
     await login();
-    navigate('/feed');
-    showToast(`Вход как ${label}`);
+    navigate(p.to);
+    showToast(`Вход как ${p.label}`);
   };
 
   const quickAdmin = async () => {
@@ -114,7 +114,7 @@ export default function Login() {
                 key={p.role}
                 type="button"
                 className="erik-btn erik-lift"
-                onClick={() => quick(p.role, p.label)}
+                onClick={() => quick(p)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', cursor: 'pointer' }}
               >
                 <span style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={p.icon} size={18} /></span>
