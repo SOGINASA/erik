@@ -80,6 +80,21 @@ def test_org_events(client, scenario):
     assert ev[0]['dateISO'] == '2026-07-25'
 
 
+def test_org_events_excludes_deleted_via_coord(client, scenario):
+    """Снятый с публикации (status=deleted) сбор не должен появляться в штабе —
+    ни по owner-, ни по coordinator-пути (регрессия: coord-путь не фильтровал deleted)."""
+    gid = scenario['gid']
+    # owner — он же со-координатор (в scenario есть GatheringCoordinator)
+    r = client.get('/api/me/org/events', headers=_h(scenario['owner']))
+    assert any(e['id'] == gid for e in r.get_json()['events'])
+    # снимаем с публикации
+    from models import Gathering
+    db.session.get(Gathering, gid).status = 'deleted'
+    db.session.commit()
+    r = client.get('/api/me/org/events', headers=_h(scenario['owner']))
+    assert all(e['id'] != gid for e in r.get_json()['events'])
+
+
 def test_org_applications_owner_only(client, scenario):
     client.post(f'/api/events/{scenario["gid"]}/applications', headers=_h(scenario['vol']),
                 json={'skills': ['org'], 'message': 'x'})

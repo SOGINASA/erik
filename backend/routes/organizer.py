@@ -30,7 +30,10 @@ def _my_gathering_ids(user):
     """id сборов, где я владелец или со-координатор (без удалённых)."""
     owned = db.session.query(Gathering.id).filter(
         Gathering.owner_id == user.id, Gathering.status != 'deleted').all()
-    coord = db.session.query(GatheringCoordinator.gathering_id).filter_by(user_id=user.id).all()
+    coord = (db.session.query(GatheringCoordinator.gathering_id)
+             .join(Gathering, Gathering.id == GatheringCoordinator.gathering_id)
+             .filter(GatheringCoordinator.user_id == user.id,
+                     Gathering.status != 'deleted').all())
     return {r[0] for r in owned} | {r[0] for r in coord}
 
 
