@@ -1,40 +1,56 @@
-import useCounterStore from './store/useCounterStore';
+import { Routes, Route } from 'react-router-dom';
+import Shell from './components/shell/Shell';
+import Sheets from './sheets/Sheets';
+import { Toast } from './components/ui/feedback';
 
-function App() {
-  const count = useCounterStore((state) => state.count);
-  const increment = useCounterStore((state) => state.increment);
-  const decrement = useCounterStore((state) => state.decrement);
-  const reset = useCounterStore((state) => state.reset);
+import Home from './pages/Home';
+import Onboarding from './pages/Onboarding';
+import Feed from './pages/Feed';
+import MapPage from './pages/MapPage';
+import Event from './pages/Event';
+import NewGathering from './pages/NewGathering';
+import GuestGathering from './pages/GuestGathering';
+import CoordGathering from './pages/CoordGathering';
+import CheckIn from './pages/CheckIn';
+import MyGatherings from './pages/MyGatherings';
+import Profile from './pages/Profile';
+import Org from './pages/Org';
+import Leaderboard from './pages/Leaderboard';
+import Charity from './pages/Charity';
+import Messages from './pages/Messages';
+import Convo from './pages/Convo';
+import Notifications from './pages/Notifications';
+import Admin from './pages/Admin';
+import NotFound from './pages/NotFound';
 
+export default function App() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-8 bg-gradient-to-br from-slate-900 to-slate-700 text-white">
-      <h1 className="text-4xl font-bold tracking-tight">CRA + Tailwind v4 + Zustand</h1>
-      <p className="text-slate-300">Счётчик хранится в Zustand-сторе</p>
-
-      <div className="font-mono text-7xl font-bold tabular-nums">{count}</div>
-
-      <div className="flex gap-4">
-        <button
-          onClick={decrement}
-          className="rounded-lg bg-rose-500 px-5 py-2 font-semibold transition hover:bg-rose-600"
-        >
-          −
-        </button>
-        <button
-          onClick={reset}
-          className="rounded-lg bg-slate-600 px-5 py-2 font-semibold transition hover:bg-slate-500"
-        >
-          Сброс
-        </button>
-        <button
-          onClick={increment}
-          className="rounded-lg bg-emerald-500 px-5 py-2 font-semibold transition hover:bg-emerald-600"
-        >
-          +
-        </button>
-      </div>
-    </div>
+    <>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/g/:code" element={<GuestGathering />} />
+        <Route element={<Shell />}>
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/e/:id" element={<Event />} />
+          <Route path="/new" element={<NewGathering />} />
+          <Route path="/c/:id" element={<CoordGathering />} />
+          <Route path="/c/:id/check" element={<CheckIn />} />
+          <Route path="/me" element={<MyGatherings />} />
+          <Route path="/u/:id" element={<Profile />} />
+          <Route path="/o/:id" element={<Org />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/charity" element={<Charity />} />
+          <Route path="/messages" element={<Messages />} />
+          <Route path="/messages/:id" element={<Convo />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
+      <Sheets />
+      <Toast />
+    </>
   );
 }
-
-export default App;

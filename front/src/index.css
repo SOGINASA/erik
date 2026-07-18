@@ -1,23 +1,135 @@
 /*
- * Исходный файл стилей. Его компилирует Tailwind CLI в ./output.css
- * (скрипты tw:watch / tw:build в package.json). Именно этот файл нужно
- * редактировать; output.css — сгенерированный и в git не попадает.
+ * Исходный файл стилей. Компилируется Tailwind CLI в ./output.css
+ * (скрипты tw:watch / tw:build). Редактируем этот файл.
+ *
+ * Дизайн erik построен на CSS-переменных (токенах) и inline-стилях,
+ * поэтому здесь: (1) токены как переменные для inline-стилей,
+ * (2) те же токены в @theme — чтобы работали и Tailwind-классы (bg-yard и т.п.),
+ * (3) базовые стили, keyframes и prefers-reduced-motion из макета.
  */
 @import "tailwindcss";
+@source "./**/*.{js,jsx}";
 
-/* Где Tailwind ищет используемые классы. */
-@source "./**/*.{js,jsx,ts,tsx}";
+/* --- Токены как Tailwind-классы: bg-yard, text-ink-2, rounded-m, font-display --- */
+@theme {
+  --color-ink: #14181A;
+  --color-ink-2: #5B6560;
+  --color-ink-3: #949E98;
+  --color-paper: #F4F5F1;
+  --color-surface: #FFFFFF;
+  --color-line: #E3E5DE;
+  --color-yard: #2F6F4F;
+  --color-yard-soft: #E8F1EB;
+  --color-maybe: #C8842B;
+  --color-maybe-soft: #FBF0E2;
+  --color-out: #8A9490;
+  --color-danger: #B4332B;
 
+  --font-display: "Onest", system-ui, sans-serif;
+  --font-sans: "Golos Text", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 22px;
+
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Те же токены как «сырые» переменные для inline-стилей макета --- */
+:root {
+  --ink: #14181A;
+  --ink-2: #5B6560;
+  --ink-3: #949E98;
+  --paper: #F4F5F1;
+  --surface: #FFFFFF;
+  --line: #E3E5DE;
+  --yard: #2F6F4F;
+  --yard-soft: #E8F1EB;
+  --maybe: #C8842B;
+  --maybe-soft: #FBF0E2;
+  --out: #8A9490;
+  --danger: #B4332B;
+
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-move: 240ms;
+  --t-sheet: 320ms;
+
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --r-s: 8px;
+  --r-m: 14px;
+  --r-l: 22px;
+
+  --shadow-pop: 0 1px 2px rgba(20, 24, 26, 0.04), 0 8px 24px rgba(20, 24, 26, 0.08);
+  --shadow-sheet: 0 -1px 0 var(--line), 0 -16px 48px rgba(20, 24, 26, 0.12);
+
+  --fd: "Onest", system-ui, sans-serif;
+  --fb: "Golos Text", system-ui, sans-serif;
+  --fm: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
 body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--fb);
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button { font-family: inherit; color: inherit; }
+input, textarea, select { font-family: inherit; }
+a { color: var(--yard); text-decoration: none; }
+a:hover { color: #255a40; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+::selection { background: var(--yard-soft); }
+input::placeholder, textarea::placeholder { color: var(--ink-3); }
+
+@keyframes erik-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes erik-rise12 { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes erik-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes erik-sheet-up { from { transform: translateY(102%); } to { transform: translateY(0); } }
+@keyframes erik-backdrop { from { opacity: 0; } to { opacity: 1; } }
+@keyframes erik-pop { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+@keyframes erik-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes erik-spin { to { transform: rotate(360deg); } }
+@keyframes erik-check { from { stroke-dashoffset: 22; } to { stroke-dashoffset: 0; } }
+
+.erik-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.erik-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+    transition-property: opacity, background-color, border-color, color !important;
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
+/* --- Интерактивные хелперы для компонентов на inline-стилях --- */
+.erik-btn { transition: filter var(--t-fast) var(--ease-soft), transform var(--t-fast) var(--ease-soft), background var(--t-fast), border-color var(--t-fast); }
+.erik-btn:active:not(:disabled) { transform: scale(0.97); }
+.erik-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.erik-btn-primary:hover:not(:disabled),
+.erik-btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+.erik-btn-secondary:hover:not(:disabled) { background: var(--paper); }
+.erik-btn-ghost:hover:not(:disabled) { color: var(--ink); }
+.erik-press:active { transform: scale(0.97); }
+.erik-tap { -webkit-tap-highlight-color: transparent; }
+.erik-row-hover { transition: background var(--t-fast), border-color var(--t-fast); }
+.erik-row-hover:hover { background: var(--paper); }
+.erik-lift { transition: transform var(--t-fast), box-shadow var(--t-fast); }
+.erik-lift:hover { transform: translateY(-1px); box-shadow: var(--shadow-pop); }
+.erik-input:focus, .erik-textarea:focus { border-color: var(--ink); }
+.erik-anim-rise { animation: erik-rise var(--t-base) var(--ease-out) both; }
+.erik-anim-fade { animation: erik-fade var(--t-base) var(--ease-out) both; }
+.erik-anim-pop { animation: erik-pop var(--t-base) var(--ease-out) both; }
