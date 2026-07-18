@@ -40,17 +40,14 @@ export default function Sheets() {
 
 function AuthSheet() {
   const t = useT();
-  const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
-  const showToast = useUiStore((s) => s.showToast);
-  const login = useSessionStore((s) => s.login);
   const navigate = useNavigate();
   return (
     <Sheet open onClose={close} title={t.authTitle}>
       <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 20px' }}>{t.authSub}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button full size="lg" onClick={() => { close(); navigate('/onboarding'); }}>{t.authRegister}</Button>
-        <Button full variant="secondary" onClick={() => { login(); close(); navigate('/feed'); showToast(isRu ? 'С возвращением!' : 'Қайта келдіңіз!'); }}>{t.authLogin}</Button>
+        <Button full size="lg" onClick={() => { close(); navigate('/register'); }}>{t.authRegister}</Button>
+        <Button full variant="secondary" onClick={() => { close(); navigate('/login'); }}>{t.authLogin}</Button>
       </div>
     </Sheet>
   );

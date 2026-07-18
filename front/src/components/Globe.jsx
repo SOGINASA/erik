@@ -22,6 +22,7 @@ export default function GlobeView({ markers = [], selectedId = null, onSelect, f
 
   useEffect(() => {
     const el = mountRef.current;
+    const els = elsRef.current; // стабильная Map, безопасно использовать в cleanup
 
     const styleWrap = (d, wrap) => {
       const sel = d.id === selRef.current;
@@ -97,10 +98,11 @@ export default function GlobeView({ markers = [], selectedId = null, onSelect, f
       controls.removeEventListener('start', onStart);
       controls.removeEventListener('end', onEnd);
       try { world._destructor(); } catch (e) { /* noop */ }
-      elsRef.current.clear();
+      els.clear();
       el.replaceChildren();
       gRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // обновление списка городов
