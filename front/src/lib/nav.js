@@ -9,12 +9,14 @@ import { usePlatformStore } from '../store/usePlatformStore';
 export const APP_ROUTES = new Set([
   'feed', 'map', 'event', 'profile', 'org', 'leaderboard', 'charity',
   'messages', 'convo', 'notifications', 'new', 'coord', 'check', 'me', 'notfound', 'admin',
+  'manage', 'manageRequests', 'manageVolunteers',
 ]);
 
 // Роуты, требующие входа. Гость видит ленту, карту, событие, НКО — остальное просит войти.
 export const GATED_ROUTES = new Set([
   'me', 'messages', 'convo', 'notifications', 'leaderboard', 'charity',
   'coord', 'check', 'new', 'admin', 'profile',
+  'manage', 'manageRequests', 'manageVolunteers',
 ]);
 
 // Имя роута из URL.
@@ -29,6 +31,9 @@ export function routeName(pathname) {
   if (pathname.match(/^\/c\/[^/]+\/check/)) return 'check';
   if (pathname.startsWith('/c/')) return 'coord';
   if (pathname === '/me') return 'me';
+  if (pathname.startsWith('/manage/requests')) return 'manageRequests';
+  if (pathname.startsWith('/manage/volunteers')) return 'manageVolunteers';
+  if (pathname.startsWith('/manage')) return 'manage';
   if (pathname.startsWith('/u/')) return 'profile';
   if (pathname.startsWith('/o/')) return 'org';
   if (pathname.startsWith('/leaderboard')) return 'leaderboard';

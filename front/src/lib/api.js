@@ -106,6 +106,13 @@ export const api = {
   donateCharity: (id, body) => request(`/charity/${id}/donate`, { method: 'POST', body }),
   leaderboardVolunteers: () => request('/leaderboard/volunteers'),
   userPublic: (id) => request(`/users/${id}`),
+
+  // штаб организатора (P2b): сборы, заявки волонтёров, база волонтёров
+  orgEvents: () => request('/org/events'),
+  orgVolunteers: () => request('/org/volunteers'),
+  myApplications: () => request('/org/applications'),
+  actOnApplication: (id, action) => request(`/org/applications/${id}`, { method: 'POST', body: { action } }),
+  createApplication: (eventId, body) => request(`/events/${eventId}/applications`, { method: 'POST', body }),
 };
 
 export { BASE };

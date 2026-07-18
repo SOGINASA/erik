@@ -79,6 +79,9 @@ function Sidebar({ route }) {
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <NavBtn icon="feed" label={t.navFeed} active={route === 'feed'} onClick={() => go('/feed', 'feed')} />
         <NavBtn icon="map" label={t.navMap} active={route === 'map'} onClick={() => go('/map', 'map')} />
+        {loggedIn && (
+          <NavBtn icon="calendar" label={t.mgNav} active={route === 'manage' || route === 'manageRequests' || route === 'manageVolunteers'} onClick={() => go('/manage', 'manage')} />
+        )}
         <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
         <NavBtn icon="message" label={t.navMessages} active={route === 'messages' || route === 'convo'} onClick={() => go('/messages', 'messages')} />
         <NavBtn icon="bell" label={t.navNotif} active={route === 'notifications'} onClick={() => go('/notifications', 'notifications')} badge={unread} />
@@ -148,7 +151,7 @@ function Tabbar({ route }) {
     letterSpacing: '.01em', cursor: 'pointer', height: '100%', fontFamily: 'var(--fb)', transform: on ? 'translateY(-1px)' : 'none',
     transition: 'color var(--t-fast), transform var(--t-fast)',
   });
-  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'notifications', 'admin', 'coord', 'check', 'org'].includes(route);
+  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'notifications', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers'].includes(route);
 
   return (
     <nav className="erik-tap" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, height: 'calc(64px + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)', display: 'flex', alignItems: 'stretch', background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(18px) saturate(1.4)', WebkitBackdropFilter: 'blur(18px) saturate(1.4)', borderTop: '1px solid var(--line)', boxShadow: '0 -1px 12px rgba(20,24,26,.04)' }}>

@@ -7,6 +7,7 @@ import { useUiStore } from '../store/useUiStore';
 import { api } from '../lib/api';
 import { THEMES, CITIES, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
+import Icon from '../components/Icon';
 
 // Страница события: обложка темы, детали, участники, запись/ответ.
 export default function Event() {
@@ -123,6 +124,17 @@ export default function Event() {
             style={{ width: '100%', height: 52, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 16, cursor: 'pointer' }}
           >
             {t.register}
+          </button>
+        )}
+
+        {/* Заявка организатору: навыки + сообщение (для чужих событий) */}
+        {!ev.mine && (
+          <button
+            className="erik-btn erik-btn-secondary"
+            onClick={() => openSheet('apply', ev.id)}
+            style={{ width: '100%', height: 48, marginTop: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Icon name="send" size={17} stroke={1.7} />{t.mgApplyCta}
           </button>
         )}
       </div>

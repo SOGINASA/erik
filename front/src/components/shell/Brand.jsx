@@ -25,7 +25,7 @@ export function LangToggle({ surface = 'var(--surface)' }) {
     color: lang === code ? '#fff' : 'var(--ink-3)',
   });
   return (
-    <div style={{ display: 'flex', gap: 2, padding: 3, background: surface, border: '1px solid var(--line)', borderRadius: 999 }}>
+    <div style={{ display: 'inline-flex', width: 'fit-content', gap: 2, padding: 3, background: surface, border: '1px solid var(--line)', borderRadius: 999 }}>
       <button type="button" style={btn('ru')} onClick={() => setLang('ru')}>RU</button>
       <button type="button" style={btn('kz')} onClick={() => setLang('kz')}>KZ</button>
     </div>
