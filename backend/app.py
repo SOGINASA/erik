@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
+import click
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -35,18 +36,24 @@ def create_app(config_object=None):
         db.create_all()
 
     # Регистрация блюпринтов
-    from routes import auth_bp, admin_bp
+    from routes import auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
+    app.register_blueprint(session_bp, url_prefix='/api')          # /api/session, /api/me, /api/logout
+    app.register_blueprint(gatherings_bp, url_prefix='/api/gatherings')
+    app.register_blueprint(guest_bp, url_prefix='/api')            # /api/g/<code>, /api/gatherings/by-code
 
     # Главная страница API
     @app.route('/api')
     def api_info():
         return jsonify({
             'message': 'API is alive',
-            'version': '1.0.0',
+            'version': '1.1.0',
             'endpoints': {
-                'auth': '/api/auth - авторизация и регистрация',
+                'auth': '/api/auth - аккаунты (email/пароль), НКО и админ',
+                'session': '/api/session - device-вход, /api/me - профиль',
+                'gatherings': '/api/gatherings - сборы, прогноз, отметка явки',
+                'guest': '/api/g/<code> - участник: просмотр и RSVP',
                 'admin': '/api/admin - администрирование пользователей',
             },
         })
@@ -95,6 +102,15 @@ def init_db():
     print('Инициализация базы данных...')
     db.create_all()
     print('База данных инициализирована!')
+
+
+@app.cli.command('seed-demo')
+@click.option('--reset', is_flag=True, default=False, help='Пересоздать демо-данные')
+def seed_demo_cmd(reset):
+    """Засеять детерминированную демо-синтетику (сбор PARK18 и участники)."""
+    from seed import seed_demo
+    seed_demo(reset=reset)
+    print('Готово.')
 
 
 @app.cli.command()

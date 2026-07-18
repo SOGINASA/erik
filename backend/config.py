@@ -31,6 +31,9 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
+    # erik: базовый URL для ссылки-приглашения erik.kz/g/<code>
+    SHARE_BASE_URL = os.environ.get('SHARE_BASE_URL', 'https://erik.kz')
+
 
 class DevelopmentConfig(Config):
     """Конфигурация для разработки"""
