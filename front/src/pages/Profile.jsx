@@ -16,7 +16,7 @@ export default function Profile() {
   const { id } = useParams();
   const me = usePlatformStore((s) => s.me);
   const badges = usePlatformStore((s) => s.badges);
-  const showToast = useUiStore((s) => s.showToast);
+  const openSheet = useUiStore((s) => s.openSheet);
   const [other, setOther] = useState(null);
 
   const isSelf = !id || id === 'me' || String(id) === String(me.id);
@@ -106,10 +106,12 @@ export default function Profile() {
           </div>
         )}
 
-        {/* Редактировать профиль */}
-        <div style={{ marginTop: 24 }}>
-          <Button variant="secondary" icon="edit" onClick={() => showToast(isRu ? 'Редактирование профиля — скоро' : 'Профильді өңдеу — жақында')}>{t.editProfile}</Button>
-        </div>
+        {/* Редактировать профиль — только свой */}
+        {isSelf && (
+          <div style={{ marginTop: 24 }}>
+            <Button variant="secondary" icon="edit" onClick={() => openSheet('editprofile')}>{t.editProfile}</Button>
+          </div>
+        )}
       </div>
     </Container>
   );

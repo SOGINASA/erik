@@ -47,6 +47,20 @@ export default function App() {
     });
   }, []);
 
+  // Живые уведомления/сообщения: лёгкий поллинг каждые 25с (только с профилем, видимая вкладка).
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const s = useSessionStore.getState();
+      if (!s.token || !s.name) return; // профильные эндпоинты требуют имя
+      const p = usePlatformStore.getState();
+      p.loadNotifications();
+      p.loadConversations();
+    };
+    const iv = setInterval(tick, 25000);
+    return () => clearInterval(iv);
+  }, []);
+
   return (
     <>
       <Routes>

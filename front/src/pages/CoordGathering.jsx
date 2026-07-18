@@ -6,6 +6,7 @@ import { useUiStore } from '../store/useUiStore';
 import { useIsDesktop } from '../lib/nav';
 import { counts } from '../lib/forecast';
 import { plural } from '../lib/data';
+import { copyToClipboard, shareOrCopy, shareUrlFor } from '../lib/share';
 import { Container } from '../components/Container';
 import Icon from '../components/Icon';
 import ForecastBlock from '../components/ForecastBlock';
@@ -119,8 +120,8 @@ export default function CoordGathering() {
                 <div style={{ fontFamily: 'var(--fm)', fontWeight: 600, fontSize: 17, letterSpacing: '.08em', color: 'var(--ink)' }}>{g.code}</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                <button type="button" className="erik-btn erik-btn-secondary" onClick={() => showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді')} style={{ height: 40, padding: '0 14px', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.copy}</button>
-                <button type="button" className="erik-btn erik-btn-secondary" onClick={() => showToast(isRu ? 'Открыто меню «Поделиться»' : '«Бөлісу» мәзірі ашылды')} aria-label={t.share} style={{ width: 40, height: 40, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>
+                <button type="button" className="erik-btn erik-btn-secondary" onClick={async () => { await copyToClipboard(shareUrlFor(g.code)); showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді'); }} style={{ height: 40, padding: '0 14px', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.copy}</button>
+                <button type="button" className="erik-btn erik-btn-secondary" onClick={async () => { const r = await shareOrCopy({ title: isRu ? g.titleRu : g.titleKz, text: `«${isRu ? g.titleRu : g.titleKz}»`, url: shareUrlFor(g.code) }); if (r === 'copied') showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді'); }} aria-label={t.share} style={{ width: 40, height: 40, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>
                   <Icon name="share" size={17} stroke={1.6} />
                 </button>
               </div>
@@ -131,7 +132,7 @@ export default function CoordGathering() {
             <div style={{ position: 'sticky', top: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <Button size="lg" onClick={() => navigate(`/c/${g.id}/check`)}>{t.markAttendance}</Button>
               <Button variant="secondary" onClick={() => openSheet('remind')}>{t.remindWavering}</Button>
-              <Button variant="secondary" onClick={() => showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді')}>{t.copyLink}</Button>
+              <Button variant="secondary" onClick={async () => { await copyToClipboard(shareUrlFor(g.code)); showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді'); }}>{t.copyLink}</Button>
             </div>
           )}
         </div>
