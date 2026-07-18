@@ -22,3 +22,10 @@
 Thumbs.db
 
 /backend/PLAN.md
+
+# ML — окружение, сгенерированные данные и артефакты модели
+/ml/.venv/
+/ml/__pycache__/
+/ml/*.py[cod]
+/ml/data/
+/ml/artifacts/
