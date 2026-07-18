@@ -32,6 +32,7 @@ function AuthField({ icon, right, ...props }) {
 export default function Login() {
   const navigate = useNavigate();
   const login = useSessionStore((s) => s.login);
+  const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
   const setRole = useSessionStore((s) => s.setRole);
   const showToast = useUiStore((s) => s.showToast);
 
@@ -40,13 +41,21 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Реальный вход по паролю (аккаунт). 401 → тост «Неверные данные».
+  // Быстрый вход по роли ниже остаётся device-логином (демо).
   const submit = async (e) => {
     e.preventDefault();
     if (!id.trim() || !pass) return;
     setBusy(true);
-    await login();
-    navigate('/feed');
-    showToast('С возвращением!');
+    try {
+      await loginWithPassword({ identifier: id.trim(), password: pass });
+      navigate('/feed');
+      showToast('С возвращением!');
+    } catch (err) {
+      showToast(err && err.status === 401 ? 'Неверные данные' : 'Не удалось войти');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const quick = async (p) => {

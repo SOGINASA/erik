@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { useUiStore } from '../../store/useUiStore';
 import { AdminSearch, FilterChips, Table, Tr, Td, StatusPill, IconBtn, SectionCard } from './kit';
@@ -36,9 +36,15 @@ const HEAD = [
 // Организации (НКО): поиск, фильтр по статусу, модерация и переход к карточке.
 export default function AdminOrgs() {
   const orgs = usePlatformStore((s) => s.orgs);
+  const loadPlatform = usePlatformStore((s) => s.loadPlatform);
+  const approveOrg = usePlatformStore((s) => s.approveOrg);
+  const rejectOrg = usePlatformStore((s) => s.rejectOrg);
   const showToast = useUiStore((s) => s.showToast);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all'); // all | verified | pending
+
+  // Тянем НКО с сервера (идемпотентно; мок-фолбэк при офлайне остаётся в сторе).
+  useEffect(() => { loadPlatform(); }, [loadPlatform]);
 
   const verifiedCount = orgs.filter((o) => o.verified).length;
   const pendingCount = orgs.length - verifiedCount;
@@ -100,8 +106,8 @@ export default function AdminOrgs() {
                       </>
                     ) : (
                       <>
-                        <Button size="sm" variant="primary" onClick={() => showToast(`${o.name} одобрена`)}>Одобрить</Button>
-                        <Button size="sm" variant="secondary" onClick={() => showToast('Отклонено')}>Отклонить</Button>
+                        <Button size="sm" variant="primary" onClick={() => approveOrg(o.id)}>Одобрить</Button>
+                        <Button size="sm" variant="secondary" onClick={() => rejectOrg(o.id)}>Отклонить</Button>
                       </>
                     )}
                   </div>

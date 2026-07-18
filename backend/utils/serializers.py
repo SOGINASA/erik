@@ -200,3 +200,105 @@ def serialize_city_stats(c):
     vol = db.session.query(db.func.count(User.id)).filter(User.city_id == c.id).scalar() or 0
     return {'id': c.id, 'ru': c.name_ru, 'kz': c.name_kz, 'x': c.map_x, 'y': c.map_y,
             'active': active, 'vol': vol}
+
+
+# ── P3: организатор (Manage HQ) и заявки ──
+
+def _ago_labels(dt):
+    """Относительное время → ('15 мин назад', '15 мин бұрын') из created_at."""
+    from datetime import datetime, timezone
+    if dt is None:
+        return 'только что', 'жаңа ғана'
+    if dt.tzinfo is None:            # SQLite отдаёт naive UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    diff = (datetime.now(timezone.utc) - dt).total_seconds()
+    if diff < 60:
+        return 'только что', 'жаңа ғана'
+    if diff < 3600:
+        m = int(diff // 60)
+        return f'{m} мин назад', f'{m} мин бұрын'
+    if diff < 86400:
+        h = int(diff // 3600)
+        return f'{h} ч назад', f'{h} сағ бұрын'
+    d = int(diff // 86400)
+    if d == 1:
+        return 'вчера', 'кеше'
+    return f'{d} дн назад', f'{d} күн бұрын'
+
+
+def _org_event_status(g, today):
+    """live (сегодня) | soon (в будущем) | done (прошёл/завершён). Статус — на СЕРВЕРЕ."""
+    if g.status == 'done' or g.finalized_at is not None:
+        return 'done'
+    if g.starts_at is None:
+        return 'soon'
+    d = g.starts_at.date()
+    if d < today:
+        return 'done'
+    if d == today:
+        return 'live'
+    return 'soon'
+
+
+def serialize_org_event(g, applied=0, today=None):
+    """Сбор в штабе организатора (форма buildOrgEvents). Даты/статус/счётчики — сервер."""
+    from datetime import datetime, timezone
+    if today is None:
+        today = datetime.now(timezone.utc).date()
+    date_ru, date_kz, time = date_labels(g.starts_at)
+    yes = sum(1 for p in g.participants if p.answer == 'yes')
+    maybe = sum(1 for p in g.participants if p.answer == 'maybe')
+    no = sum(1 for p in g.participants if p.answer == 'no')
+    came = sum(1 for p in g.participants if p.presence == 'came')
+    return {
+        'id': g.id, 'code': g.code,
+        'titleRu': g.title_ru, 'titleKz': g.title_kz,
+        'theme': g.theme,
+        'placeRu': g.place_ru, 'placeKz': g.place_kz,
+        'cityId': g.city_id,
+        'dateRu': date_ru, 'dateKz': date_kz, 'time': time,
+        'dateISO': g.starts_at.strftime('%Y-%m-%d') if g.starts_at else None,
+        'status': _org_event_status(g, today),
+        'needed': g.needed,
+        'yes': yes, 'maybe': maybe, 'no': no,
+        'applied': applied, 'answered': yes + maybe + no, 'came': came,
+    }
+
+
+def serialize_application(app):
+    """Заявка волонтёра для организатора (карточка ManageRequests + applicant-шит).
+    reliability/history — живые из User; PII (phone) — организатору можно."""
+    from models import db, City, User
+    ago_ru, ago_kz = _ago_labels(app.created_at)
+    user = app.applicant if app.applicant is not None else (
+        db.session.get(User, app.applicant_id) if app.applicant_id else None)
+    city = db.session.get(City, app.city_id) if app.city_id else None
+    history = {'came': (user.trust_came or 0) if user else 0,
+               'total': (user.trust_total or 0) if user else 0}
+    return {
+        'id': app.id,
+        'eventId': app.gathering_id,
+        'name': app.name,
+        'phone': app.phone,
+        'city': city.name_ru if city else None,
+        'skills': app.skills or [],
+        'messageRu': app.message or '',
+        'messageKz': app.message or '',
+        'reliability': user.reliability if user else None,
+        'history': history,
+        'status': app.status,
+        'agoRu': ago_ru, 'agoKz': ago_kz,
+    }
+
+
+def serialize_org_volunteer(u, last_g=None):
+    """Волонтёр из базы организатора (форма buildOrgVolunteers) — агрегаты из User."""
+    from models import db, City
+    city = db.session.get(City, u.city_id) if u.city_id else None
+    return {
+        'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
+        'hours': u.hours_total or 0, 'events': u.events_attended or 0,
+        'reliability': u.reliability or 0, 'skills': u.skills or [],
+        'lastRu': last_g.title_ru if last_g else None,
+        'lastKz': last_g.title_kz if last_g else None,
+    }

@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { usePlatformStore } from '../../store/usePlatformStore';
-import { useUiStore } from '../../store/useUiStore';
+import { useLang } from '../../i18n';
 import { StatCard, SectionCard, StatusPill } from './kit';
 import Button from '../ui/Button';
 import { THEMES } from '../../lib/data';
@@ -10,6 +11,13 @@ const plZh = (n) => {
   if (a === 1 && b !== 11) return 'жалоба';
   if (a >= 2 && a <= 4 && !(b >= 12 && b <= 14)) return 'жалобы';
   return 'жалоб';
+};
+
+// Статус жалобы → подпись пилла и тон.
+const REPORT_STATUS = {
+  open: { label: 'Открыта', tone: 'maybe' },
+  reviewing: { label: 'На проверке', tone: 'blue' },
+  resolved: { label: 'Решено', tone: 'yard' },
 };
 
 // Квадратный аватар темы (как в списке организаций).
@@ -33,25 +41,30 @@ function Warn() {
   );
 }
 
-// Демо-жалобы (без бэкенда): текст, объект жалобы, число обращений и тон пилла.
-const COMPLAINTS = [
-  { txt: 'Событие «Быстрый заработок» похоже на спам', target: 'Событие', count: 3, tone: 'maybe' },
-  { txt: 'Профиль с оскорблениями в чате', target: 'Профиль', count: 1, tone: 'danger' },
-  { txt: 'НКО публикует нерелевантные сборы', target: 'НКО', count: 2, tone: 'maybe' },
-];
-
-// Модерация: верификация НКО и разбор жалоб (все действия — тосты-заглушки).
+// Модерация: верификация НКО и разбор жалоб (данные из usePlatformStore).
 export default function AdminModeration() {
   const orgs = usePlatformStore((s) => s.orgs);
-  const showToast = useUiStore((s) => s.showToast);
+  const reports = usePlatformStore((s) => s.reports);
+  const loadPlatform = usePlatformStore((s) => s.loadPlatform);
+  const loadReports = usePlatformStore((s) => s.loadReports);
+  const approveOrg = usePlatformStore((s) => s.approveOrg);
+  const rejectOrg = usePlatformStore((s) => s.rejectOrg);
+  const reviewReport = usePlatformStore((s) => s.reviewReport);
+  const resolveReport = usePlatformStore((s) => s.resolveReport);
+  const lang = useLang();
+
+  // Организации грузим из платформы, жалобы — отдельным вызовом (в App.jsx он не зовётся).
+  useEffect(() => { loadPlatform(); loadReports(); }, [loadPlatform, loadReports]);
+
   const pending = orgs.filter((o) => !o.verified);
+  const openReports = reports.filter((r) => r.status === 'open').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* метрики */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
         <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
-        <StatCard label="Жалобы" value={COMPLAINTS.length} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
+        <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Ср. время реакции" value="2 ч" sub="за последние 7 дней" icon="clock" />
       </div>
 
@@ -67,8 +80,8 @@ export default function AdminModeration() {
                   <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>{(THEMES[o.cat] || {}).ru || o.cat} · {o.city}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  <Button size="sm" variant="secondary" onClick={() => showToast('Отклонено')}>Отклонить</Button>
-                  <Button size="sm" variant="primary" onClick={() => showToast(`${o.name} одобрена`)}>Одобрить</Button>
+                  <Button size="sm" variant="secondary" onClick={() => rejectOrg(o.id)}>Отклонить</Button>
+                  <Button size="sm" variant="primary" onClick={() => approveOrg(o.id)}>Одобрить</Button>
                 </div>
               </div>
             ))}
@@ -82,26 +95,43 @@ export default function AdminModeration() {
 
       {/* жалобы */}
       <SectionCard title="Жалобы" pad={8}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {COMPLAINTS.map((c, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderBottom: i < COMPLAINTS.length - 1 ? '1px solid var(--line)' : 'none' }}>
-              <span style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, background: 'var(--maybe-soft)', color: 'var(--maybe)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Warn />
-              </span>
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 14, color: 'var(--ink)', lineHeight: 1.35 }}>{c.txt}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <StatusPill tone={c.tone}>{c.target}</StatusPill>
-                  <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{c.count} {plZh(c.count)}</span>
+        {reports.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {reports.map((r, i) => {
+              const st = REPORT_STATUS[r.status] || REPORT_STATUS.open;
+              const resolved = r.status === 'resolved';
+              const circle = resolved
+                ? { bg: 'var(--yard-soft)', fg: 'var(--yard)' }
+                : { bg: 'var(--maybe-soft)', fg: 'var(--maybe)' };
+              return (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderBottom: i < reports.length - 1 ? '1px solid var(--line)' : 'none', opacity: resolved ? 0.7 : 1 }}>
+                  <span style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, background: circle.bg, color: circle.fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Warn />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 14, color: 'var(--ink)', lineHeight: 1.35 }}>{lang === 'kz' ? r.kz : r.ru}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                      <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.count} {plZh(r.count)}</span>
+                    </div>
+                  </div>
+                  {!resolved && (
+                    <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                      {r.status === 'open' && (
+                        <Button size="sm" variant="secondary" onClick={() => reviewReport(r.id)}>На проверку</Button>
+                      )}
+                      <Button size="sm" variant="primary" onClick={() => resolveReport(r.id)}>Решено</Button>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                <Button size="sm" variant="secondary" onClick={() => showToast('Отправлено на проверку')}>Отклонить</Button>
-                <Button size="sm" variant="danger" onClick={() => showToast('Заблокировано')}>Заблокировать</Button>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
+            Жалоб нет
+          </div>
+        )}
       </SectionCard>
     </div>
   );

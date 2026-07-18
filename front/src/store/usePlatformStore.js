@@ -143,6 +143,19 @@ export const usePlatformStore = create((set, get) => ({
     api.reviewReport(numId(reportId)).catch(() => {});
   },
 
+  resolveReport: (reportId) => {
+    set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'resolved' } : r)) }));
+    toast(isRu() ? 'Жалоба закрыта' : 'Шағым жабылды');
+    api.resolveReport(numId(reportId)).catch(() => {});
+  },
+
+  // Закрыть благотворительную кампанию (админ). Модель без статуса → отмечаем достигнутой.
+  closeCharity: (charityId) => {
+    set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? { ...c, raised: c.goal, closed: true } : c)) }));
+    toast(isRu() ? 'Кампания закрыта' : 'Науқан жабылды');
+    api.closeCharity(numId(charityId)).catch(() => {});
+  },
+
   // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
   loadNotifications: async () => {
     try {

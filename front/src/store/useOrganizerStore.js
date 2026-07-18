@@ -76,9 +76,9 @@ export const useOrganizerStore = create((set, get) => ({
 
   // Заявка волонтёра из карточки события (встречный поток).
   addApplication: ({ eventId, name, phone, city, skills, message }) => {
-    const id = 'a' + Date.now();
+    const tmpId = 'a' + Date.now();
     const entry = {
-      id, eventId,
+      id: tmpId, eventId,
       name: (name || '').trim() || (isRu() ? 'Волонтёр' : 'Волонтёр'),
       phone: phone || null,
       city: city || '',
@@ -92,7 +92,30 @@ export const useOrganizerStore = create((set, get) => ({
       applications: [entry, ...s.applications],
       events: s.events.map((e) => (e.id === eventId ? { ...e, applied: e.applied + 1 } : e)),
     }));
-    api.createApplication(String(eventId).replace(/^\D+/, ''), { skills: entry.skills, message }).catch(() => {});
+    // Реконсиляция: заменяем оптимистичный 'a…' id на реальный числовой из ответа,
+    // иначе accept/decline снимет мок-префикс неверно (§5 плана).
+    api.createApplication(String(eventId).replace(/^\D+/, ''), { skills: entry.skills, message })
+      .then((res) => {
+        const real = res && res.application;
+        if (!real || real.id == null) return;
+        set((s) => ({
+          applications: s.applications.map((x) =>
+            x.id === tmpId
+              ? {
+                  ...x,
+                  id: real.id,
+                  eventId: real.eventId != null ? real.eventId : x.eventId,
+                  status: real.status || x.status,
+                  reliability: real.reliability != null ? real.reliability : x.reliability,
+                  history: real.history || x.history,
+                  agoRu: real.agoRu || x.agoRu,
+                  agoKz: real.agoKz || x.agoKz,
+                }
+              : x
+          ),
+        }));
+      })
+      .catch(() => {});
     return entry;
   },
 }));

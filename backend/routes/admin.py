@@ -61,13 +61,193 @@ def update_user(user_id):
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 
 
-# ── Модерация (P2b) ──
+# ── Обзор / статистика (Overview) ──
 @admin_bp.route('/stats', methods=['GET'])
 @admin_required
 def moderation_stats():
+    """Метрики под карточки AdminOverview. pendingOrgs/openReports сохранены (обратная совместимость)."""
+    from models import Gathering, CharityRequest
+
     pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
+    verified_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(True)).scalar() or 0
     open_reports = db.session.query(db.func.count(Report.id)).filter(Report.status != 'resolved').scalar() or 0
-    return jsonify({'pendingOrgs': pending_orgs, 'openReports': open_reports})
+
+    users_total = db.session.query(db.func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
+    volunteers = db.session.query(db.func.count(User.id)).filter(
+        User.is_active.is_(True), User.role == 'vol').scalar() or 0
+    coordinators = db.session.query(db.func.count(User.id)).filter(
+        User.is_active.is_(True), User.role == 'coord').scalar() or 0
+    active_events = db.session.query(db.func.count(Gathering.id)).filter(
+        Gathering.status == 'open').scalar() or 0
+    hours_total = db.session.query(db.func.coalesce(db.func.sum(User.hours_total), 0)).scalar() or 0
+    raised = db.session.query(db.func.coalesce(db.func.sum(CharityRequest.raised), 0)).filter(
+        CharityRequest.kind == 'money').scalar() or 0
+    avg_rel = db.session.query(db.func.avg(User.reliability)).filter(User.events_attended > 0).scalar()
+
+    return jsonify({
+        'pendingOrgs': pending_orgs,
+        'openReports': open_reports,
+        'verifiedOrgs': verified_orgs,
+        'orgs': pending_orgs + verified_orgs,
+        'users': users_total,
+        'volunteers': volunteers,
+        'coordinators': coordinators,
+        'activeEvents': active_events,
+        'hoursTotal': int(hours_total),
+        'raised': int(raised),
+        'avgReliability': int(round(avg_rel)) if avg_rel is not None else 0,
+    })
+
+
+@admin_bp.route('/analytics', methods=['GET'])
+@admin_required
+def admin_analytics():
+    """Аналитика для AdminAnalytics: рост, явка, разрезы по городам/темам. Реальные данные вместо демо."""
+    from models import Gathering, Participant, City, CharityRequest
+
+    # явка: пришло / ответило 'yes'|'maybe'|'no' по завершённым сборам
+    done_ids = [r[0] for r in db.session.query(Gathering.id).filter(
+        db.or_(Gathering.status == 'done', Gathering.finalized_at.isnot(None))).all()]
+    came = answered = 0
+    if done_ids:
+        came = db.session.query(db.func.count(Participant.id)).filter(
+            Participant.gathering_id.in_(done_ids), Participant.presence == 'came').scalar() or 0
+        answered = db.session.query(db.func.count(Participant.id)).filter(
+            Participant.gathering_id.in_(done_ids),
+            Participant.answer.in_(('yes', 'maybe', 'no'))).scalar() or 0
+    attendance_rate = int(round(100 * came / answered)) if answered else 0
+
+    # по городам
+    by_city = []
+    for c in City.query.all():
+        active = db.session.query(db.func.count(Gathering.id)).filter(
+            Gathering.city_id == c.id, Gathering.status == 'open').scalar() or 0
+        vol = db.session.query(db.func.count(User.id)).filter(User.city_id == c.id).scalar() or 0
+        by_city.append({'id': c.id, 'ru': c.name_ru, 'kz': c.name_kz, 'active': active, 'vol': vol})
+    by_city.sort(key=lambda x: x['vol'], reverse=True)
+
+    # по темам
+    theme_rows = db.session.query(
+        Gathering.theme, db.func.count(Gathering.id)).filter(
+        Gathering.status != 'deleted', Gathering.theme.isnot(None)).group_by(Gathering.theme).all()
+    by_theme = [{'theme': t, 'events': n} for t, n in theme_rows]
+    by_theme.sort(key=lambda x: x['events'], reverse=True)
+
+    # рост: новые пользователи по месяцам (реальные created_at, последние 6 месяцев)
+    users = db.session.query(User.created_at).filter(User.created_at.isnot(None)).all()
+    buckets = {}
+    for (dt,) in users:
+        key = dt.strftime('%Y-%m')
+        buckets[key] = buckets.get(key, 0) + 1
+    growth = [{'label': k, 'value': v} for k, v in sorted(buckets.items())][-6:]
+
+    return jsonify({
+        'attendanceRate': attendance_rate,
+        'byCity': by_city,
+        'byTheme': by_theme,
+        'growth': growth,
+    })
+
+
+# ── Рассылки (Broadcast) ──
+@admin_bp.route('/broadcast', methods=['POST'])
+@admin_required
+def broadcast():
+    """Рассылка → Notification по сегменту (all|vol|coord|nko|city). Возвращает реальный reach."""
+    from models import Notification
+
+    data = request.get_json(silent=True) or {}
+    segment = (data.get('segment') or data.get('audience') or 'all').strip()
+    title = (data.get('title') or '').strip()
+    body_ru = (data.get('textRu') or data.get('text_ru') or data.get('text') or '').strip()
+    body_kz = (data.get('textKz') or data.get('text_kz') or body_ru).strip()
+    city_id = data.get('cityId') or data.get('city_id') or data.get('city')
+
+    def compose(t, b):
+        s = (f'{t}. {b}' if (t and b) else (t or b)).strip()
+        return s[:300] if s else None
+
+    text_ru = compose(title, body_ru)
+    text_kz = compose(title, body_kz)
+    if not text_ru:
+        return jsonify({'error': 'Пустое объявление'}), 400
+
+    q = User.query.filter(User.is_active.is_(True))
+    if segment == 'vol':
+        q = q.filter(User.role == 'vol')
+    elif segment == 'coord':
+        q = q.filter(User.role == 'coord')
+    elif segment == 'nko':
+        q = q.filter(User.role == 'org')
+    elif segment == 'city':
+        if not city_id:
+            return jsonify({'error': 'Укажите город для рассылки'}), 400
+        q = q.filter(User.city_id == city_id)
+    # 'all' — без доп. фильтра
+
+    now = datetime.now(timezone.utc)
+    recipients = q.all()
+    for u in recipients:
+        db.session.add(Notification(user_id=u.id, type='system',
+                                    text_ru=text_ru, text_kz=text_kz, created_at=now))
+    db.session.commit()
+    return jsonify({'reach': len(recipients), 'segment': segment})
+
+
+# ── События (модерация ленты) ──
+def _admin_event(gathering, today):
+    from utils.serializers import serialize_org_event
+    d = serialize_org_event(gathering, 0, today)
+    d['orgId'] = gathering.org_id
+    d['ownerId'] = gathering.owner_id
+    return d
+
+
+@admin_bp.route('/events', methods=['GET'])
+@admin_required
+def admin_events():
+    """Все события (кроме удалённых) для модерации. ?status=open|done фильтрует."""
+    from models import Gathering
+
+    status = request.args.get('status', 'all')
+    q = Gathering.query.filter(Gathering.status != 'deleted')
+    if status == 'open':
+        q = q.filter(Gathering.status == 'open')
+    elif status == 'done':
+        q = q.filter(db.or_(Gathering.status == 'done', Gathering.finalized_at.isnot(None)))
+    rows = q.order_by(Gathering.starts_at.desc()).all()
+    today = datetime.now(timezone.utc).date()
+    return jsonify({'events': [_admin_event(x, today) for x in rows]})
+
+
+@admin_bp.route('/events/<int:eid>/unpublish', methods=['POST'])
+@admin_required
+def unpublish_event(eid):
+    """Снять событие с публикации (убрать из ленты)."""
+    from models import Gathering
+
+    gathering = db.session.get(Gathering, eid)
+    if gathering is None or gathering.status == 'deleted':
+        return jsonify({'error': 'Событие не найдено'}), 404
+    gathering.status = 'deleted'
+    gathering.bump()
+    db.session.commit()
+    return jsonify({'ok': True, 'id': eid})
+
+
+# ── Помощь (charity) ──
+@admin_bp.route('/charity/<int:cid>/close', methods=['POST'])
+@admin_required
+def close_charity(cid):
+    """Закрыть кампанию. Модель без статуса → отмечаем достигнутой (raised=goal)."""
+    from models import CharityRequest
+
+    c = db.session.get(CharityRequest, cid)
+    if c is None:
+        return jsonify({'error': 'Кампания не найдена'}), 404
+    c.raised = c.goal
+    db.session.commit()
+    return jsonify({'ok': True, 'id': cid, 'raised': c.raised, 'goal': c.goal})
 
 
 @admin_bp.route('/orgs', methods=['GET'])

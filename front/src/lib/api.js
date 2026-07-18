@@ -13,11 +13,13 @@ export function getAuth() {
   return _auth;
 }
 
-async function request(path, { method = 'GET', body, auth = true } = {}) {
+async function request(path, { method = 'GET', body, auth = true, bearer } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (_auth.deviceId) headers['X-Device-Id'] = _auth.deviceId;
-  if (auth && _auth.token) headers['Authorization'] = 'Bearer ' + _auth.token;
+  // bearer перебивает device-токен — нужно для /auth/refresh (там шлём refresh-токен).
+  const token = bearer || _auth.token;
+  if (auth && token) headers['Authorization'] = 'Bearer ' + token;
 
   const res = await fetch(BASE + path, {
     method,
@@ -116,6 +118,31 @@ export const api = {
   approveOrg: (id) => request(`/admin/orgs/${id}/approve`, { method: 'POST' }),
   rejectOrg: (id) => request(`/admin/orgs/${id}/reject`, { method: 'POST' }),
   reviewReport: (id) => request(`/admin/reports/${id}/review`, { method: 'POST' }),
+
+  // ── организатор / штаб (Manage HQ) ──
+  // Бэкенд отдаёт целочисленные id — стор снимает мок-префиксы перед вызовом.
+  orgEvents: () => request('/me/org/events'),
+  myApplications: () => request('/me/org/applications'),
+  orgVolunteers: () => request('/me/org/volunteers'),
+  createApplication: (eventId, body) => request(`/events/${eventId}/applications`, { method: 'POST', body }),
+  actOnApplication: (id, action) => request(`/applications/${id}/${action}`, { method: 'POST' }), // action=accept|decline
+
+  // ── админ-панель (под уже существующие и новые роуты) ──
+  adminUsers: (page = 1, search = '') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}`),
+  updateUser: (id, patch) => request(`/admin/users/${id}`, { method: 'PATCH', body: patch }),
+  adminStats: () => request('/admin/stats'),
+  adminOrgs: (status = 'all') => request(`/admin/orgs?status=${status}`),
+  resolveReport: (id) => request(`/admin/reports/${id}/resolve`, { method: 'POST' }),
+  adminEvents: (qs = '') => request('/admin/events' + qs),
+  unpublishEvent: (id) => request(`/admin/events/${id}/unpublish`, { method: 'POST' }),
+  sendBroadcast: (body) => request('/admin/broadcast', { method: 'POST', body }), // {segment, title, textRu, textKz, cityId?}
+  adminAnalytics: () => request('/admin/analytics'),
+  closeCharity: (id) => request(`/admin/charity/${id}/close`, { method: 'POST' }),
+
+  // ── аккаунт-авторизация (email/пароль) — сосуществует с device-сессией ──
+  login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),        // {identifier, password}
+  register: (payload) => request('/auth/register', { method: 'POST', body: payload, auth: false }),   // {identifier|email|nickname, password, full_name}
+  refresh: (refreshToken) => request('/auth/refresh', { method: 'POST', bearer: refreshToken }),
 };
 
 export { BASE };

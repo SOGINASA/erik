@@ -48,31 +48,44 @@ export default function Register() {
   const setIdentity = useSessionStore((s) => s.setIdentity);
   const setRole = useSessionStore((s) => s.setRole);
   const login = useSessionStore((s) => s.login);
+  const registerAccount = useSessionStore((s) => s.registerAccount);
   const showToast = useUiStore((s) => s.showToast);
 
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState('next');
   const [show, setShow] = useState(false);
-  const [form, setForm] = useState({ role: '', name: '', phone: '', orgName: '', password: '', confirm: '', city: '', interests: [] });
+  const [form, setForm] = useState({ role: '', name: '', phone: '', orgName: '', email: '', password: '', confirm: '', city: '', interests: [] });
   const up = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const displayName = (form.role === 'org' ? form.orgName : form.name).trim();
   const valid = [
     !!form.role,
     !!form.name.trim() && (form.role !== 'org' || !!form.orgName.trim()),
-    form.password.length >= 4 && form.password === form.confirm,
+    form.password.length >= 6 && form.password === form.confirm,   // min 6 — как на бэке
     !!form.city,
   ][step];
 
   const next = () => { if (step < 4 && valid) { setDir('next'); setStep(step + 1); } };
   const back = () => { if (step > 0) { setDir('prev'); setStep(step - 1); } };
 
+  // Если задан email/логин — создаём реальный аккаунт (email/пароль).
+  // Иначе (и при ошибке — например, занятый email) поднимаем device-личность.
   const finish = async () => {
     setIdentity(displayName, form.phone.trim() || null);
     setRole(form.role);
-    await login();
+    const identifier = form.email.trim();
+    try {
+      if (identifier) {
+        await registerAccount({ identifier, password: form.password, full_name: displayName });
+      } else {
+        await login();
+      }
+      showToast('Аккаунт создан. Добро пожаловать в erik!');
+    } catch (err) {
+      await login(); // запасной вариант — не блокируем демо
+      showToast((err && err.data && err.data.error) || 'Вход выполнен');
+    }
     navigate(form.role === 'vol' ? '/feed' : '/manage');
-    showToast('Аккаунт создан. Добро пожаловать в erik!');
   };
 
   const toggleInterest = (k) => up('interests', form.interests.includes(k) ? form.interests.filter((x) => x !== k) : [...form.interests, k]);
@@ -126,8 +139,12 @@ export default function Register() {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
+            <FieldLabel>Email или логин <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>· для входа по паролю</span></FieldLabel>
+            <WField icon="mail" type="text" value={form.email} onChange={(e) => up('email', e.target.value)} placeholder="you@example.kz" autoComplete="username" />
+          </div>
+          <div>
             <FieldLabel>Пароль</FieldLabel>
-            <WField icon="lock" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 4 символа"
+            <WField icon="lock" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 6 символов"
               right={<button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Скрыть' : 'Показать'} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer' }}><Icon name={show ? 'eyeOff' : 'eye'} size={18} /></button>} />
             {form.password && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

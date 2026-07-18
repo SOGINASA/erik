@@ -440,3 +440,40 @@ class Report(db.Model):
     def to_dict(self):
         return {'id': self.id, 'targetType': self.target_type, 'ru': self.text_ru,
                 'kz': self.text_kz, 'count': self.count, 'status': self.status}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  P3: Заявки на событие (Application) — запрос волонтёра с апрувом организатора.
+#  Заявка ≠ RSVP: RSVP (Participant) — мгновенный самозапис; заявка несёт скиллы
+#  и сообщение и ждёт решения. При accept сервер создаёт Participant(answer='yes').
+# ─────────────────────────────────────────────────────────────────────────────
+APPLICATION_STATUSES = ('pending', 'accepted', 'declined')
+APPLICATION_SKILLS = ('org', 'firstAid', 'driver', 'photo', 'heavy', 'kids', 'cook', 'media')
+
+
+class Application(db.Model):
+    __tablename__ = 'applications'
+    id = db.Column(db.Integer, primary_key=True)
+    gathering_id = db.Column(db.Integer, db.ForeignKey('gatherings.id', ondelete='CASCADE'),
+                             index=True, nullable=False)
+    applicant_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), nullable=True)
+
+    skills = db.Column(db.JSON, nullable=True)            # ['org','photo',...] (ключи APPLICATION_SKILLS)
+    message = db.Column(db.Text, nullable=True)           # одно поле (bi-lang — демо-роскошь, отдаём в оба)
+    status = db.Column(db.String(10), default='pending')  # pending | accepted | declined
+
+    # snapshot PII на момент подачи (как в Participant) — сервер заполняет из User
+    name = db.Column(db.String(100))
+    phone = db.Column(db.String(32), nullable=True)
+    city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=_now)
+    decided_at = db.Column(db.DateTime)
+
+    gathering = db.relationship('Gathering', foreign_keys=[gathering_id])
+    applicant = db.relationship('User', foreign_keys=[applicant_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('gathering_id', 'applicant_id', name='uq_application'),
+    )

@@ -41,7 +41,7 @@ def create_app(config_object=None):
 
     # Регистрация блюпринтов
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
-                        notifications_bp, platform_bp)
+                        notifications_bp, platform_bp, organizer_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(session_bp, url_prefix='/api')          # /api/session, /api/me, /api/logout
@@ -49,6 +49,7 @@ def create_app(config_object=None):
     app.register_blueprint(guest_bp, url_prefix='/api')            # /api/g/<code>, /api/gatherings/by-code
     app.register_blueprint(notifications_bp, url_prefix='/api')    # /api/notifications*
     app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /charity, /leaderboard, /cities…
+    app.register_blueprint(organizer_bp, url_prefix='/api')        # /api/me/org/*, /events/<id>/applications, /applications/*
 
     # Главная страница API
     @app.route('/api')

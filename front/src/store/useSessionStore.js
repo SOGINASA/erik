@@ -19,6 +19,10 @@ export const useSessionStore = create(
       loggedIn: false,
       role: null,
       token: null,
+      // Аккаунт-авторизация (email/пароль). Сосуществует с device-личностью:
+      // device — якорь; аккаунт добавляет user_type (для гейта админки) и refresh.
+      userType: null,          // user | admin
+      refreshToken: null,
 
       setLang: (lang) => set({ lang }),
       toggleLang: () => set((s) => ({ lang: s.lang === 'ru' ? 'kz' : 'ru' })),
@@ -52,14 +56,52 @@ export const useSessionStore = create(
         set((s) => ({ loggedIn: true, role: s.role || 'vol' }));
       },
 
+      // Вход по паролю (аккаунт). Бросает при 401 — Login.submit ловит и тостит.
+      // deviceId остаётся (X-Device-Id), сверху ставим account-токен.
+      loginWithPassword: async ({ identifier, password }) => {
+        setAuth({ deviceId: get().deviceId });
+        const res = await api.login({ identifier, password });
+        setAuth({ token: res.access_token });
+        set((s) => ({
+          token: res.access_token,
+          refreshToken: res.refresh_token || null,
+          loggedIn: true,
+          userType: (res.user && res.user.user_type) || 'user',
+          role: (res.user && res.user.role) || s.role || 'vol',
+          name: (res.user && res.user.full_name) || s.name,
+        }));
+        return res;
+      },
+
+      // Регистрация аккаунта. identifier — email ИЛИ nickname (бэк разберёт).
+      registerAccount: async ({ identifier, email, nickname, password, full_name }) => {
+        setAuth({ deviceId: get().deviceId });
+        const res = await api.register({ identifier, email, nickname, password, full_name });
+        setAuth({ token: res.access_token });
+        set((s) => ({
+          token: res.access_token,
+          refreshToken: res.refresh_token || null,
+          loggedIn: true,
+          userType: (res.user && res.user.user_type) || 'user',
+          role: (res.user && res.user.role) || s.role || 'vol',
+          name: (res.user && res.user.full_name) || full_name || s.name,
+        }));
+        return res;
+      },
+
       logout: () => {
         setAuth({ token: null });
-        set({ loggedIn: false, token: null });
+        set({ loggedIn: false, token: null, userType: null, refreshToken: null });
       },
     }),
     {
       name: 'erik-session',
-      partialize: (s) => ({ lang: s.lang, deviceId: s.deviceId, name: s.name, phone: s.phone }),
+      // refreshToken/userType переживают перезагрузку (device-токен по-прежнему опускаем —
+      // демо стартует с лендинга и переподнимает device-сессию через boot()).
+      partialize: (s) => ({
+        lang: s.lang, deviceId: s.deviceId, name: s.name, phone: s.phone,
+        refreshToken: s.refreshToken, userType: s.userType,
+      }),
     }
   )
 );

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useUiStore } from '../../store/useUiStore';
+import { usePlatformStore } from '../../store/usePlatformStore';
+import { api } from '../../lib/api';
 import { SectionCard, FilterChips, StatusPill } from './kit';
 import Button from '../ui/Button';
 import { Field, Textarea, FieldLabel } from '../ui/controls';
 
 // Аудитории рассылки: value для чипов, pill — короткая подпись в списке,
-// reach — охват (демо), tone — цвет статус-пилла.
+// reach — ориентировочный охват (визуальная подсказка), tone — цвет статус-пилла.
 const AUDIENCES = [
   { value: 'all', label: 'Все пользователи', pill: 'Все', reach: '20 300', tone: 'blue' },
   { value: 'vol', label: 'Волонтёры', pill: 'Волонтёры', reach: '18 900', tone: 'yard' },
@@ -14,28 +16,52 @@ const AUDIENCES = [
   { value: 'city', label: 'По городу', pill: 'По городу', reach: '2 400', tone: 'blue' },
 ];
 
-// Рассылки/объявления: форма нового объявления + список отправленных (демо).
+const fmt = (n) => Number(n).toLocaleString('ru-RU');
+
+// Рассылки/объявления: форма нового объявления + локальный лог отправленных за сессию.
 export default function AdminBroadcast() {
   const showToast = useUiStore((s) => s.showToast);
+  const cities = usePlatformStore((s) => s.cities);
 
   const [audience, setAudience] = useState('all');
+  const [cityId, setCityId] = useState(() => cities[0]?.id || '');
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
-  const [sent, setSent] = useState([
-    { title: 'Субботник в вашем городе в эту субботу', audience: 'Волонтёры', reach: '18 900', time: '2 ч', tone: 'yard' },
-    { title: 'Обновление: новые категории сборов', audience: 'Все', reach: '20 300', time: 'вчера', tone: 'blue' },
-    { title: 'Приглашаем НКО на вебинар по координации', audience: 'НКО', reach: '810', time: '3 дн', tone: 'out' },
-  ]);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState([]);
 
-  const send = () => {
+  const cityOptions = cities.map((c) => ({ value: c.id, label: c.ru }));
+
+  const send = async () => {
     const t = title.trim();
-    if (!t) return;
+    if (!t || busy) return;
     const a = AUDIENCES.find((x) => x.value === audience) || AUDIENCES[0];
-    showToast(`Объявление отправлено ${a.reach} получателям`);
-    setSent((prev) => [{ title: t, audience: a.pill, reach: a.reach, time: 'сейчас', tone: a.tone }, ...prev]);
-    setTitle('');
-    setText('');
+
+    const body = { segment: audience, title: t, textRu: text };
+    if (audience === 'city') {
+      if (!cityId) {
+        showToast('Выберите город');
+        return;
+      }
+      body.cityId = cityId;
+    }
+
+    setBusy(true);
+    try {
+      const res = await api.sendBroadcast(body);
+      const reach = fmt(res.reach);
+      showToast(`Объявление отправлено ${reach} получателям`);
+      setSent((prev) => [{ title: t, audience: a.pill, reach, time: 'сейчас', tone: a.tone }, ...prev]);
+      setTitle('');
+      setText('');
+    } catch (e) {
+      showToast(e.message || 'Не удалось отправить объявление');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const cityMissing = audience === 'city' && !cityId;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -47,6 +73,16 @@ export default function AdminBroadcast() {
               <FieldLabel>Аудитория</FieldLabel>
               <FilterChips options={AUDIENCES} value={audience} onChange={setAudience} />
             </div>
+            {audience === 'city' && (
+              <div>
+                <FieldLabel>Город</FieldLabel>
+                {cityOptions.length ? (
+                  <FilterChips options={cityOptions} value={cityId} onChange={setCityId} />
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>Список городов недоступен</div>
+                )}
+              </div>
+            )}
             <Field label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="О чём объявление?" />
             <div>
               <Textarea label="Текст (RU)" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Текст объявления…" />
@@ -54,7 +90,7 @@ export default function AdminBroadcast() {
                 {text.length} символов
               </div>
             </div>
-            <Button size="lg" icon="send" disabled={!title.trim()} onClick={send}>Отправить</Button>
+            <Button size="lg" icon="send" loading={busy} disabled={!title.trim() || busy || cityMissing} onClick={send}>Отправить</Button>
           </div>
         </SectionCard>
 

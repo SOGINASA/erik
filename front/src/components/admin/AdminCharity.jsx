@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { useUiStore } from '../../store/useUiStore';
 import { StatCard, Ring, StatusPill } from './kit';
@@ -8,7 +9,12 @@ export default function AdminCharity() {
   const charity = usePlatformStore((s) => s.charity);
   const orgs = usePlatformStore((s) => s.orgs);
   const cities = usePlatformStore((s) => s.cities);
+  const loadPlatform = usePlatformStore((s) => s.loadPlatform);
+  const closeCharity = usePlatformStore((s) => s.closeCharity);
   const showToast = useUiStore((s) => s.showToast);
+
+  // Данные платформы (в т.ч. кампании) из API; идемпотентно, мок-фолбэк в сторе.
+  useEffect(() => { loadPlatform(); }, [loadPlatform]);
 
   const orgName = (id) => orgs.find((o) => o.id === id)?.name || '';
   const cityName = (id) => cities.find((c) => c.id === id)?.ru || '';
@@ -37,7 +43,8 @@ export default function AdminCharity() {
             const money = c.kind === 'money';
             const pct = Math.min(100, Math.round((c.raised / c.goal) * 100));
             const unit = money ? '₸' : c.unit; // для денег — тенге, иначе своя единица
-            const ring = money ? 'var(--yard)' : '#3d5566';
+            const closed = c.closed || c.raised >= c.goal; // кампания закрыта/цель достигнута
+            const ring = closed ? 'var(--ink-3)' : money ? 'var(--yard)' : '#3d5566';
             return (
               <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* заголовок */}
@@ -54,14 +61,21 @@ export default function AdminCharity() {
                       <span style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 22, color: 'var(--ink)', letterSpacing: '-.02em' }}>{c.raised.toLocaleString('ru-RU')}</span>
                       <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>из {c.goal.toLocaleString('ru-RU')} {unit}</span>
                     </div>
-                    <StatusPill tone={money ? 'yard' : 'blue'}>{money ? 'Деньги' : 'Вещи'}</StatusPill>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <StatusPill tone={money ? 'yard' : 'blue'}>{money ? 'Деньги' : 'Вещи'}</StatusPill>
+                      {closed && <StatusPill tone="out" icon="check">Закрыта</StatusPill>}
+                    </div>
                   </div>
                 </div>
 
                 {/* действия */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Button size="sm" variant="secondary" style={{ flex: 1 }} onClick={() => showToast(`Открываю: ${c.titleRu}`)}>Подробнее</Button>
-                  <Button size="sm" variant="primary" style={{ flex: 1 }} onClick={() => showToast('Кампания закрыта')}>Закрыть сбор</Button>
+                  {closed ? (
+                    <Button size="sm" variant="secondary" style={{ flex: 1 }} disabled>Закрыта</Button>
+                  ) : (
+                    <Button size="sm" variant="primary" style={{ flex: 1 }} onClick={() => closeCharity(c.id)}>Закрыть сбор</Button>
+                  )}
                 </div>
               </div>
             );

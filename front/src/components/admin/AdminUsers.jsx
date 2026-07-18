@@ -1,11 +1,10 @@
-import { useState } from 'react';
-import { usePlatformStore } from '../../store/usePlatformStore';
+import { useState, useEffect } from 'react';
 import { useUiStore } from '../../store/useUiStore';
+import { api } from '../../lib/api';
 import { AdminSearch, FilterChips, Table, Tr, Td, StatusPill, IconBtn, SectionCard } from './kit';
 import Avatar from '../ui/Avatar';
 
-// Роль по индексу: часть — волонтёры, пара — координаторы, одна — НКО.
-const roleOf = (i) => (i % 4 === 0 ? 'coord' : i % 7 === 0 ? 'org' : 'vol');
+// Роли пользователей и их визуальные токены.
 const ROLE = {
   vol: { tone: 'yard', label: 'Волонтёр' },
   coord: { tone: 'blue', label: 'Координатор' },
@@ -24,6 +23,11 @@ const plural = (n, forms) => {
   return forms[2];
 };
 
+// Отображаемое имя: полное имя → ник → email.
+const nameOf = (u) => u.full_name || u.nickname || u.email || '—';
+// Ключ роли для фильтра/подсчёта: админ — отдельно, иначе поле role.
+const roleKey = (u) => (u.user_type === 'admin' ? 'admin' : u.role);
+
 const HEAD = [
   { label: 'Пользователь' },
   { label: 'Город' },
@@ -34,21 +38,52 @@ const HEAD = [
   { label: '' },
 ];
 
-// Управление пользователями: поиск, фильтр по роли, таблица с действиями.
+// Управление пользователями: серверный поиск, фильтр по роли, таблица с действиями.
 export default function AdminUsers() {
-  const volunteers = usePlatformStore((s) => s.volunteers);
-  const me = usePlatformStore((s) => s.me);
   const showToast = useUiStore((s) => s.showToast);
 
   const [query, setQuery] = useState('');
   const [role, setRole] = useState('all');
 
-  // Волонтёры + текущий пользователь (координатор) в одном списке, роль — по индексу.
-  const users = [...volunteers, { id: me.id, name: me.name, city: me.city, hours: me.hours, events: me.events, rel: me.reliability }]
-    .map((u, i) => ({ ...u, role: roleOf(i) }));
+  const [users, setUsers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
 
+  // Загрузка с сервера. Поиск/пагинация — на бэкенде; ввод дебаунсим ~300мс.
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await api.adminUsers(page, query.trim());
+        if (cancelled) return;
+        setUsers(Array.isArray(res?.users) ? res.users : []);
+        setTotal(res?.total ?? 0);
+      } catch (_) {
+        // при ошибке остаёмся на прежнем списке — не падаем
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, page]);
+
+  // Ввод поиска → сбрасываем на первую страницу (api.adminUsers(1, query)).
+  const onSearch = (e) => {
+    setQuery(e.target.value);
+    setPage(1);
+  };
+
+  // Счётчики чипов — по реальным данным загруженной страницы.
   const counts = { vol: 0, coord: 0, org: 0 };
-  users.forEach((u) => { counts[u.role] += 1; });
+  users.forEach((u) => {
+    const k = roleKey(u);
+    if (counts[k] != null) counts[k] += 1;
+  });
 
   const chips = [
     { value: 'all', label: 'Все', count: users.length },
@@ -57,23 +92,33 @@ export default function AdminUsers() {
     { value: 'org', label: 'НКО', count: counts.org },
   ];
 
-  const q = query.trim().toLowerCase();
-  const filtered = users.filter((u) => {
-    const okRole = role === 'all' || u.role === role;
-    const okQuery = !q || u.name.toLowerCase().includes(q) || u.city.toLowerCase().includes(q);
-    return okRole && okQuery;
-  });
+  // Фильтр по роли — мгновенный, поверх серверных данных.
+  const filtered = role === 'all' ? users : users.filter((u) => roleKey(u) === role);
+  // Счётчик: всего с сервера (по текущему поиску), либо число видимых при фильтре роли.
+  const shown = role === 'all' ? total : filtered.length;
+
+  // Блокировка/разблокировка — оптимистично, с откатом при ошибке.
+  const setActive = async (u, active) => {
+    setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, is_active: active } : x)));
+    try {
+      await api.updateUser(u.id, { is_active: active });
+      showToast(active ? 'Пользователь разблокирован' : 'Пользователь заблокирован');
+    } catch (_) {
+      setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, is_active: !active } : x)));
+      showToast('Не удалось изменить статус');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* поиск, фильтр по роли, счётчик */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <AdminSearch value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по имени или городу" />
+        <AdminSearch value={query} onChange={onSearch} placeholder="Поиск по имени или email" />
         <div style={{ flex: 1, minWidth: 160 }}>
           <FilterChips options={chips} value={role} onChange={setRole} />
         </div>
         <span style={{ flex: 'none', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-          {filtered.length} {plural(filtered.length, ['пользователь', 'пользователя', 'пользователей'])}
+          {shown} {plural(shown, ['пользователь', 'пользователя', 'пользователей'])}
         </span>
       </div>
 
@@ -81,31 +126,47 @@ export default function AdminUsers() {
       <SectionCard pad={0}>
         {filtered.length === 0 ? (
           <div style={{ padding: '40px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
-            Никого не нашли
+            {loading ? 'Загрузка…' : 'Никого не нашли'}
           </div>
         ) : (
           <Table head={HEAD}>
-            {filtered.map((u) => (
-              <Tr key={u.id}>
-                <Td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                    <Avatar name={u.name} size={32} />
-                    <span style={{ fontWeight: 600 }}>{u.name}</span>
-                  </span>
-                </Td>
-                <Td style={{ color: 'var(--ink-2)' }}>{u.city}</Td>
-                <Td><StatusPill tone={ROLE[u.role].tone}>{ROLE[u.role].label}</StatusPill></Td>
-                <Td align="right" nowrap style={{ fontFamily: 'var(--fm)' }}>{u.hours}</Td>
-                <Td align="right" nowrap style={{ fontFamily: 'var(--fm)' }}>{u.events}</Td>
-                <Td align="right" nowrap style={{ fontFamily: 'var(--fm)', fontWeight: 600, color: relColor(u.rel) }}>{u.rel}%</Td>
-                <Td align="right" nowrap>
-                  <span style={{ display: 'inline-flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <IconBtn icon="external" title="Профиль" onClick={() => showToast('Профиль открыт')} />
-                    <IconBtn icon="close" tone="ink-3" title="Заблокировать" onClick={() => showToast('Пользователь заблокирован')} />
-                  </span>
-                </Td>
-              </Tr>
-            ))}
+            {filtered.map((u) => {
+              const blocked = u.is_active === false;
+              return (
+                <Tr key={u.id} style={blocked ? { opacity: 0.5 } : undefined}>
+                  <Td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <Avatar name={nameOf(u)} size={32} />
+                      <span style={{ fontWeight: 600 }}>{nameOf(u)}</span>
+                      {blocked && <StatusPill tone="out">Заблокирован</StatusPill>}
+                    </span>
+                  </Td>
+                  <Td style={{ color: 'var(--ink-2)' }}>{u.city_id || '—'}</Td>
+                  <Td>
+                    {u.user_type === 'admin' ? (
+                      <StatusPill tone="danger">Админ</StatusPill>
+                    ) : ROLE[u.role] ? (
+                      <StatusPill tone={ROLE[u.role].tone}>{ROLE[u.role].label}</StatusPill>
+                    ) : (
+                      <StatusPill tone="out">—</StatusPill>
+                    )}
+                  </Td>
+                  <Td align="right" nowrap style={{ fontFamily: 'var(--fm)' }}>{u.hours_total ?? 0}</Td>
+                  <Td align="right" nowrap style={{ fontFamily: 'var(--fm)' }}>{u.events_attended ?? 0}</Td>
+                  <Td align="right" nowrap style={{ fontFamily: 'var(--fm)', fontWeight: 600, color: relColor(u.reliability ?? 0) }}>{u.reliability ?? 0}%</Td>
+                  <Td align="right" nowrap>
+                    <span style={{ display: 'inline-flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <IconBtn icon="external" title="Профиль" onClick={() => showToast('Профиль открыт')} />
+                      {blocked ? (
+                        <IconBtn icon="check" title="Разблокировать" onClick={() => setActive(u, true)} />
+                      ) : (
+                        <IconBtn icon="close" tone="ink-3" title="Заблокировать" onClick={() => setActive(u, false)} />
+                      )}
+                    </span>
+                  </Td>
+                </Tr>
+              );
+            })}
           </Table>
         )}
       </SectionCard>

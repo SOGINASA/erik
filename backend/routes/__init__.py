@@ -5,6 +5,7 @@ from routes.gatherings import gatherings_bp
 from routes.guest import guest_bp
 from routes.notifications import notifications_bp
 from routes.platform import platform_bp
+from routes.organizer import organizer_bp
 
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     'guest_bp',
     'notifications_bp',
     'platform_bp',
+    'organizer_bp',
 ]
