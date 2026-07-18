@@ -1,4 +1,4 @@
-import { Outlet, useLocation, Navigate } from 'react-router-dom';
+import { Outlet, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import Icon from '../Icon';
 import Avatar from '../ui/Avatar';
@@ -8,6 +8,7 @@ import { useSessionStore } from '../../store/useSessionStore';
 import { useUiStore } from '../../store/useUiStore';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { routeName, useIsDesktop, useGuardedNav, useUnread, GATED_ROUTES } from '../../lib/nav';
+import { ADMIN_SECTIONS, adminSectionId } from '../admin/nav';
 
 // Шелл приложения: сайдбар (десктоп) / шапка + таббар (мобиль) вокруг страниц.
 export default function Shell() {
@@ -27,7 +28,7 @@ export default function Shell() {
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--paper)', overflowX: 'hidden' }}>
-      {desktop && <Sidebar route={route} />}
+      {desktop && (route === 'admin' ? <AdminSidebar pathname={location.pathname} /> : <Sidebar route={route} />)}
       <div
         style={{
           minHeight: '100dvh',
@@ -97,8 +98,63 @@ function Sidebar({ route }) {
             </span>
           </button>
         ) : (
-          <button className="erik-btn erik-btn-primary" onClick={() => go('/onboarding')} style={{ width: '100%', height: 44, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.mStart}</button>
+          <button className="erik-btn erik-btn-primary" onClick={() => go('/register')} style={{ width: '100%', height: 44, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.mStart}</button>
         )}
+        <div style={{ marginTop: 8 }}>
+          <LangToggle surface="var(--paper)" />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// Сайдбар админ-области: разделы админки как отдельные пункты.
+function AdminSidebar({ pathname }) {
+  const navigate = useNavigate();
+  const me = usePlatformStore((s) => s.me);
+  const orgs = usePlatformStore((s) => s.orgs);
+  const pending = orgs.filter((o) => !o.verified).length + 2;
+  const active = adminSectionId(pathname);
+
+  const item = (on) => ({
+    display: 'flex', alignItems: 'center', gap: 12, height: 44, padding: '0 14px', borderRadius: 'var(--r-m)',
+    border: 'none', background: on ? 'var(--yard-soft)' : 'transparent', color: on ? 'var(--yard)' : 'var(--ink-2)',
+    fontWeight: 500, fontSize: 15, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'var(--fb)',
+    transition: 'background var(--t-fast), color var(--t-fast)',
+  });
+
+  return (
+    <aside className="erik-scroll" style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 248, background: 'var(--surface)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', padding: '22px 16px', zIndex: 30, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', marginBottom: 20 }}>
+        <Logo size={24} onClick={() => navigate('/admin')} />
+        <span style={{ height: 18, padding: '0 7px', display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--ink)', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '.04em' }}>АДМИН</span>
+      </div>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {ADMIN_SECTIONS.map((s) => {
+          const on = active === s.id;
+          return (
+            <button key={s.id} className="erik-row-hover" onClick={() => navigate(s.path)} style={item(on)}>
+              <Icon name={s.icon} size={20} />
+              <span style={{ flex: 1 }}>{s.label}</span>
+              {s.id === 'moderation' && pending > 0 && (
+                <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--maybe)', color: '#fff', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pending}</span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+      <div style={{ flex: 1 }} />
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>
+        <button className="erik-row-hover" onClick={() => navigate('/feed')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-m)', color: 'var(--ink-2)', fontFamily: 'var(--fb)', fontWeight: 500, fontSize: 14, textAlign: 'left' }}>
+          <Icon name="back" size={18} /> В приложение
+        </button>
+        <button className="erik-row-hover" onClick={() => navigate('/u/me')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 8px', borderRadius: 'var(--r-m)', textAlign: 'left', marginTop: 4 }}>
+          <Avatar name={me.name} size={38} />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{me.name}</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)' }}>Администратор</span>
+          </span>
+        </button>
         <div style={{ marginTop: 8 }}>
           <LangToggle surface="var(--paper)" />
         </div>
@@ -129,7 +185,7 @@ function MobileHeader() {
             <Avatar name={me.name} size={40} />
           </button>
         ) : (
-          <button className="erik-btn erik-btn-primary" onClick={() => go('/onboarding')} style={{ height: 40, padding: '0 14px', border: 'none', borderRadius: 999, background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>{t.mStart}</button>
+          <button className="erik-btn erik-btn-primary" onClick={() => go('/register')} style={{ height: 40, padding: '0 14px', border: 'none', borderRadius: 999, background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>{t.mStart}</button>
         )}
       </div>
     </header>
@@ -175,7 +231,7 @@ function GuestBanner() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '9px 20px', background: 'var(--ink)', color: '#fff', fontSize: 13 }}>
       <span style={{ opacity: 0.85 }}>{t.guestMode}</span>
-      <button className="erik-btn" onClick={() => go('/onboarding')} style={{ height: 28, padding: '0 14px', border: 'none', borderRadius: 999, background: '#fff', color: 'var(--ink)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>{t.guestCta}</button>
+      <button className="erik-btn" onClick={() => go('/register')} style={{ height: 28, padding: '0 14px', border: 'none', borderRadius: 999, background: '#fff', color: 'var(--ink)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>{t.guestCta}</button>
     </div>
   );
 }

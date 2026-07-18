@@ -8,6 +8,8 @@ import { usePlatformStore } from './store/usePlatformStore';
 import { useGatheringStore } from './store/useGatheringStore';
 
 import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import Onboarding from './pages/Onboarding';
 import Feed from './pages/Feed';
 import MapPage from './pages/MapPage';
@@ -44,6 +46,8 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/g/:code" element={<GuestGathering />} />
         <Route element={<Shell />}>
@@ -62,6 +66,7 @@ export default function App() {
           <Route path="/messages/:id" element={<Convo />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/:section" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

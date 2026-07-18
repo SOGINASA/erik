@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
-import { useUiStore } from '../store/useUiStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import Button from '../components/ui/Button';
@@ -12,7 +11,6 @@ export default function Home() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
-  const openSheet = useUiStore((s) => s.openSheet);
   const cities = usePlatformStore((s) => s.cities);
 
   const features = [
@@ -46,8 +44,8 @@ export default function Home() {
           <Logo size={24} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <LangToggle />
-            <Button variant="ghost" size="sm" onClick={() => openSheet('auth')}>{t.mLogin}</Button>
-            <Button size="sm" onClick={() => navigate('/onboarding')}>{t.mStart}</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>{t.mLogin}</Button>
+            <Button size="sm" onClick={() => navigate('/register')}>{t.mStart}</Button>
           </div>
         </div>
       </header>
@@ -59,7 +57,7 @@ export default function Home() {
           <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 'clamp(34px,5vw,54px)', lineHeight: 1.02, letterSpacing: '-.035em', margin: '0 0 18px', textWrap: 'balance' }}>{t.mHeroTitle}</h1>
           <p style={{ fontSize: 17, lineHeight: 1.5, color: 'var(--ink-2)', margin: '0 0 28px', maxWidth: 520 }}>{t.mHeroSub}</p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Button size="lg" onClick={() => navigate('/onboarding')}>{t.mStart}</Button>
+            <Button size="lg" onClick={() => navigate('/register')}>{t.mStart}</Button>
             <Button size="lg" variant="secondary" onClick={() => navigate('/feed')}>{t.mBrowse}</Button>
           </div>
         </div>
@@ -151,7 +149,7 @@ export default function Home() {
           <h2 style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 32, letterSpacing: '-.02em', margin: '0 0 8px' }}>{t.mFooterTitle}</h2>
           <p style={{ fontSize: 16, opacity: 0.85, margin: '0 0 24px' }}>{t.mFooterSub}</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center' }}>
-            <button type="button" className="erik-press" onClick={() => navigate('/onboarding')} style={{ height: 52, padding: '0 28px', border: 'none', borderRadius: 'var(--r-m)', background: '#fff', color: 'var(--yard)', fontWeight: 600, fontSize: 16, cursor: 'pointer', fontFamily: 'var(--fb)' }}>{t.mStart}</button>
+            <button type="button" className="erik-press" onClick={() => navigate('/register')} style={{ height: 52, padding: '0 28px', border: 'none', borderRadius: 'var(--r-m)', background: '#fff', color: 'var(--yard)', fontWeight: 600, fontSize: 16, cursor: 'pointer', fontFamily: 'var(--fb)' }}>{t.mStart}</button>
             <button type="button" className="erik-press" onClick={() => navigate('/feed')} style={{ height: 52, padding: '0 24px', border: '1px solid rgba(255,255,255,.35)', borderRadius: 'var(--r-m)', background: 'transparent', color: '#fff', fontWeight: 500, fontSize: 16, cursor: 'pointer', fontFamily: 'var(--fb)' }}>{t.mBrowse}</button>
           </div>
           <div style={{ marginTop: 28, fontSize: 12, color: 'rgba(255,255,255,.7)' }}>{t.mMade}</div>
