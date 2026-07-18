@@ -32,8 +32,12 @@ def create_app(config_object=None):
     migrate.init_app(app, db)
     jwt.init_app(app)
 
-    with app.app_context():
-        db.create_all()
+    # Для локальной разработки/демо схема поднимается create_all() (zero-config).
+    # В проде используйте миграции: `flask db upgrade` и запуск с SKIP_DB_CREATE=1.
+    # Флаг также нужен при генерации миграций (autogenerate против пустой БД).
+    if os.environ.get('SKIP_DB_CREATE') != '1':
+        with app.app_context():
+            db.create_all()
 
     # Регистрация блюпринтов
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,

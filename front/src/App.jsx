@@ -36,6 +36,8 @@ export default function App() {
       p.loadPlatform();
       p.loadNotifications();
       p.loadFollows();
+      p.loadMe();
+      p.loadConversations();
       useGatheringStore.getState().loadRegistrations();
     });
   }, []);
