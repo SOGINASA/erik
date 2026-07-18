@@ -4,6 +4,8 @@ import Shell from './components/shell/Shell';
 import Sheets from './sheets/Sheets';
 import { Toast } from './components/ui/feedback';
 import { useSessionStore } from './store/useSessionStore';
+import { usePlatformStore } from './store/usePlatformStore';
+import { useGatheringStore } from './store/useGatheringStore';
 
 import Home from './pages/Home';
 import Onboarding from './pages/Onboarding';
@@ -26,9 +28,16 @@ import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
 
 export default function App() {
-  // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP).
+  // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP),
+  // затем подтягиваем данные платформы, уведомления, подписки и ответы на события.
   useEffect(() => {
-    useSessionStore.getState().boot();
+    useSessionStore.getState().boot().finally(() => {
+      const p = usePlatformStore.getState();
+      p.loadPlatform();
+      p.loadNotifications();
+      p.loadFollows();
+      useGatheringStore.getState().loadRegistrations();
+    });
   }, []);
 
   return (

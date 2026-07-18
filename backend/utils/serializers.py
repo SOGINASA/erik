@@ -93,7 +93,7 @@ def serialize_gathering_public(g, my_answer=None):
 
 
 def serialize_gathering_card(g):
-    """Карточка для списков (/me/gatherings, лента). Агрегаты, без PII."""
+    """Карточка для /me/gatherings. Агрегаты, без PII."""
     d = _base_gathering(g)
     came = sum(1 for p in g.participants if p.presence == 'came')
     answered = sum(1 for p in g.participants if p.answer in ('yes', 'maybe', 'no'))
@@ -102,3 +102,78 @@ def serialize_gathering_card(g):
     d['going'] = going
     d['came'] = came
     return d
+
+
+# ── P2a: соц-платформа ──
+
+def _going(g):
+    # going = базовый кэш (демо-события без реального ростера) + реальные «да».
+    # У сборов с настоящим ростером going_cache=None, поэтому считается по ростеру;
+    # RSVP на кэш-событие прибавляется к кэшу (виден в счётчике).
+    real = sum(1 for p in g.participants if p.answer == 'yes')
+    return (g.going_cache or 0) + real
+
+
+def serialize_event_card(g, viewer_id=None):
+    """Карточка события ленты (форма фронтовой EVENTS)."""
+    d = _base_gathering(g)
+    d['orgId'] = g.org_id
+    d['going'] = _going(g)
+    d['mine'] = viewer_id is not None and g.owner_id == viewer_id
+    return d
+
+
+def serialize_org(org, following=None):
+    from models import db, City, Gathering, Participant
+    events_count = db.session.query(db.func.count(Gathering.id)).filter(
+        Gathering.org_id == org.id, Gathering.status != 'deleted').scalar() or 0
+    vol_count = db.session.query(db.func.count(db.distinct(Participant.user_id))).join(
+        Gathering, Gathering.id == Participant.gathering_id).filter(
+        Gathering.org_id == org.id, Participant.user_id.isnot(None)).scalar() or 0
+    city = db.session.get(City, org.city_id) if org.city_id else None
+    d = {
+        'id': org.id, 'name': org.name, 'cat': org.cat, 'cityId': org.city_id,
+        'city': city.name_ru if city else None, 'verified': org.verified,
+        'aboutRu': org.about_ru, 'aboutKz': org.about_kz,
+        'events': events_count, 'vol': vol_count,
+    }
+    if following is not None:
+        d['following'] = following
+    return d
+
+
+def serialize_charity(c):
+    return {
+        'id': c.id, 'titleRu': c.title_ru, 'titleKz': c.title_kz, 'org': c.org_id,
+        'cityId': c.city_id, 'kind': c.kind, 'goal': c.goal, 'raised': c.raised, 'unit': c.unit,
+    }
+
+
+def serialize_volunteer(u):
+    from models import db, City
+    city = db.session.get(City, u.city_id) if u.city_id else None
+    return {
+        'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
+        'hours': u.hours_total or 0, 'events': u.events_attended or 0, 'rel': u.reliability or 0,
+    }
+
+
+def serialize_user_public(u):
+    from models import db, City, BadgeAward
+    city = db.session.get(City, u.city_id) if u.city_id else None
+    badges = [b.badge_id for b in BadgeAward.query.filter_by(user_id=u.id).all()]
+    return {
+        'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
+        'hours': u.hours_total or 0, 'events': u.events_attended or 0,
+        'reliability': u.reliability or 0, 'rank': u.rank, 'skills': u.skills or [],
+        'badges': badges,
+    }
+
+
+def serialize_city_stats(c):
+    from models import db, Gathering, User
+    active = db.session.query(db.func.count(Gathering.id)).filter(
+        Gathering.city_id == c.id, Gathering.status == 'open').scalar() or 0
+    vol = db.session.query(db.func.count(User.id)).filter(User.city_id == c.id).scalar() or 0
+    return {'id': c.id, 'ru': c.name_ru, 'kz': c.name_kz, 'x': c.map_x, 'y': c.map_y,
+            'active': active, 'vol': vol}

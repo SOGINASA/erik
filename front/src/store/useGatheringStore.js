@@ -66,10 +66,22 @@ export const useGatheringStore = create((set, get) => ({
 
   loadCoord: async (id) => {
     try {
-      const res = await api.getGathering(id);
+      // id может прийти как 'e5' из ленты — снимаем префикс
+      const res = await api.getGathering(String(id).replace(/^\D+/, ''));
       set({ gathering: res.gathering, marks: deriveMarks(res.gathering.participants), polled: false });
     } catch (_) {
       /* оставляем текущий сбор (мок или прошлую загрузку) */
+    }
+  },
+
+  loadRegistrations: async () => {
+    try {
+      const res = await api.myRegistrations();
+      const map = {};
+      Object.entries(res.registrations || {}).forEach(([gid, ans]) => { map['e' + gid] = ans; });
+      if (Object.keys(map).length) set({ regs: map });
+    } catch (_) {
+      /* keep mock */
     }
   },
 
@@ -191,6 +203,14 @@ export const useGatheringStore = create((set, get) => ({
     toast(isRu() ? 'Изменения сохранены' : 'Өзгерістер сақталды');
   },
 
+  remind: async (text, audience = 'maybe') => {
+    try {
+      return await api.remind(get().gathering.id, { audience, text_ru: text, text_kz: text });
+    } catch (_) {
+      return null;
+    }
+  },
+
   setNeeded: (n) => set((s) => ({ gathering: { ...s.gathering, needed: Math.max(1, Math.min(200, n)) } })),
   incNeeded: () => set((s) => ({ gathering: { ...s.gathering, needed: Math.min(200, s.gathering.needed + 1) } })),
   decNeeded: () => set((s) => ({ gathering: { ...s.gathering, needed: Math.max(1, s.gathering.needed - 1) } })),
@@ -200,6 +220,7 @@ export const useGatheringStore = create((set, get) => ({
   registerEvent: (eventId, a) => {
     set((s) => ({ regs: { ...s.regs, [eventId]: a } }));
     toast(isRu() ? 'Ответ сохранён' : 'Жауап сақталды');
+    api.setEventReg(String(eventId).replace(/^\D+/, ''), a).catch(() => {});
   },
 
   // --- анимация числа прогноза ---
