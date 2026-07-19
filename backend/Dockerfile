@@ -17,6 +17,6 @@ RUN mkdir -p /app/database && chmod 777 /app/database
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 5000
+EXPOSE 6752
 
 CMD ["/entrypoint.sh"]
