@@ -30,7 +30,18 @@ export default function Charity() {
           const raisedText = c.kind === 'money' ? `${c.raised.toLocaleString('ru-RU')} ₸` : `${c.raised} ${c.unit}`;
           const goalText = c.kind === 'money' ? `${c.goal.toLocaleString('ru-RU')} ₸` : `${c.goal} ${c.unit}`;
           return (
-            <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 18, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)' }}>
+            <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 18, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', overflow: 'hidden' }}>
+              {c.image && (
+                <div style={{ margin: '-18px -18px 0', height: 150, overflow: 'hidden' }}>
+                  <img
+                    src={c.image}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+              )}
               <div>
                 <div style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 17, color: 'var(--ink)', marginBottom: 2 }}>{isRu ? c.titleRu : c.titleKz}</div>
                 <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{org.name} · {cityName(c.cityId)}</div>

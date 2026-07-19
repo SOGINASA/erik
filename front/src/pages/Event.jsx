@@ -4,6 +4,7 @@ import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
+import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
 import { THEMES, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
@@ -22,6 +23,7 @@ export default function Event() {
   const unregisterEvent = useGatheringStore((s) => s.unregisterEvent);
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
+  const name = useSessionStore((s) => s.name);   // есть профиль? гость (без имени) → просим войти
   const [participants, setParticipants] = useState([]);
 
   const ev = events.find((e) => e.id === id) || events[0];
@@ -38,8 +40,9 @@ export default function Event() {
     return () => { alive = false; };
   }, [ev.id]);
 
-  // Пожаловаться на событие: причина → реальная запись в очередь модерации.
+  // Действия, требующие личности (RSVP/заявка/жалоба) — гостя (без имени) ведём в вход.
   const report = () => {
+    if (!name) { openSheet('auth'); return; }
     const asked = (typeof window !== 'undefined' && window.prompt)
       ? window.prompt(isRu ? 'Причина жалобы:' : 'Шағым себебі:')
       : '';
@@ -61,7 +64,7 @@ export default function Event() {
   const reg = regs[ev.id];
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 
-  const openRegister = () => openSheet('register', ev.id);
+  const openRegister = () => (name ? openSheet('register', ev.id) : openSheet('auth'));
 
   // Иконка строки-детали (line-стиль, цвет var(--ink-3)) — как в дизайне.
   const rowIcon = (children) => (
@@ -78,7 +81,16 @@ export default function Event() {
 
         {/* Обложка с чипом темы */}
         <div style={{ height: 190, background: theme.tint, borderRadius: 'var(--r-l)', display: 'flex', alignItems: 'flex-end', padding: 20, position: 'relative', overflow: 'hidden' }}>
-          <span style={{ height: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: theme.ink, color: '#fff', fontSize: 12, fontWeight: 600 }}>{themeLabel}</span>
+          {ev.image && (
+            <img
+              src={ev.image}
+              alt=""
+              loading="lazy"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
+          <span style={{ position: 'relative', height: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: theme.ink, color: '#fff', fontSize: 12, fontWeight: 600 }}>{themeLabel}</span>
         </div>
 
         <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 28, lineHeight: 1.15, letterSpacing: '-.02em', margin: '20px 0 8px', textWrap: 'balance' }}>{title}</h1>
@@ -149,7 +161,7 @@ export default function Event() {
         {!ev.mine && (
           <button
             className="erik-btn erik-btn-secondary"
-            onClick={() => openSheet('apply', ev.id)}
+            onClick={() => (name ? openSheet('apply', ev.id) : openSheet('auth'))}
             style={{ width: '100%', height: 48, marginTop: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="send" size={17} stroke={1.7} />{t.mgApplyCta}

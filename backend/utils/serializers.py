@@ -119,6 +119,7 @@ def serialize_event_card(g, viewer_id=None):
     d = _base_gathering(g)
     d['orgId'] = g.org_id
     d['going'] = _going(g)
+    d['image'] = g.image_url
     d['mine'] = viewer_id is not None and g.owner_id == viewer_id
     return d
 
@@ -146,6 +147,7 @@ def serialize_charity(c):
     return {
         'id': c.id, 'titleRu': c.title_ru, 'titleKz': c.title_kz, 'org': c.org_id,
         'cityId': c.city_id, 'kind': c.kind, 'goal': c.goal, 'raised': c.raised, 'unit': c.unit,
+        'image': c.image_url,
     }
 
 

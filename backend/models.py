@@ -179,6 +179,7 @@ class Gathering(db.Model):
     ctx = db.Column(db.Float, default=1.0)
     revision = db.Column(db.Integer, default=0)           # для delta-поллинга
     going_cache = db.Column(db.Integer, nullable=True)    # демо-события ленты без реального ростера
+    image_url = db.Column(db.String(300), nullable=True)  # обложка события (внешний URL); None → цветная плашка темы
 
     created_at = db.Column(db.DateTime, default=_now)
     finalized_at = db.Column(db.DateTime)
@@ -380,6 +381,7 @@ class CharityRequest(db.Model):
     unit = db.Column(db.String(16))                       # ₸ | вещей | книг
     goal = db.Column(db.Integer, default=0)
     raised = db.Column(db.Integer, default=0)             # сервер-авторитетно
+    image_url = db.Column(db.String(300), nullable=True)  # картинка сбора (внешний URL)
     created_at = db.Column(db.DateTime, default=_now)
 
 

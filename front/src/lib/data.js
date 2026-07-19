@@ -37,8 +37,20 @@ export const ORGS = [
   { id: 'o5', name: 'Дети будущего', cat: 'edu', city: 'Шымкент', verified: true, aboutRu: 'Наставничество и репетиторство для сельских школьников.', aboutKz: 'Ауыл оқушыларына тәлімгерлік және репетиторлық.', events: 18, vol: 380 },
 ];
 
+// Обложки-заглушки (внешние URL, topical by keyword) для офлайн-фолбэка — зеркалит backend/seed.py.
+// Онлайн реальный image приходит из API; здесь только на случай, когда сервер недоступен.
+const THEME_KW = {
+  eco: 'cleanup,park', elderly: 'elderly,care', animals: 'animal,shelter',
+  blood: 'blood,donation', edu: 'tutoring,children', trees: 'tree,planting',
+  homeless: 'warm,clothes', medical: 'hospital,care', disaster: 'flood,rescue',
+  sport: 'city,run', culture: 'books,festival', it: 'computer,seniors',
+};
+const lockOf = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h += s.charCodeAt(i); return h % 100000; };
+export const themeImage = (theme, key) => `https://loremflickr.com/800/500/${THEME_KW[theme] || 'volunteer,community'}?lock=${lockOf(key || theme)}`;
+const charityImage = (kw, key) => `https://loremflickr.com/800/500/${kw}?lock=${lockOf(key)}`;
+
 const ev = (id, code, ru, kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, mine) =>
-  ({ id, code, titleRu: ru, titleKz: kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, mine: !!mine });
+  ({ id, code, titleRu: ru, titleKz: kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, image: themeImage(theme, code), mine: !!mine });
 
 export const EVENTS = [
   ev('e1', 'PARK18', 'Уборка парка на Набережной', 'Жағалау саябағын тазалау', 'o1', 'pet', 'eco', 'Парк на Набережной, вход у фонтана', 'Жағалау саябағы, фонтан жанындағы кіреберіс', 'суббота, 18 июля', 'сенбі, 18 шілде', '10:00', 'one', 20, 15, true),
@@ -100,10 +112,10 @@ export const CONVOS = [
 ];
 
 export const CHARITY = [
-  { id: 'ch1', titleRu: 'Инвентарь для субботников', titleKz: 'Сенбілікке құрал-жабдық', org: 'o1', cityId: 'pet', kind: 'money', goal: 150000, raised: 98000, unit: '₸' },
-  { id: 'ch2', titleRu: 'Тёплые вещи для приюта', titleKz: 'Баспанаға жылы киім', org: 'o2', cityId: 'alm', kind: 'items', goal: 200, raised: 134, unit: 'вещей' },
-  { id: 'ch3', titleRu: 'Корм для приюта «Лапа»', titleKz: '«Лапа» баспанасына жем', org: 'o3', cityId: 'alm', kind: 'money', goal: 90000, raised: 71500, unit: '₸' },
-  { id: 'ch4', titleRu: 'Учебники сельским школам', titleKz: 'Ауыл мектептеріне оқулық', org: 'o5', cityId: 'shy', kind: 'items', goal: 500, raised: 210, unit: 'книг' },
+  { id: 'ch1', titleRu: 'Инвентарь для субботников', titleKz: 'Сенбілікке құрал-жабдық', org: 'o1', cityId: 'pet', kind: 'money', goal: 150000, raised: 98000, unit: '₸', image: charityImage('cleanup,tools', 'ch1') },
+  { id: 'ch2', titleRu: 'Тёплые вещи для приюта', titleKz: 'Баспанаға жылы киім', org: 'o2', cityId: 'alm', kind: 'items', goal: 200, raised: 134, unit: 'вещей', image: charityImage('warm,clothes', 'ch2') },
+  { id: 'ch3', titleRu: 'Корм для приюта «Лапа»', titleKz: '«Лапа» баспанасына жем', org: 'o3', cityId: 'alm', kind: 'money', goal: 90000, raised: 71500, unit: '₸', image: charityImage('pet,food', 'ch3') },
+  { id: 'ch4', titleRu: 'Учебники сельским школам', titleKz: 'Ауыл мектептеріне оқулық', org: 'o5', cityId: 'shy', kind: 'items', goal: 500, raised: 210, unit: 'книг', image: charityImage('books,school', 'ch4') },
 ];
 
 // Детерминированный сбор-демо: 14 «да», 24 «может», 7 «нет» с правдоподобной историей.

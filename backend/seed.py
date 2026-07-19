@@ -12,6 +12,29 @@ from models import (
     Conversation, ConversationMember, Message, Report,
 )
 
+# ── Обложки: внешние URL по теме (loremflickr — topical by keyword, детерминировано по lock).
+# Чтобы поставить конкретную картинку, верните готовый URL из _theme_image/_img
+# или задайте image_url явно прямо в вызове конструктора.
+THEME_KW = {
+    'eco': 'cleanup,park', 'elderly': 'elderly,care', 'animals': 'animal,shelter',
+    'blood': 'blood,donation', 'edu': 'tutoring,children', 'trees': 'tree,planting',
+    'homeless': 'warm,clothes', 'medical': 'hospital,care', 'disaster': 'flood,rescue',
+    'sport': 'city,run', 'culture': 'books,festival', 'it': 'computer,seniors',
+}
+
+
+def _lock(s):
+    return sum(ord(c) for c in s) % 100000        # стабильный ключ картинки из кода/заголовка
+
+
+def _img(keywords, lock):
+    return f'https://loremflickr.com/800/500/{keywords}?lock={lock}'
+
+
+def _theme_image(theme, code):
+    return _img(THEME_KW.get(theme, 'volunteer,community'), _lock(code))
+
+
 # Жалобы для экрана модерации: (target_type, ru, kz, count)
 REPORTS = [
     ('event', 'Событие «Быстрый заработок» похоже на спам', '«Тез табыс» іс-шарасы спам сияқты', 3),
@@ -76,12 +99,12 @@ COMMUNITY_EVENTS = [
      'Библиотека им. Гоголя', 'Гоголь атындағы кітапхана', 2026, 7, 26, 14, 0, 'reg', 12, 7),
 ]
 
-# Благотворительность: (titleRu, titleKz, org_id, city, kind, goal, raised, unit)
+# Благотворительность: (titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw)
 CHARITY = [
-    ('Инвентарь для субботников', 'Сенбілікке құрал-жабдық', 1, 'pet', 'money', 150000, 98000, '₸'),
-    ('Тёплые вещи для приюта', 'Баспанаға жылы киім', 2, 'alm', 'items', 200, 134, 'вещей'),
-    ('Корм для приюта «Лапа»', '«Лапа» баспанасына жем', 3, 'alm', 'money', 90000, 71500, '₸'),
-    ('Учебники сельским школам', 'Ауыл мектептеріне оқулық', 5, 'shy', 'items', 500, 210, 'книг'),
+    ('Инвентарь для субботников', 'Сенбілікке құрал-жабдық', 1, 'pet', 'money', 150000, 98000, '₸', 'cleanup,tools'),
+    ('Тёплые вещи для приюта', 'Баспанаға жылы киім', 2, 'alm', 'items', 200, 134, 'вещей', 'warm,clothes'),
+    ('Корм для приюта «Лапа»', '«Лапа» баспанасына жем', 3, 'alm', 'money', 90000, 71500, '₸', 'pet,food'),
+    ('Учебники сельским школам', 'Ауыл мектептеріне оқулық', 5, 'shy', 'items', 500, 210, 'книг', 'books,school'),
 ]
 
 # Волонтёры-лидеры: (name, city_id, hours, events, rel)
@@ -216,6 +239,15 @@ def seed_demo(reset=False):
             db.session.add(Badge(id=bid, label_ru=ru, label_kz=kz, glyph=glyph))
     db.session.commit()
 
+    # админ-АККАУНТ (email/пароль) — чтобы работал вход администратора через ФОРМУ логина.
+    # Демо-креды: admin@erik.kz / admin123. В проде — flask create-admin с уникальным паролем.
+    if not User.query.filter_by(email='admin@erik.kz').first():
+        admin_acc = User(email='admin@erik.kz', full_name='Администратор erik',
+                         user_type='admin', is_active=True, is_verified=True)
+        admin_acc.set_password('admin123')
+        db.session.add(admin_acc)
+        db.session.commit()
+
     if Gathering.query.filter_by(code='PARK18').first():
         print('PARK18 уже есть — пропускаю (используй --reset для пересоздания)')
         return
@@ -238,6 +270,7 @@ def seed_demo(reset=False):
         place_kz='Жағалау саябағы, фонтан жанындағы кіреберіс',
         starts_at=datetime(2026, 7, 18, 10, 0, tzinfo=timezone.utc),
         needed=20, status='open', ctx=0.95, format='one',
+        image_url=_theme_image('eco', 'PARK18'),
     )
     db.session.add(gathering)
     db.session.flush()
@@ -310,6 +343,7 @@ def _seed_platform():
             title_ru=ru, title_kz=kz, place_ru=placeRu, place_kz=placeKz,
             starts_at=datetime(y, mo, d, hh, mm, tzinfo=timezone.utc),
             format=fmt, needed=needed, status='open', ctx=1.0, going_cache=going,
+            image_url=_theme_image(theme, code),
         )
         db.session.add(g)
         db.session.flush()
@@ -324,15 +358,17 @@ def _seed_platform():
                 title_ru=ru, title_kz=kz, place_ru=placeRu, place_kz=placeKz,
                 starts_at=datetime(y, mo, d, hh, mm, tzinfo=timezone.utc),
                 format=fmt, needed=needed, status='open', ctx=1.0, going_cache=going,
+                image_url=_theme_image(theme, code),
             )
             db.session.add(g)
             db.session.flush()
             db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=coord.id, role='owner'))
 
     # благотворительность
-    for titleRu, titleKz, org_id, city, kind, goal, raised, unit in CHARITY:
+    for titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw in CHARITY:
         db.session.add(CharityRequest(title_ru=titleRu, title_kz=titleKz, org_id=org_id,
-                                      city_id=city, kind=kind, goal=goal, raised=raised, unit=unit))
+                                      city_id=city, kind=kind, goal=goal, raised=raised, unit=unit,
+                                      image_url=_img(img_kw, _lock(titleRu))))
 
     # волонтёры-лидеры
     for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):

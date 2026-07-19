@@ -48,11 +48,14 @@ export default function Shell() {
 function Sidebar({ route }) {
   const t = useT();
   const go = useGuardedNav();
+  const navigate = useNavigate();
   const loggedIn = useSessionStore((s) => s.loggedIn);
   const isAdmin = useSessionStore((s) => s.isAdmin());
   const role = useSessionStore((s) => s.role);
+  const logout = useSessionStore((s) => s.logout);
   const isOrganizer = role === 'coord' || role === 'org';
   const me = usePlatformStore((s) => s.me);
+  const showToast = useUiStore((s) => s.showToast);
   const unread = useUnread();
 
   const item = (on) => ({
@@ -111,6 +114,15 @@ function Sidebar({ route }) {
           </button>
         ) : (
           <button className="erik-btn erik-btn-primary" onClick={() => go('/register')} style={{ width: '100%', height: 44, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.mStart}</button>
+        )}
+        {loggedIn && (
+          <button
+            className="erik-row-hover"
+            onClick={() => { logout(); navigate('/'); showToast(t.logout === 'Шығу' ? 'Аккаунттан шықтыңыз' : 'Вы вышли из аккаунта'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '8px', marginTop: 4, borderRadius: 'var(--r-m)', color: 'var(--ink-2)', fontSize: 14, fontFamily: 'var(--fb)' }}
+          >
+            <Icon name="external" size={18} />{t.logout}
+          </button>
         )}
         <div style={{ marginTop: 8 }}>
           <LangToggle surface="var(--paper)" />

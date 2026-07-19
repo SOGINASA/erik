@@ -63,6 +63,24 @@ export const useSessionStore = create(
         set((s) => ({ loggedIn: true, role: s.role || 'vol' }));
       },
 
+      // Демо-вход как конкретная засеянная личность (по её deviceId): demo-coord (админ+
+      // координатор), demo-v0 (волонтёр), demo-org1 (НКО). Токен — этой личности, поэтому
+      // роль/user_type/имя приходят с бэка настоящими (в т.ч. admin для demo-coord).
+      // deviceId устройства НЕ подменяем (остаётся в persist) — переопределяем лишь тело сессии.
+      loginAsDevice: async (deviceId) => {
+        const res = await api.session({ deviceId });
+        setAuth({ token: res.token, refreshToken: res.refreshToken || null });
+        set({
+          token: res.token,
+          refreshToken: res.refreshToken || null,
+          loggedIn: true,
+          userType: res.user.user_type || 'user',
+          role: res.user.role || 'vol',
+          name: res.user.full_name || null,
+        });
+        return res;
+      },
+
       // Вход по паролю (аккаунт). Бросает при 401 — Login.submit ловит и тостит.
       // deviceId остаётся (X-Device-Id), сверху ставим account-токен.
       loginWithPassword: async ({ identifier, password }) => {
@@ -106,18 +124,21 @@ export const useSessionStore = create(
         return res;
       },
 
+      // Выход → чистое гостевое состояние (deviceId сохраняем как якорь устройства).
       logout: () => {
-        setAuth({ token: null });
-        set({ loggedIn: false, token: null, userType: null, refreshToken: null });
+        setAuth({ token: null, refreshToken: null });
+        set({ loggedIn: false, token: null, userType: null, refreshToken: null,
+              name: null, role: null, phone: null });
       },
     }),
     {
       name: 'erik-session',
-      // refreshToken/userType переживают перезагрузку (device-токен по-прежнему опускаем —
-      // демо стартует с лендинга и переподнимает device-сессию через boot()).
+      // userType НЕ персистим: его задаёт boot() из актуальной сессии (иначе после
+      // перезагрузки бывший админ мельком видел бы админ-навигацию до ответа boot()).
+      // token тоже опускаем (демо стартует с лендинга); refreshToken переживает перезагрузку.
       partialize: (s) => ({
         lang: s.lang, deviceId: s.deviceId, name: s.name, phone: s.phone,
-        refreshToken: s.refreshToken, userType: s.userType,
+        refreshToken: s.refreshToken,
       }),
     }
   )

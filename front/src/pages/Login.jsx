@@ -8,11 +8,12 @@ import { FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 
-// Быстрый вход по типу пользователя (демо).
+// Быстрый вход в засеянные демо-личности (реальные данные, не мок).
+// device — deviceId засеянной личности (см. seed.py): токен приходит настоящий.
 const PERSONAS = [
-  { role: 'vol', label: 'Волонтёр', icon: 'users', to: '/feed' },
-  { role: 'coord', label: 'Координатор', icon: 'calendar', to: '/manage' },
-  { role: 'org', label: 'НКО', icon: 'shield', to: '/manage' },
+  { device: 'demo-v0', label: 'Волонтёр', icon: 'users', to: '/feed' },
+  { device: 'demo-coord', label: 'Координатор', icon: 'calendar', to: '/manage' },
+  { device: 'demo-org1', label: 'НКО', icon: 'shield', to: '/manage' },
 ];
 
 function AuthField({ icon, right, ...props }) {
@@ -32,9 +33,8 @@ function AuthField({ icon, right, ...props }) {
 // Страница входа. Логин + пароль и три кнопки быстрого входа по роли.
 export default function Login() {
   const navigate = useNavigate();
-  const login = useSessionStore((s) => s.login);
   const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
-  const setRole = useSessionStore((s) => s.setRole);
+  const loginAsDevice = useSessionStore((s) => s.loginAsDevice);
   const showToast = useUiStore((s) => s.showToast);
 
   const [id, setId] = useState('');
@@ -72,18 +72,26 @@ export default function Login() {
     showToast('Если такой email есть — письмо для сброса отправлено');
   };
 
+  // Демо-вход как засеянная личность (реальный токен → реальная роль/данные).
   const quick = async (p) => {
-    setRole(p.role);
-    await login();
-    navigate(p.to);
-    showToast(`Вход как ${p.label}`);
+    try {
+      await loginAsDevice(p.device);
+      navigate(p.to);
+      showToast(`Вход как ${p.label}`);
+    } catch (_) {
+      showToast('Бэкенд недоступен — запустите сервер и seed-demo');
+    }
   };
 
+  // Админка гейтится по user_type='admin'. Демо-админ — demo-coord (см. seed.py).
   const quickAdmin = async () => {
-    setRole('admin');
-    await login();
-    navigate('/admin');
-    showToast('Вход как администратор');
+    try {
+      await loginAsDevice('demo-coord');
+      navigate('/admin');
+      showToast('Вход как администратор');
+    } catch (_) {
+      showToast('Бэкенд недоступен — запустите сервер и seed-demo');
+    }
   };
 
   return (
@@ -154,6 +162,9 @@ export default function Login() {
           >
             <Icon name="shield" size={18} /> Войти как администратор
           </button>
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
+            демо-админ по паролю: <span style={{ fontFamily: 'var(--fm)' }}>admin@erik.kz / admin123</span>
+          </p>
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 24 }}>
             Нет аккаунта?{' '}

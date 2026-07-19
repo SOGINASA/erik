@@ -374,7 +374,9 @@ function ApplySheet() {
   const toggle = (id) => setSkills((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const send = () => {
-    addApplication({ eventId, name: name || me.name, phone, city: me.city, skills, message });
+    // Имя/город берёт сервер из профиля (createApplication игнорирует клиентские PII).
+    // Клиентские поля — только для оптимистичного отображения; мок ME не используем.
+    addApplication({ eventId, name: name || me.name, phone, city: (me && me.cityId ? me.city : ''), skills, message });
     close();
     showToast(t.mgApplySent);
   };

@@ -22,8 +22,17 @@ export default function EventCard({ event, reg, onOpen }) {
       onClick={onOpen}
       style={{ textAlign: 'left', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', cursor: 'pointer', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }}
     >
-      <div style={{ position: 'relative', height: 104, background: T.tint, display: 'flex', alignItems: 'flex-end', padding: '12px 14px' }}>
-        <span style={{ height: 24, padding: '0 10px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: T.ink, color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: '.02em' }}>{isRu ? T.ru : T.kz}</span>
+      <div style={{ position: 'relative', height: 104, background: T.tint, display: 'flex', alignItems: 'flex-end', padding: '12px 14px', overflow: 'hidden' }}>
+        {event.image && (
+          <img
+            src={event.image}
+            alt=""
+            loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+        <span style={{ position: 'relative', height: 24, padding: '0 10px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: T.ink, color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: '.02em' }}>{isRu ? T.ru : T.kz}</span>
       </div>
       <div style={{ padding: 14 }}>
         <div style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 16, color: 'var(--ink)', marginBottom: 4, lineHeight: 1.25 }}>{isRu ? event.titleRu : event.titleKz}</div>
