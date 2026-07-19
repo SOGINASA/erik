@@ -4,30 +4,8 @@ import { THEMES } from '../../lib/data';
 import { api } from '../../lib/api';
 import { SectionCard, MiniBars, Ring } from './kit';
 
-// Демо-фолбэк аналитики: показываем, пока грузится API или если он упал.
-const DEMO = {
-  attendanceRate: 74,
-  byCity: [
-    { id: 'alm', ru: 'Алматы', active: 12, vol: 4200 },
-    { id: 'ast', ru: 'Астана', active: 9, vol: 3100 },
-    { id: 'shy', ru: 'Шымкент', active: 6, vol: 1800 },
-    { id: 'kar', ru: 'Караганда', active: 4, vol: 1200 },
-  ],
-  byTheme: [
-    { theme: 'eco', events: 18 },
-    { theme: 'elderly', events: 12 },
-    { theme: 'animals', events: 9 },
-    { theme: 'blood', events: 7 },
-  ],
-  growth: [
-    { label: '2026-02', value: 1200 },
-    { label: '2026-03', value: 1750 },
-    { label: '2026-04', value: 2100 },
-    { label: '2026-05', value: 2680 },
-    { label: '2026-06', value: 3400 },
-    { label: '2026-07', value: 4200 },
-  ],
-};
+// Пустой каркас — НИКАКИХ выдуманных чисел: до загрузки/при ошибке показываем пусто, а не мок.
+const EMPTY = { attendanceRate: null, byCity: [], byTheme: [], growth: [] };
 
 const MONTHS_RU = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 // 'YYYY-MM' → 'Июл 2026' (для подписей роста).
@@ -43,22 +21,21 @@ function monthLabel(ym) {
 export default function AdminAnalytics() {
   const volunteers = usePlatformStore((s) => s.volunteers);
 
-  const [analytics, setAnalytics] = useState(DEMO);
-  const [demo, setDemo] = useState(true);
+  const [analytics, setAnalytics] = useState(EMPTY);
+  const [stats, setStats] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const data = await api.adminAnalytics();
-        if (!alive) return;
-        // Мержим — если API вернул неполный ответ, недостающие блоки остаются демо.
-        setAnalytics((prev) => ({ ...prev, ...data }));
-        setDemo(false);
+        if (alive) { setAnalytics((prev) => ({ ...prev, ...data })); setLoaded(true); }
       } catch {
-        // API недоступен — остаёмся на демо-данных, не падаем.
+        if (alive) setLoaded(true);   // ошибка — пусто, без выдуманных чисел
       }
     })();
+    api.adminStats().then((s) => { if (alive) setStats(s); }).catch(() => {});
     return () => { alive = false; };
   }, []);
 
@@ -76,12 +53,13 @@ export default function AdminAnalytics() {
   // Динамика новых пользователей по месяцам.
   const growthBars = (analytics.growth || []).map((g) => ({ label: monthLabel(g.label), value: g.value }));
 
-  // Средняя надёжность волонтёров (из стора).
-  const avgRel = Math.round(volunteers.reduce((a, v) => a + (v.rel || 0), 0) / (volunteers.length || 1));
+  // Средняя надёжность — авторитетно из /admin/stats (не из мок-стора).
+  const avgRel = stats && stats.avgReliability != null ? stats.avgReliability : 0;
+  const attendance = analytics.attendanceRate != null ? analytics.attendanceRate : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>За всё время{demo ? ' · демо-данные' : ''}</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>За всё время{loaded ? '' : ' · загрузка…'}</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
         <SectionCard title="Волонтёры по городам">
@@ -98,7 +76,7 @@ export default function AdminAnalytics() {
 
         <SectionCard title="Средняя явка">
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-            <Ring value={analytics.attendanceRate || 0} label="явка" />
+            <Ring value={attendance} label="явка" />
             <div style={{ flex: 1, minWidth: 150, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.45 }}>
               Доля подтверждённых участников, которые действительно пришли на события.
             </div>

@@ -40,10 +40,7 @@ export const usePlatformStore = create((set, get) => ({
   notifs: NOTIFS,
   convos: CONVOS,
   charity: CHARITY,
-  reports: [
-    { id: 'r1', ru: 'Событие «Быстрый заработок» похоже на спам', kz: '«Тез табыс» іс-шарасы спам сияқты', count: 3, status: 'open' },
-    { id: 'r2', ru: 'Профиль с оскорблениями в чате', kz: 'Чатта дөрекілік көрсеткен профиль', count: 1, status: 'open' },
-  ],
+  reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
 
   followed: {},
   notifRead: {},

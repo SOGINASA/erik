@@ -453,6 +453,7 @@ class Report(db.Model):
     reason = db.Column(db.String(200), nullable=True)     # причина от заявителя
     reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # кто подал (последний)
     resolved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)   # когда закрыта (для ср. времени реакции)
     created_at = db.Column(db.DateTime, default=_now)
 
     def to_dict(self):

@@ -5,7 +5,7 @@ import { usePlatformStore } from '../store/usePlatformStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { api } from '../lib/api';
-import { THEMES, CITIES, avatarOf, initialOf } from '../lib/data';
+import { THEMES, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import Icon from '../components/Icon';
 
@@ -17,6 +17,7 @@ export default function Event() {
   const { id } = useParams();
   const events = usePlatformStore((s) => s.events);
   const orgs = usePlatformStore((s) => s.orgs);
+  const cities = usePlatformStore((s) => s.cities);
   const regs = useGatheringStore((s) => s.regs);
   const unregisterEvent = useGatheringStore((s) => s.unregisterEvent);
   const openSheet = useUiStore((s) => s.openSheet);
@@ -26,7 +27,7 @@ export default function Event() {
   const ev = events.find((e) => e.id === id) || events[0];
   const theme = THEMES[ev.theme] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
   const org = orgs.find((o) => o.id === ev.orgId) || {};
-  const city = CITIES.find((c) => c.id === ev.cityId) || { ru: '', kz: '' };
+  const city = cities.find((c) => c.id === ev.cityId) || { ru: '', kz: '' };
 
   // Реальные участники события (стопка аватаров) — по id события, а не из демо-сбора.
   useEffect(() => {

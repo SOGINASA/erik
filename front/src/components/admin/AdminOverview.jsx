@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlatformStore } from '../../store/usePlatformStore';
-import { useUiStore } from '../../store/useUiStore';
 import { api } from '../../lib/api';
 import { StatCard, SectionCard, MiniBars, Ring } from './kit';
 import Icon from '../Icon';

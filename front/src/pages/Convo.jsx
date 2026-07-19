@@ -18,12 +18,13 @@ export default function Convo() {
   const desktop = useIsDesktop();
 
   const convo = convos.find((c) => c.id === id) || convos[0];
+  const convoId = convo && convo.id;
   const send = () => sendMsg(convo.id);
 
   // Помечаем диалог прочитанным на сервере при открытии.
   useEffect(() => {
-    if (convo && convo.id) api.readConversation(String(convo.id).replace(/^\D+/, '')).catch(() => {});
-  }, [convo && convo.id]);
+    if (convoId) api.readConversation(String(convoId).replace(/^\D+/, '')).catch(() => {});
+  }, [convoId]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>

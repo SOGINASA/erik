@@ -130,6 +130,22 @@ def test_register_upgrades_device_user(client, sc):
     assert upgraded.trust_came == 5 and upgraded.hours_total == 40   # trust/история сохранены
 
 
+# ── реальная метрика «ср. время реакции» + размеры сегментов ──
+def test_admin_stats_reaction_and_segments(client, sc):
+    # без закрытых жалоб — avgReactionHours = null
+    st0 = client.get('/api/admin/stats', headers=_h(sc['admin'])).get_json()
+    assert 'avgReactionHours' in st0 and st0['avgReactionHours'] is None
+    assert 'nkoUsers' in st0
+    # подать и закрыть жалобу → метрика становится числом
+    r = client.post('/api/reports', headers=_h(sc['vol']),
+                    json={'targetType': 'event', 'targetId': sc['gid'], 'reason': 'x'})
+    rid = r.get_json()['report']['id']
+    client.post(f'/api/admin/reports/{rid}/resolve', headers=_h(sc['admin']))
+    st1 = client.get('/api/admin/stats', headers=_h(sc['admin'])).get_json()
+    assert isinstance(st1['avgReactionHours'], (int, float)) and st1['avgReactionHours'] >= 0
+    assert Report.query.get(rid).resolved_at is not None
+
+
 # ── A12 device_id не утекает в admin-список, но виден в своём /me ──
 def test_device_id_not_leaked_in_admin(client, sc):
     r = client.get('/api/admin/users', headers=_h(sc['admin']))

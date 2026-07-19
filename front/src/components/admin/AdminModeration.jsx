@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { useLang } from '../../i18n';
+import { api } from '../../lib/api';
 import { StatCard, SectionCard, StatusPill } from './kit';
 import Button from '../ui/Button';
 import { THEMES } from '../../lib/data';
@@ -52,12 +53,17 @@ export default function AdminModeration() {
   const reviewReport = usePlatformStore((s) => s.reviewReport);
   const resolveReport = usePlatformStore((s) => s.resolveReport);
   const lang = useLang();
+  const [stats, setStats] = useState(null);
 
   // Организации грузим из платформы, жалобы — отдельным вызовом (в App.jsx он не зовётся).
   useEffect(() => { loadPlatform(); loadReports(); }, [loadPlatform, loadReports]);
+  // Реальная метрика «ср. время реакции» из /admin/stats.
+  useEffect(() => { api.adminStats().then(setStats).catch(() => {}); }, []);
 
   const pending = orgs.filter((o) => !o.verified);
   const openReports = reports.filter((r) => r.status === 'open').length;
+  // ср. время реакции модерации: реальное из бэкенда, иначе «—»
+  const reaction = stats && stats.avgReactionHours != null ? `${stats.avgReactionHours} ч` : '—';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -65,7 +71,7 @@ export default function AdminModeration() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
         <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
-        <StatCard label="Ср. время реакции" value="2 ч" sub="за последние 7 дней" icon="clock" />
+        <StatCard label="Ср. время реакции" value={reaction} sub="от жалобы до решения" icon="clock" />
       </div>
 
       {/* заявки на верификацию */}

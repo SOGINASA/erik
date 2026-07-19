@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUiStore } from '../../store/useUiStore';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { api } from '../../lib/api';
@@ -6,14 +6,14 @@ import { SectionCard, FilterChips, StatusPill } from './kit';
 import Button from '../ui/Button';
 import { Field, Textarea, FieldLabel } from '../ui/controls';
 
-// Аудитории рассылки: value для чипов, pill — короткая подпись в списке,
-// reach — ориентировочный охват (визуальная подсказка), tone — цвет статус-пилла.
+// Аудитории рассылки: value для чипов, pill — короткая подпись, tone — цвет пилла.
+// Реальный размер сегмента берётся из /admin/stats (statKey), а не хардкодится.
 const AUDIENCES = [
-  { value: 'all', label: 'Все пользователи', pill: 'Все', reach: '20 300', tone: 'blue' },
-  { value: 'vol', label: 'Волонтёры', pill: 'Волонтёры', reach: '18 900', tone: 'yard' },
-  { value: 'coord', label: 'Координаторы', pill: 'Координаторы', reach: '128', tone: 'maybe' },
-  { value: 'nko', label: 'НКО', pill: 'НКО', reach: '810', tone: 'out' },
-  { value: 'city', label: 'По городу', pill: 'По городу', reach: '2 400', tone: 'blue' },
+  { value: 'all', label: 'Все пользователи', pill: 'Все', statKey: 'users', tone: 'blue' },
+  { value: 'vol', label: 'Волонтёры', pill: 'Волонтёры', statKey: 'volunteers', tone: 'yard' },
+  { value: 'coord', label: 'Координаторы', pill: 'Координаторы', statKey: 'coordinators', tone: 'maybe' },
+  { value: 'nko', label: 'НКО', pill: 'НКО', statKey: 'nkoUsers', tone: 'out' },
+  { value: 'city', label: 'По городу', pill: 'По городу', statKey: null, tone: 'blue' },
 ];
 
 const fmt = (n) => Number(n).toLocaleString('ru-RU');
@@ -23,8 +23,13 @@ export default function AdminBroadcast() {
   const showToast = useUiStore((s) => s.showToast);
   const cities = usePlatformStore((s) => s.cities);
 
+  const [stats, setStats] = useState(null);
   const [audience, setAudience] = useState('all');
   const [cityId, setCityId] = useState(() => cities[0]?.id || '');
+
+  // Реальные размеры сегментов для подсказки охвата.
+  useEffect(() => { api.adminStats().then(setStats).catch(() => {}); }, []);
+  const segSize = (a) => (stats && a.statKey && stats[a.statKey] != null ? fmt(stats[a.statKey]) : null);
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [textKz, setTextKz] = useState('');
@@ -74,6 +79,13 @@ export default function AdminBroadcast() {
             <div>
               <FieldLabel>Аудитория</FieldLabel>
               <FilterChips options={AUDIENCES} value={audience} onChange={setAudience} />
+              {(() => {
+                const a = AUDIENCES.find((x) => x.value === audience);
+                const size = a && segSize(a);
+                return size ? (
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-3)' }}>≈ {size} получателей</div>
+                ) : null;
+              })()}
             </div>
             {audience === 'city' && (
               <div>

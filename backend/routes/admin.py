@@ -77,12 +77,28 @@ def moderation_stats():
         User.is_active.is_(True), User.role == 'vol').scalar() or 0
     coordinators = db.session.query(db.func.count(User.id)).filter(
         User.is_active.is_(True), User.role == 'coord').scalar() or 0
+    nko_users = db.session.query(db.func.count(User.id)).filter(
+        User.is_active.is_(True), User.role == 'org').scalar() or 0
     active_events = db.session.query(db.func.count(Gathering.id)).filter(
         Gathering.status == 'open').scalar() or 0
     hours_total = db.session.query(db.func.coalesce(db.func.sum(User.hours_total), 0)).scalar() or 0
     raised = db.session.query(db.func.coalesce(db.func.sum(CharityRequest.raised), 0)).filter(
         CharityRequest.kind == 'money').scalar() or 0
     avg_rel = db.session.query(db.func.avg(User.reliability)).filter(User.events_attended > 0).scalar()
+
+    # среднее время реакции модерации: created_at → resolved_at по закрытым жалобам (в часах)
+    resolved = (db.session.query(Report.created_at, Report.resolved_at)
+                .filter(Report.status == 'resolved', Report.resolved_at.isnot(None)).all())
+    avg_reaction_hours = None
+    if resolved:
+        total_h = 0.0
+        for created, done in resolved:
+            if created is None or done is None:
+                continue
+            c = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+            d = done if done.tzinfo else done.replace(tzinfo=timezone.utc)
+            total_h += max(0.0, (d - c).total_seconds() / 3600.0)
+        avg_reaction_hours = round(total_h / len(resolved), 1)
 
     return jsonify({
         'pendingOrgs': pending_orgs,
@@ -92,10 +108,12 @@ def moderation_stats():
         'users': users_total,
         'volunteers': volunteers,
         'coordinators': coordinators,
+        'nkoUsers': nko_users,
         'activeEvents': active_events,
         'hoursTotal': int(hours_total),
         'raised': int(raised),
         'avgReliability': int(round(avg_rel)) if avg_rel is not None else 0,
+        'avgReactionHours': avg_reaction_hours,   # null, если ещё нет закрытых жалоб
     })
 
 
@@ -308,6 +326,7 @@ def resolve_report(rid):
         return jsonify({'error': 'Жалоба не найдена'}), 404
     from flask_jwt_extended import get_jwt_identity
     r.status = 'resolved'
+    r.resolved_at = datetime.now(timezone.utc)
     try:
         r.resolved_by = int(get_jwt_identity())
     except (TypeError, ValueError):
