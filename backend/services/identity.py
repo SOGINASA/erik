@@ -6,6 +6,7 @@ P0-вход без пароля/OTP (по готовой форме фронта
 from datetime import datetime, timezone
 
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity
+from sqlalchemy.exc import IntegrityError
 from models import db, User, USER_ROLES
 
 
@@ -25,11 +26,20 @@ def make_tokens(user):
 def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=None):
     """Найти пользователя по device_id или создать нового. Возвращает (user, created)."""
     now = datetime.now(timezone.utc)
-    user = None
     created = False
 
-    if device_id:
-        user = User.query.filter_by(device_id=device_id).first()
+    def _fill_existing(u):
+        # дозаполняем то, что пришло и ещё не установлено
+        if name and not (u.full_name or '').strip():
+            u.full_name = name.strip()
+        if role in USER_ROLES:
+            u.role = role
+        if phone and not (u.phone or '').strip():
+            u.phone = phone.strip()
+        if user_agent:
+            u.user_agent = user_agent
+
+    user = User.query.filter_by(device_id=device_id).first() if device_id else None
 
     if user is None:
         user = User(
@@ -43,17 +53,20 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
             created_at=now,
         )
         db.session.add(user)
-        created = True
+        try:
+            # flush пораньше, чтобы поймать гонку по UNIQUE(device_id):
+            # StrictMode/две вкладки шлют два POST /session с одним device_id одновременно.
+            db.session.flush()
+            created = True
+        except IntegrityError:
+            # Параллельный запрос уже вставил этого device-юзера — берём победителя гонки.
+            db.session.rollback()
+            user = User.query.filter_by(device_id=device_id).first()
+            if user is None:
+                raise  # не гонка по device_id — это настоящая ошибка целостности
+            _fill_existing(user)
     else:
-        # дозаполняем то, что пришло и ещё не установлено
-        if name and not (user.full_name or '').strip():
-            user.full_name = name.strip()
-        if role in USER_ROLES:
-            user.role = role
-        if phone and not (user.phone or '').strip():
-            user.phone = phone.strip()
-        if user_agent:
-            user.user_agent = user_agent
+        _fill_existing(user)
 
     user.last_seen_at = now
     user.last_login = now

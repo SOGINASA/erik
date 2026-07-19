@@ -152,6 +152,8 @@ function MoreSheet() {
   const navigate = useNavigate();
   const loggedIn = useSessionStore((s) => s.loggedIn);
   const isAdmin = useSessionStore((s) => s.isAdmin());
+  const role = useSessionStore((s) => s.role);
+  const isOrganizer = role === 'coord' || role === 'org';
   const logout = useSessionStore((s) => s.logout);
   const item = (icon, label, onClick, danger) => (
     <button type="button" className="erik-row-hover" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 12px', border: 'none', background: 'transparent', borderRadius: 'var(--r-m)', cursor: 'pointer', textAlign: 'left', fontSize: 16, color: danger ? 'var(--danger)' : 'var(--ink)' }}>
@@ -162,8 +164,8 @@ function MoreSheet() {
   return (
     <Sheet open onClose={close} title={t.moreMenuTitle}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {loggedIn && item('calendar', t.manageEyebrow, () => goClose('/manage', 'manage'))}
-        {item('list', t.myGatherings, () => goClose('/me', 'me'))}
+        {isOrganizer && item('calendar', t.manageEyebrow, () => goClose('/manage', 'manage'))}
+        {isOrganizer && item('list', t.myGatherings, () => goClose('/me', 'me'))}
         {item('users', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}
