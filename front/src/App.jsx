@@ -35,17 +35,27 @@ import NotFound from './pages/NotFound';
 export default function App() {
   // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP),
   // затем подтягиваем данные платформы, уведомления, подписки и ответы на события.
+  // Поднимаем device-сессию + публичные данные (лента/НКО/города/рейтинг) — можно и гостю.
   useEffect(() => {
     useSessionStore.getState().boot().finally(() => {
-      const p = usePlatformStore.getState();
-      p.loadPlatform();
-      p.loadNotifications();
-      p.loadFollows();
-      p.loadMe();
-      p.loadConversations();
-      useGatheringStore.getState().loadRegistrations();
+      usePlatformStore.getState().loadPlatform();
     });
   }, []);
+
+  // Профильные данные (уведомления/подписки/диалоги/ответы) — только когда есть
+  // токен И имя (@profiled_required). Реактивно: срабатывает и после входа/онбординга,
+  // и НЕ дёргает 403 для гостя.
+  const token = useSessionStore((s) => s.token);
+  const name = useSessionStore((s) => s.name);
+  useEffect(() => {
+    if (!token || !name) return;
+    const p = usePlatformStore.getState();
+    p.loadNotifications();
+    p.loadFollows();
+    p.loadMe();
+    p.loadConversations();
+    useGatheringStore.getState().loadRegistrations();
+  }, [token, name]);
 
   // Живые уведомления/сообщения: лёгкий поллинг каждые 25с (только с профилем, видимая вкладка).
   useEffect(() => {

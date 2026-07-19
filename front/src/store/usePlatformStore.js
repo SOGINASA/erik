@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES, NOTIFS, CONVOS, CHARITY } from '../lib/data';
+import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES, CHARITY } from '../lib/data';
 import { api } from '../lib/api';
 import { useUiStore } from './useUiStore';
 import { useSessionStore } from './useSessionStore';
@@ -37,8 +37,10 @@ export const usePlatformStore = create((set, get) => ({
   volunteers: VOLUNTEERS,
   me: ME,
   badges: BADGES,
-  notifs: NOTIFS,
-  convos: CONVOS,
+  // Уведомления и диалоги — профильные: гостю их не грузим и НЕ показываем мок.
+  // Реальные приходят из API (loadNotifications/loadConversations) после входа.
+  notifs: [],
+  convos: [],
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
 

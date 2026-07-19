@@ -17,14 +17,23 @@ export default function Convo() {
   const sendMsg = usePlatformStore((s) => s.sendMsg);
   const desktop = useIsDesktop();
 
-  const convo = convos.find((c) => c.id === id) || convos[0];
+  const convo = convos.find((c) => c.id === id) || convos[0] || null;
   const convoId = convo && convo.id;
-  const send = () => sendMsg(convo.id);
+  const send = () => { if (convo) sendMsg(convo.id); };
 
   // Помечаем диалог прочитанным на сервере при открытии.
   useEffect(() => {
     if (convoId) api.readConversation(String(convoId).replace(/^\D+/, '')).catch(() => {});
   }, [convoId]);
+
+  // Диалогов ещё нет (не загрузились/пусто) — не падаем.
+  if (!convo) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', color: 'var(--ink-3)' }}>
+        <button type="button" onClick={() => navigate('/messages')} style={{ border: 'none', background: 'transparent', color: 'var(--yard)', fontSize: 15, cursor: 'pointer' }}>{t.back || '← Сообщения'}</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
