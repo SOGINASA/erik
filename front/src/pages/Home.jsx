@@ -3,7 +3,7 @@ import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import Button from '../components/ui/Button';
-
+// деплой
 const F = (isRu, ru, kz, sru, skz) => ({ title: isRu ? ru : kz, sub: isRu ? sru : skz });
 
 // Маркетинговый лендинг — точка входа «/». Standalone, без шелла.
