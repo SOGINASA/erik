@@ -1,17 +1,52 @@
+import time
+from collections import defaultdict, deque
 from functools import wraps
 
-from flask import jsonify, g
+from flask import jsonify, g, request, current_app
 from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
 
 
+# ── лёгкий in-memory rate-limit (без внешних зависимостей) ──
+# Скользящее окно на процесс; ключ = IP + имя функции. Для демо/одного воркера достаточно;
+# для нескольких воркеров/инстансов вынести в Redis. Отключается под TESTING.
+_rl_hits = defaultdict(deque)
+
+
+def rate_limit(max_calls, per_seconds):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if current_app.config.get('TESTING') or current_app.config.get('RATELIMIT_DISABLED'):
+                return fn(*args, **kwargs)
+            key = f'{request.remote_addr or "?"}:{fn.__name__}'
+            now = time.monotonic()
+            dq = _rl_hits[key]
+            while dq and now - dq[0] > per_seconds:
+                dq.popleft()
+            if len(dq) >= max_calls:
+                return jsonify({'error': 'Слишком много запросов, попробуйте позже'}), 429
+            dq.append(now)
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
+
+
 def admin_required(fn):
-    """Пропускает только пользователей с user_type='admin' в JWT."""
+    """Пропускает только активных пользователей с user_type='admin'.
+
+    Права проверяются по СВЕЖЕЙ записи User из БД, а не только по JWT-claim:
+    иначе понижённый/деактивированный пользователь сохранял бы доступ до истечения
+    токена (claim не обновляется). g.user — актуальный админ.
+    """
+    from services.identity import current_user
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         verify_jwt_in_request()
-        claims = get_jwt()
-        if claims.get('user_type') != 'admin':
+        user = current_user()
+        if user is None or not user.is_active or user.user_type != 'admin':
             return jsonify({'error': 'Требуются права администратора'}), 403
+        g.user = user
         return fn(*args, **kwargs)
     return wrapper
 

@@ -76,7 +76,10 @@ export default function Register() {
     const identifier = form.email.trim();
     try {
       if (identifier) {
-        await registerAccount({ identifier, password: form.password, full_name: displayName });
+        await registerAccount({
+          identifier, password: form.password, full_name: displayName,
+          role: form.role, phone: form.phone.trim() || null, cityId: form.city,
+        });
       } else {
         await login();
       }

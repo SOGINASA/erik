@@ -79,6 +79,10 @@ def create_gathering():
     db.session.add(gathering)
     db.session.flush()
     db.session.add(GatheringCoordinator(gathering_id=gathering.id, user_id=user.id, role='owner'))
+    # подписчикам НКО — уведомление о новом событии (если сбор от организации)
+    if gathering.org_id is not None:
+        from services.notifications import notify_followers_new_event
+        notify_followers_new_event(gathering)
     db.session.commit()
 
     share_url = f"{current_app.config['SHARE_BASE_URL']}/g/{gathering.code}"

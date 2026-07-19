@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Container } from '../components/Container';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { useSessionStore } from '../store/useSessionStore';
+import { useUiStore } from '../store/useUiStore';
 import { useIsDesktop } from '../lib/nav';
 import Icon from '../components/Icon';
 import { ADMIN_SECTIONS } from '../components/admin/nav';
@@ -27,7 +30,18 @@ export default function Admin() {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const orgs = usePlatformStore((s) => s.orgs);
+  const isAdmin = useSessionStore((s) => s.isAdmin());
+  const showToast = useUiStore((s) => s.showToast);
   const pending = orgs.filter((o) => !o.verified).length + 2;
+
+  // Гейт по роли: не-админа (в т.ч. по прямому URL) уводим на ленту.
+  useEffect(() => {
+    if (!isAdmin) {
+      showToast('Доступ только для администраторов');
+      navigate('/feed', { replace: true });
+    }
+  }, [isAdmin, navigate, showToast]);
+  if (!isAdmin) return null;
 
   const cur = SECTION[section] ? section : 'overview';
   const Section = SECTION[cur];

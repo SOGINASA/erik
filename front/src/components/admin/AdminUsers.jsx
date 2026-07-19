@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUiStore } from '../../store/useUiStore';
 import { api } from '../../lib/api';
 import { AdminSearch, FilterChips, Table, Tr, Td, StatusPill, IconBtn, SectionCard } from './kit';
@@ -41,6 +42,7 @@ const HEAD = [
 // Управление пользователями: серверный поиск, фильтр по роли, таблица с действиями.
 export default function AdminUsers() {
   const showToast = useUiStore((s) => s.showToast);
+  const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
   const [role, setRole] = useState('all');
@@ -48,6 +50,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
   // Загрузка с сервера. Поиск/пагинация — на бэкенде; ввод дебаунсим ~300мс.
@@ -60,6 +63,7 @@ export default function AdminUsers() {
         if (cancelled) return;
         setUsers(Array.isArray(res?.users) ? res.users : []);
         setTotal(res?.total ?? 0);
+        setPages(res?.pages ?? 1);
       } catch (_) {
         // при ошибке остаёмся на прежнем списке — не падаем
       } finally {
@@ -156,7 +160,7 @@ export default function AdminUsers() {
                   <Td align="right" nowrap style={{ fontFamily: 'var(--fm)', fontWeight: 600, color: relColor(u.reliability ?? 0) }}>{u.reliability ?? 0}%</Td>
                   <Td align="right" nowrap>
                     <span style={{ display: 'inline-flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <IconBtn icon="external" title="Профиль" onClick={() => showToast('Профиль открыт')} />
+                      <IconBtn icon="external" title="Профиль" onClick={() => navigate(`/u/${u.id}`)} />
                       {blocked ? (
                         <IconBtn icon="check" title="Разблокировать" onClick={() => setActive(u, true)} />
                       ) : (
@@ -170,6 +174,31 @@ export default function AdminUsers() {
           </Table>
         )}
       </SectionCard>
+
+      {/* пагинация (серверная) */}
+      {pages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+          <button
+            type="button"
+            className="erik-btn"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            style={{ height: 36, padding: '0 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: page <= 1 ? 'var(--ink-3)' : 'var(--ink)', cursor: page <= 1 ? 'default' : 'pointer', fontSize: 14 }}
+          >
+            ← Назад
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--fm)' }}>{page} / {pages}</span>
+          <button
+            type="button"
+            className="erik-btn"
+            disabled={page >= pages || loading}
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            style={{ height: 36, padding: '0 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: page >= pages ? 'var(--ink-3)' : 'var(--ink)', cursor: page >= pages ? 'default' : 'pointer', fontSize: 14 }}
+          >
+            Вперёд →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

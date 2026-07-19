@@ -45,6 +45,7 @@ const upsertOp = (queue, op) => {
 // Оптимистичные мутации: сначала локально, затем в API; при офлайне остаёмся на моках.
 export const useGatheringStore = create((set, get) => ({
   gathering: buildGathering(),
+  myGatherings: [],   // список своих сборов (для /me), с сервера
   marks: {},
   displayE: null,
   polled: false,
@@ -113,6 +114,16 @@ export const useGatheringStore = create((set, get) => ({
       set({ mlForecast: r });
     } catch (_) {
       set({ mlForecast: { available: false } });
+    }
+  },
+
+  // Список своих сборов для экрана «Мои сборы». Пусто/офлайн — экран падает на демо.
+  loadMine: async () => {
+    try {
+      const res = await api.myGatherings();
+      if (Array.isArray(res.gatherings)) set({ myGatherings: res.gatherings });
+    } catch (_) {
+      /* keep empty → демо-фолбэк на экране */
     }
   },
 
@@ -283,6 +294,12 @@ export const useGatheringStore = create((set, get) => ({
     set((s) => ({ regs: { ...s.regs, [eventId]: a } }));
     toast(isRu() ? 'Ответ сохранён' : 'Жауап сақталды');
     api.setEventReg(String(eventId).replace(/^\D+/, ''), a).catch(() => {});
+  },
+
+  unregisterEvent: (eventId) => {
+    set((s) => { const regs = { ...s.regs }; delete regs[eventId]; return { regs }; });
+    toast(isRu() ? 'Запись отменена' : 'Жазылу тоқтатылды');
+    api.deleteEventReg(String(eventId).replace(/^\D+/, '')).catch(() => {});
   },
 
   // --- анимация числа прогноза ---

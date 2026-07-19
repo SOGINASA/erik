@@ -18,7 +18,9 @@ export default function Event() {
   const events = usePlatformStore((s) => s.events);
   const orgs = usePlatformStore((s) => s.orgs);
   const regs = useGatheringStore((s) => s.regs);
+  const unregisterEvent = useGatheringStore((s) => s.unregisterEvent);
   const openSheet = useUiStore((s) => s.openSheet);
+  const showToast = useUiStore((s) => s.showToast);
   const [participants, setParticipants] = useState([]);
 
   const ev = events.find((e) => e.id === id) || events[0];
@@ -34,6 +36,18 @@ export default function Event() {
       .catch(() => { if (alive) setParticipants([]); });
     return () => { alive = false; };
   }, [ev.id]);
+
+  // Пожаловаться на событие: причина → реальная запись в очередь модерации.
+  const report = () => {
+    const asked = (typeof window !== 'undefined' && window.prompt)
+      ? window.prompt(isRu ? 'Причина жалобы:' : 'Шағым себебі:')
+      : '';
+    if (asked === null) return; // отмена
+    const reason = (asked || '').trim() || (isRu ? 'Жалоба на событие' : 'Іс-шараға шағым');
+    api.submitReport({ targetType: 'event', targetId: String(ev.id).replace(/^\D+/, ''), reason })
+      .then(() => showToast(isRu ? 'Жалоба отправлена' : 'Шағым жіберілді'))
+      .catch(() => showToast(isRu ? 'Не удалось отправить' : 'Жіберілмеді'));
+  };
 
   const title = isRu ? ev.titleRu : ev.titleKz;
   const when = `${isRu ? ev.dateRu : ev.dateKz} · ${ev.time}`;
@@ -115,7 +129,10 @@ export default function Event() {
               <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{t.youRegistered}</div>
               <div style={{ fontWeight: 600, fontSize: 17, color: 'var(--yard)' }}>{regLabel}</div>
             </div>
-            <button onClick={openRegister} style={{ border: 'none', background: 'transparent', color: 'var(--ink-2)', fontWeight: 500, fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{t.changeAnswer}</button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <button onClick={openRegister} style={{ border: 'none', background: 'transparent', color: 'var(--ink-2)', fontWeight: 500, fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{t.changeAnswer}</button>
+              <button onClick={() => unregisterEvent(ev.id)} style={{ border: 'none', background: 'transparent', color: 'var(--ink-3)', fontSize: 13, cursor: 'pointer' }}>{isRu ? 'Отменить запись' : 'Жазылуды тоқтату'}</button>
+            </div>
           </div>
         ) : (
           <button
@@ -135,6 +152,17 @@ export default function Event() {
             style={{ width: '100%', height: 48, marginTop: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="send" size={17} stroke={1.7} />{t.mgApplyCta}
+          </button>
+        )}
+
+        {/* Пожаловаться на событие (пользовательская модерация) */}
+        {!ev.mine && (
+          <button
+            className="erik-btn"
+            onClick={() => report()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: '14px auto 0', border: 'none', background: 'transparent', color: 'var(--ink-3)', fontSize: 13, cursor: 'pointer' }}
+          >
+            <Icon name="shield" size={14} stroke={1.6} />{isRu ? 'Пожаловаться' : 'Шағымдану'}
           </button>
         )}
       </div>

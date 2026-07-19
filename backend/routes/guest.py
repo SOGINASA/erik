@@ -97,12 +97,18 @@ def put_rsvp(code):
             answered_at=now,
         )
         db.session.add(part)
+    prev_answer = part.answer
     part.answer = answer
     part.answered_at = now
     if user.full_name:
         part.name = user.full_name
     if user.phone:
         part.phone = user.phone
+
+    # уведомляем владельца о (новом) ответе участника
+    if answer != prev_answer and user.id != gathering.owner_id:
+        from services.notifications import notify_owner_answer
+        notify_owner_answer(gathering, user.full_name or name or 'Участник', answer)
 
     gathering.bump()
     db.session.commit()

@@ -12,7 +12,7 @@ from flask_jwt_extended import JWTManager
 from flask_jwt_extended.exceptions import JWTExtendedException
 from werkzeug.exceptions import HTTPException
 
-from config import get_config, DATABASE_DIR
+from config import get_config, DATABASE_DIR, validate_config
 from models import db, User
 
 # Инициализация расширений
@@ -23,6 +23,8 @@ jwt = JWTManager()
 def create_app(config_object=None):
     app = Flask(__name__)
     app.config.from_object(config_object or get_config())
+    # В проде не поднимаемся с публично известными dev-секретами (иначе подделка JWT).
+    validate_config()
     CORS(app, supports_credentials=True, origins=app.config['CORS_ORIGINS'])
 
     # Создаём папку для БД, если её нет
@@ -50,6 +52,13 @@ def create_app(config_object=None):
     app.register_blueprint(notifications_bp, url_prefix='/api')    # /api/notifications*
     app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /charity, /leaderboard, /cities…
     app.register_blueprint(organizer_bp, url_prefix='/api')        # /api/me/org/*, /events/<id>/applications, /applications/*
+
+    # Безопасность целостности БД: при исключении в запросе откатываем сессию,
+    # чтобы «отравленная» транзакция не ломала следующие запросы того же воркера.
+    @app.teardown_request
+    def _rollback_on_error(exc):
+        if exc is not None:
+            db.session.rollback()
 
     # Главная страница API
     @app.route('/api')
@@ -143,4 +152,7 @@ def create_admin():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    # DEBUG только вне прода. В проде запускайте через WSGI (gunicorn), не app.run.
+    is_prod = os.environ.get('FLASK_ENV') == 'production'
+    app.run(debug=not is_prod, host=os.environ.get('HOST', '127.0.0.1'),
+            port=int(os.environ.get('PORT', 5000)))

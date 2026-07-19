@@ -1,13 +1,17 @@
 import { useT, useLang } from '../i18n';
-import { THEMES, ORGS, CITIES } from '../lib/data';
+import { usePlatformStore } from '../store/usePlatformStore';
+import { THEMES } from '../lib/data';
 
 // Карточка события для ленты и страницы НКО.
 export default function EventCard({ event, reg, onOpen }) {
   const t = useT();
   const isRu = useLang() === 'ru';
+  // НКО/город — из стора (реальные данные), а не из статичных демо-констант.
+  const orgs = usePlatformStore((s) => s.orgs);
+  const cities = usePlatformStore((s) => s.cities);
   const T = THEMES[event.theme] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
-  const org = ORGS.find((o) => o.id === event.orgId);
-  const city = CITIES.find((c) => c.id === event.cityId);
+  const org = orgs.find((o) => o.id === event.orgId);
+  const city = cities.find((c) => c.id === event.cityId);
   const pct = Math.min(100, Math.round((event.going / event.needed) * 100));
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 

@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useT } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { api } from '../lib/api';
 import { useIsDesktop } from '../lib/nav';
 import Icon from '../components/Icon';
 
@@ -17,6 +19,11 @@ export default function Convo() {
 
   const convo = convos.find((c) => c.id === id) || convos[0];
   const send = () => sendMsg(convo.id);
+
+  // Помечаем диалог прочитанным на сервере при открытии.
+  useEffect(() => {
+    if (convo && convo.id) api.readConversation(String(convo.id).replace(/^\D+/, '')).catch(() => {});
+  }, [convo && convo.id]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>

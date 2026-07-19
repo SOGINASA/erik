@@ -267,6 +267,20 @@ def seed_demo(reset=False):
     _seed_platform()
     db.session.commit()
 
+    # демо-уведомления координатору (лента не должна быть пустой на защите)
+    from models import Notification
+    if not Notification.query.filter_by(user_id=coord.id).first():
+        demo_notifs = [
+            ('answer', 'Айгерім ответила «Приду» на «Уборка парка на Набережной»', 'Айгерім «Келемін» деп жауап берді'),
+            ('reminder', 'Завтра в 10:00 — «Уборка парка на Набережной»', 'Ертең 10:00 — «Жағалау саябағын тазалау»'),
+            ('badge', 'Вы получили бейдж «Эко-герой»', '«Эко-батыр» бейджін алдыңыз'),
+            ('event', '«Дети будущего» открыли новый сбор рядом', '«Дети будущего» жақын жерде жаңа жиын ашты'),
+            ('system', 'НКО «Чистый двор» подтвердила ваши 6 часов', '«Чистый двор» 6 сағатыңызды растады'),
+        ]
+        for ntype, ru, kz in demo_notifs:
+            db.session.add(Notification(user_id=coord.id, type=ntype, text_ru=ru, text_kz=kz))
+        db.session.commit()
+
     from services.forecast import forecast_payload
     f = forecast_payload(gathering)
     print(f"PARK18 засеян: 45 участников (14 yes / 24 maybe / 7 no)")

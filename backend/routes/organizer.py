@@ -172,6 +172,8 @@ def accept_application(aid):
             ))
         else:
             existing.answer = 'yes'
+        from services.notifications import notify_application_decision
+        notify_application_decision(application, accepted=True)
         gathering.bump()
         db.session.commit()
     return jsonify({'application': serialize_application(application)})
@@ -191,5 +193,7 @@ def decline_application(aid):
     if application.status != 'declined':
         application.status = 'declined'
         application.decided_at = _now()
+        from services.notifications import notify_application_decision
+        notify_application_decision(application, accepted=False)
         db.session.commit()
     return jsonify({'application': serialize_application(application)})

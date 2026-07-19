@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from models import db, User
+from utils.decorators import rate_limit
 from datetime import datetime, timedelta, timezone
 import re
 
@@ -40,6 +41,7 @@ def make_tokens(user):
 
 
 @auth_bp.route('/register', methods=['POST'])
+@rate_limit(5, 60)
 def register():
     """Регистрация пользователя по email или nickname"""
     data = request.get_json()
@@ -82,18 +84,50 @@ def register():
         return jsonify({'error': 'Пользователь с таким nickname уже существует'}), 400
 
     try:
-        user = User(
-            email=email,
-            nickname=nickname,
-            full_name=full_name or nickname or (email.split('@')[0] if email else None),
-            user_type='user',
-            is_active=True,
-            is_verified=False,
-            last_login=datetime.now(timezone.utc)
-        )
+        import secrets
+        # Апгрейд device-личности до аккаунта: если запрос пришёл с известным X-Device-Id,
+        # у которого ещё нет пароля — навешиваем email/пароль на ту же строку (сохраняем
+        # trust/историю/часы), а не плодим второго пользователя.
+        device_id = request.headers.get('X-Device-Id')
+        user = None
+        if device_id:
+            existing = User.query.filter_by(device_id=device_id).first()
+            if existing is not None and not existing.has_account:
+                user = existing
+                user.email = email
+                user.nickname = nickname
+                if full_name:
+                    user.full_name = full_name
+                elif not (user.full_name or '').strip():
+                    user.full_name = nickname or (email.split('@')[0] if email else None)
+
+        if user is None:
+            user = User(
+                email=email,
+                nickname=nickname,
+                full_name=full_name or nickname or (email.split('@')[0] if email else None),
+                user_type='user',
+                is_active=True,
+            )
+            db.session.add(user)
+
+        user.is_active = True
+        user.is_verified = False
+        user.verification_token = secrets.token_urlsafe(24) if email else None
+        user.last_login = datetime.now(timezone.utc)
         user.set_password(password)
-        db.session.add(user)
         db.session.commit()
+
+        # письмо-подтверждение (в dev без SMTP — только лог; флоу verify-email становится достижим)
+        if email and user.verification_token:
+            try:
+                from flask import current_app
+                from services.email import send_email
+                link = f"{current_app.config['FRONTEND_URL']}/verify-email?token={user.verification_token}"
+                send_email(email, 'Подтверждение email erik',
+                           f'Подтвердите адрес, перейдя по ссылке:\n{link}')
+            except Exception:
+                pass  # почта не должна ломать регистрацию
 
         access_token, refresh_token = make_tokens(user)
 
@@ -110,6 +144,7 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST'])
+@rate_limit(10, 60)
 def login():
     """Вход пользователя по email, nickname или identifier"""
     data = request.get_json()
@@ -285,6 +320,7 @@ def change_password():
 
 
 @auth_bp.route('/forgot-password', methods=['POST'])
+@rate_limit(5, 60)
 def forgot_password():
     """Восстановление пароля"""
     data = request.get_json()
@@ -299,16 +335,30 @@ def forgot_password():
         return jsonify({'message': 'Если пользователь с таким email существует, инструкции отправлены на почту'})
 
     try:
+        import os
         import secrets
+        from flask import current_app
+        from services.email import send_email, is_configured
+
         reset_token = secrets.token_urlsafe(32)
         user.reset_token = reset_token
         user.reset_token_expires = datetime.now(timezone.utc) + timedelta(hours=1)
-
         db.session.commit()
 
-        # TODO: Реализовать отправку email с токеном сброса
+        link = f"{current_app.config['FRONTEND_URL']}/reset-password?token={reset_token}"
+        send_email(
+            user.email,
+            'Сброс пароля erik',
+            f'Чтобы задать новый пароль, перейдите по ссылке (действует 1 час):\n{link}\n\n'
+            f'Если вы не запрашивали сброс — просто игнорируйте это письмо.',
+        )
 
-        return jsonify({'message': 'Инструкции отправлены на почту'})
+        resp = {'message': 'Если пользователь с таким email существует, инструкции отправлены на почту'}
+        # dev (без SMTP и не прод): отдаём токен/ссылку, чтобы флоу был проходим без почты
+        if not is_configured() and os.environ.get('FLASK_ENV') != 'production':
+            resp['dev_reset_token'] = reset_token
+            resp['dev_reset_link'] = link
+        return jsonify(resp)
 
     except Exception as e:
         db.session.rollback()
@@ -385,12 +435,14 @@ def deactivate_account():
         if not user:
             return jsonify({'error': 'Пользователь не найден'}), 404
 
-        data = request.get_json()
-        if not data or not data.get('password'):
-            return jsonify({'error': 'Подтверждение паролем обязательно'}), 400
-
-        if not user.check_password(data['password']):
-            return jsonify({'error': 'Неверный пароль'}), 400
+        data = request.get_json(silent=True) or {}
+        # Аккаунт (email/пароль) требует подтверждения паролем; device-личность без пароля
+        # деактивируется по валидному JWT (подтверждать нечем).
+        if user.has_account:
+            if not data.get('password'):
+                return jsonify({'error': 'Подтверждение паролем обязательно'}), 400
+            if not user.check_password(data['password']):
+                return jsonify({'error': 'Неверный пароль'}), 400
 
         user.is_active = False
         db.session.commit()

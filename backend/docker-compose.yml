@@ -13,6 +13,9 @@ services:
       - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-me}
       - DATABASE_URL=sqlite:////app/database/database.db
+      # Домен фронта — без него в проде разрешён только localhost и браузер заблокирует запросы.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     volumes:
       - ./database:/app/database
     restart: unless-stopped

@@ -151,6 +151,7 @@ function MoreSheet() {
   const go = useGuardedNav();
   const navigate = useNavigate();
   const loggedIn = useSessionStore((s) => s.loggedIn);
+  const isAdmin = useSessionStore((s) => s.isAdmin());
   const logout = useSessionStore((s) => s.logout);
   const item = (icon, label, onClick, danger) => (
     <button type="button" className="erik-row-hover" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 12px', border: 'none', background: 'transparent', borderRadius: 'var(--r-m)', cursor: 'pointer', textAlign: 'left', fontSize: 16, color: danger ? 'var(--danger)' : 'var(--ink)' }}>
@@ -167,7 +168,7 @@ function MoreSheet() {
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}
         {item('bell', t.navNotif, () => goClose('/notifications', 'notifications'))}
-        {item('shield', t.navAdmin, () => goClose('/admin', 'admin'))}
+        {isAdmin && item('shield', t.navAdmin, () => goClose('/admin', 'admin'))}
         <div style={{ height: 1, background: 'var(--line)', margin: '8px 0' }} />
         {loggedIn
           ? item('external', t.logout, () => { logout(); close(); navigate('/'); showToast(isRu ? 'Вы вышли из аккаунта' : 'Аккаунттан шықтыңыз'); }, true)
@@ -233,7 +234,7 @@ function PersonSheet() {
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>{['yes', 'maybe', 'no'].map(pBtn)}</div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <Button variant="secondary" icon="phone" onClick={() => showToast(isRu ? `Звоним ${p.name || ''}` : `${p.name || ''} қоңырау шалудамыз`)} style={{ flex: 1 }}>{t.personCall}</Button>
+        <Button variant="secondary" icon="phone" onClick={() => p.phone ? (window.location.href = `tel:${p.phone}`) : showToast(isRu ? 'Телефон не указан' : 'Телефон көрсетілмеген')} style={{ flex: 1 }}>{t.personCall}</Button>
         <Button variant="ghost" icon="trash" onClick={() => removeParticipant(p.id)} style={{ color: 'var(--danger)' }}>{t.personRemove}</Button>
       </div>
     </Sheet>
@@ -461,7 +462,7 @@ function ApplicantSheet() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Button full size="lg" icon="check" onClick={() => accept(a.id)}>{t.mgAccept}</Button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="secondary" icon="phone" onClick={() => showToast(isRu ? `Звоним ${a.name || ''}` : `${a.name || ''} қоңырау шалудамыз`)} style={{ flex: 1 }}>{t.personCall}</Button>
+              <Button variant="secondary" icon="phone" onClick={() => a.phone ? (window.location.href = `tel:${a.phone}`) : showToast(isRu ? 'Телефон не указан' : 'Телефон көрсетілмеген')} style={{ flex: 1 }}>{t.personCall}</Button>
               <Button variant="ghost" onClick={() => decline(a.id)} style={{ color: 'var(--ink-2)' }}>{t.mgDecline}</Button>
             </div>
           </div>

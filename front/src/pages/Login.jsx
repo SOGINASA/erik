@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
+import { api } from '../lib/api';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import { FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
@@ -58,6 +59,19 @@ export default function Login() {
     }
   };
 
+  // «Забыли пароль»: шлём реальный запрос по email из поля логина.
+  const forgot = async () => {
+    const email = id.trim();
+    if (!email || !email.includes('@')) {
+      showToast('Введите email в поле логина');
+      return;
+    }
+    try {
+      await api.forgotPassword(email);
+    } catch (_) { /* ответ намеренно неинформативен (безопасность) */ }
+    showToast('Если такой email есть — письмо для сброса отправлено');
+  };
+
   const quick = async (p) => {
     setRole(p.role);
     await login();
@@ -92,7 +106,7 @@ export default function Login() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <FieldLabel>Пароль</FieldLabel>
-                <button type="button" onClick={() => showToast('Ссылка для сброса отправлена')} style={{ border: 'none', background: 'transparent', color: 'var(--ink-3)', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 6 }}>Забыли пароль?</button>
+                <button type="button" onClick={forgot} style={{ border: 'none', background: 'transparent', color: 'var(--ink-3)', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 6 }}>Забыли пароль?</button>
               </div>
               <AuthField
                 icon="lock"

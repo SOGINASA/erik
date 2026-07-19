@@ -92,7 +92,7 @@ class User(db.Model):
         """Заполнена ли личность (имя) — минимум для «authed-user»-действий."""
         return bool((self.full_name or '').strip())
 
-    def to_dict(self, include_sensitive=False):
+    def to_dict(self, include_sensitive=False, include_device=False):
         data = {
             'id': self.id,
             'email': self.email,
@@ -115,7 +115,10 @@ class User(db.Model):
         if include_sensitive:
             data['is_active'] = self.is_active
             data['is_verified'] = self.is_verified
-            data['device_id'] = self.device_id
+            # device_id — эквивалент пароля (по нему выдаётся токен без пароля):
+            # отдаём ТОЛЬКО в собственном /me, никогда в админ-списках чужих юзеров.
+            if include_device:
+                data['device_id'] = self.device_id
         return data
 
 
@@ -313,6 +316,19 @@ class Reminder(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
 
+class PushSubscription(db.Model):
+    """Web-push подписка устройства (P3). Доставку web-push подключаем позже (pywebpush);
+    пока принимаем и храним подписки, чтобы слой существовал."""
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
+    endpoint = db.Column(db.Text, nullable=False)
+    p256dh = db.Column(db.String(255))
+    auth = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=_now)
+    __table_args__ = (db.UniqueConstraint('user_id', 'endpoint', name='uq_push_sub'),)
+
+
 class Badge(db.Model):
     __tablename__ = 'badges'
     id = db.Column(db.String(16), primary_key=True)       # first|ten|reliable|eco|night|lead
@@ -434,12 +450,15 @@ class Report(db.Model):
     text_kz = db.Column(db.String(300))
     count = db.Column(db.Integer, default=1)              # число жалоб
     status = db.Column(db.String(12), default='open')     # open | reviewing | resolved | dismissed
+    reason = db.Column(db.String(200), nullable=True)     # причина от заявителя
+    reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # кто подал (последний)
     resolved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=_now)
 
     def to_dict(self):
-        return {'id': self.id, 'targetType': self.target_type, 'ru': self.text_ru,
-                'kz': self.text_kz, 'count': self.count, 'status': self.status}
+        return {'id': self.id, 'targetType': self.target_type, 'targetId': self.target_id,
+                'ru': self.text_ru, 'kz': self.text_kz, 'reason': self.reason,
+                'count': self.count, 'status': self.status}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

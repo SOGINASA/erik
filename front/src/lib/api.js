@@ -5,7 +5,7 @@ const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 // Держатель авторизации — заполняется из useSessionStore, чтобы не было
 // циклического импорта (store → api → store).
-let _auth = { token: null, deviceId: null };
+let _auth = { token: null, deviceId: null, refreshToken: null };
 export function setAuth(patch) {
   _auth = { ..._auth, ...patch };
 }
@@ -13,7 +13,16 @@ export function getAuth() {
   return _auth;
 }
 
-async function request(path, { method = 'GET', body, auth = true, bearer } = {}) {
+// Колбэк для проброса обновлённого access-токена в стор сессии (без цикл. импорта).
+let _onAuthRefresh = null;
+export function onAuthRefresh(cb) {
+  _onAuthRefresh = cb;
+}
+
+let _refreshing = null; // общий in-flight refresh, чтобы не гонять его параллельно
+
+async function request(path, opts = {}) {
+  const { method = 'GET', body, auth = true, bearer, _retry = false } = opts;
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (_auth.deviceId) headers['X-Device-Id'] = _auth.deviceId;
@@ -35,6 +44,20 @@ async function request(path, { method = 'GET', body, auth = true, bearer } = {})
     /* пустое тело */
   }
   if (!res.ok) {
+    // Истёк access → один раз пробуем обновить его по refresh-токену и повторить.
+    if (res.status === 401 && auth && !bearer && !_retry && _auth.refreshToken && path !== '/auth/refresh') {
+      try {
+        if (!_refreshing) _refreshing = api.refresh(_auth.refreshToken).finally(() => { _refreshing = null; });
+        const r = await _refreshing;
+        if (r && r.access_token) {
+          _auth.token = r.access_token;
+          if (_onAuthRefresh) _onAuthRefresh(r.access_token);
+          return request(path, { ...opts, _retry: true });
+        }
+      } catch (_) {
+        /* refresh не удался — пробрасываем исходную 401 */
+      }
+    }
     const err = new Error((data && data.error) || res.statusText || 'Ошибка запроса');
     err.status = res.status;
     err.data = data;
@@ -89,6 +112,7 @@ export const api = {
   unreadCount: () => request('/notifications/unread-count'),
   readNotification: (nid) => request(`/notifications/${nid}/read`, { method: 'POST' }),
   readAllNotifications: () => request('/notifications/read-all', { method: 'POST' }),
+  pushSubscribe: (body) => request('/push/subscribe', { method: 'POST', body }), // {endpoint, keys:{p256dh,auth}}
 
   // платформа (P2a): каталог, лента, НКО, помощь, рейтинг, подписки
   getCities: () => request('/cities'),
@@ -98,8 +122,10 @@ export const api = {
   getEvent: (id) => request(`/events/${id}`),
   eventParticipants: (id, limit = 7) => request(`/events/${id}/participants?limit=${limit}`),
   setEventReg: (id, answer) => request(`/events/${id}/registration`, { method: 'PUT', body: { answer } }),
+  deleteEventReg: (id) => request(`/events/${id}/registration`, { method: 'DELETE' }),
   myRegistrations: () => request('/me/registrations'),
   getOrgs: () => request('/orgs'),
+  createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
   getOrg: (id) => request(`/orgs/${id}`),
   followOrg: (id) => request(`/orgs/${id}/follow`, { method: 'POST' }),
   unfollowOrg: (id) => request(`/orgs/${id}/follow`, { method: 'DELETE' }),
@@ -110,8 +136,12 @@ export const api = {
   userPublic: (id) => request(`/users/${id}`),
   userMe: () => request('/users/me'),
   getConversations: () => request('/conversations'),
+  createConversation: (peerUserId) => request('/conversations', { method: 'POST', body: { peerUserId } }),
   sendConversationMessage: (id, text) => request(`/conversations/${id}/messages`, { method: 'POST', body: { text } }),
   readConversation: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
+
+  // жалобы (пользовательская модерация)
+  submitReport: (body) => request('/reports', { method: 'POST', body }), // {targetType,targetId,reason}
 
   // модерация (admin)
   adminReports: () => request('/admin/reports'),
@@ -143,6 +173,7 @@ export const api = {
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),        // {identifier, password}
   register: (payload) => request('/auth/register', { method: 'POST', body: payload, auth: false }),   // {identifier|email|nickname, password, full_name}
   refresh: (refreshToken) => request('/auth/refresh', { method: 'POST', bearer: refreshToken }),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email }, auth: false }),
 };
 
 export { BASE };

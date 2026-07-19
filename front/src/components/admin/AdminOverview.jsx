@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { useUiStore } from '../../store/useUiStore';
 import { api } from '../../lib/api';
@@ -18,7 +19,7 @@ export default function AdminOverview() {
   const volunteers = usePlatformStore((s) => s.volunteers);
   const charity = usePlatformStore((s) => s.charity);
   const notifs = usePlatformStore((s) => s.notifs);
-  const showToast = useUiStore((s) => s.showToast);
+  const navigate = useNavigate();
 
   // Реальные метрики платформы. При ошибке остаёмся на вычислениях из стора.
   const [stats, setStats] = useState(null);
@@ -115,10 +116,10 @@ export default function AdminOverview() {
         </SectionCard>
         <SectionCard title="Быстрые действия">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Button variant="secondary" icon="bell" full onClick={() => showToast('Открыт конструктор рассылки')} style={{ justifyContent: 'flex-start' }}>Создать рассылку</Button>
-            <Button variant="secondary" icon="filter" full onClick={() => showToast('Переход к модерации')} style={{ justifyContent: 'flex-start' }}>Проверить заявки ({pendingN})</Button>
-            <Button variant="secondary" icon="external" full onClick={() => showToast('Отчёт экспортирован')} style={{ justifyContent: 'flex-start' }}>Экспорт отчёта</Button>
-            <Button variant="secondary" icon="users" full onClick={() => showToast('Открыт список пользователей')} style={{ justifyContent: 'flex-start' }}>Управление доступом</Button>
+            <Button variant="secondary" icon="bell" full onClick={() => navigate('/admin/broadcast')} style={{ justifyContent: 'flex-start' }}>Создать рассылку</Button>
+            <Button variant="secondary" icon="filter" full onClick={() => navigate('/admin/moderation')} style={{ justifyContent: 'flex-start' }}>Проверить заявки ({pendingN})</Button>
+            <Button variant="secondary" icon="trophy" full onClick={() => navigate('/admin/analytics')} style={{ justifyContent: 'flex-start' }}>Аналитика</Button>
+            <Button variant="secondary" icon="users" full onClick={() => navigate('/admin/users')} style={{ justifyContent: 'flex-start' }}>Управление доступом</Button>
           </div>
         </SectionCard>
       </div>

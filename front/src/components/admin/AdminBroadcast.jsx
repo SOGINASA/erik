@@ -27,6 +27,7 @@ export default function AdminBroadcast() {
   const [cityId, setCityId] = useState(() => cities[0]?.id || '');
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
+  const [textKz, setTextKz] = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState([]);
 
@@ -37,7 +38,7 @@ export default function AdminBroadcast() {
     if (!t || busy) return;
     const a = AUDIENCES.find((x) => x.value === audience) || AUDIENCES[0];
 
-    const body = { segment: audience, title: t, textRu: text };
+    const body = { segment: audience, title: t, textRu: text, textKz: textKz || text };
     if (audience === 'city') {
       if (!cityId) {
         showToast('Выберите город');
@@ -54,6 +55,7 @@ export default function AdminBroadcast() {
       setSent((prev) => [{ title: t, audience: a.pill, reach, time: 'сейчас', tone: a.tone }, ...prev]);
       setTitle('');
       setText('');
+      setTextKz('');
     } catch (e) {
       showToast(e.message || 'Не удалось отправить объявление');
     } finally {
@@ -90,6 +92,7 @@ export default function AdminBroadcast() {
                 {text.length} символов
               </div>
             </div>
+            <Textarea label="Текст (KZ) · необязательно" rows={3} value={textKz} onChange={(e) => setTextKz(e.target.value)} placeholder="Хабарландыру мәтіні… (пусто → возьмём RU)" />
             <Button size="lg" icon="send" loading={busy} disabled={!title.trim() || busy || cityMissing} onClick={send}>Отправить</Button>
           </div>
         </SectionCard>

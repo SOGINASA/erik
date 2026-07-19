@@ -9,10 +9,10 @@ from flask_jwt_extended import jwt_required
 from models import (
     db, User, Theme, City, Badge, Gathering, Participant,
     Org, CharityRequest, Donation, Follow, ANSWERS,
-    Conversation, ConversationMember, Message,
+    Conversation, ConversationMember, Message, Report,
 )
 from services.identity import current_user
-from utils.decorators import profiled_required
+from utils.decorators import profiled_required, rate_limit
 from utils.serializers import (
     serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
@@ -76,8 +76,27 @@ def _feed_query():
 def events():
     u = current_user()
     viewer = u.id if u else None
-    rows = _feed_query().all()
-    return jsonify({'events': [serialize_event_card(g, viewer) for g in rows]})
+    q = _feed_query()
+    # опциональная пагинация (limit/offset) — по умолчанию отдаём всё (совместимость)
+    try:
+        limit = int(request.args.get('limit')) if request.args.get('limit') else None
+    except (TypeError, ValueError):
+        limit = None
+    total = None
+    if limit is not None:
+        limit = max(1, min(200, limit))
+        try:
+            offset = max(0, int(request.args.get('offset', 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        total = q.count()
+        rows = q.offset(offset).limit(limit).all()
+    else:
+        rows = q.all()
+    payload = {'events': [serialize_event_card(g, viewer) for g in rows]}
+    if total is not None:
+        payload['total'] = total
+    return jsonify(payload)
 
 
 @platform_bp.route('/events/<int:id>', methods=['GET'])
@@ -125,6 +144,7 @@ def set_registration(id):
 
     now = datetime.now(timezone.utc)
     p = Participant.query.filter_by(gathering_id=id, user_id=u.id).first()
+    prev_answer = p.answer if p else None
     if p is None:
         p = Participant(gathering_id=id, user_id=u.id, name=u.full_name or 'Гость',
                         phone=u.phone, hist_total_at_rsvp=u.trust_total or 0,
@@ -132,10 +152,27 @@ def set_registration(id):
         db.session.add(p)
     p.answer = answer
     p.answered_at = now
+    if answer != prev_answer and u.id != g_.owner_id:
+        from services.notifications import notify_owner_answer
+        notify_owner_answer(g_, u.full_name or 'Участник', answer)
     g_.bump()
     db.session.commit()
     going = g_.going_cache if g_.going_cache is not None else sum(1 for x in g_.participants if x.answer == 'yes')
     return jsonify({'answer': answer, 'going': going})
+
+
+@platform_bp.route('/events/<int:id>/registration', methods=['DELETE'])
+@profiled_required
+def delete_registration(id):
+    """Отозвать запись на событие ленты (удалить свой Participant)."""
+    p = Participant.query.filter_by(gathering_id=id, user_id=g.user.id).first()
+    if p is not None:
+        db.session.delete(p)
+        g_ = db.session.get(Gathering, id)
+        if g_ is not None:
+            g_.bump()
+        db.session.commit()
+    return '', 204
 
 
 @platform_bp.route('/me/registrations', methods=['GET'])
@@ -171,6 +208,30 @@ def org_events(id):
 @platform_bp.route('/orgs', methods=['GET'])
 def orgs_list():
     return jsonify({'orgs': [serialize_org(o) for o in Org.query.all()]})
+
+
+@platform_bp.route('/orgs', methods=['POST'])
+@profiled_required
+def create_org():
+    """Заявка на создание НКО (self-registration). verified=False → в очередь модерации."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Название организации обязательно'}), 400
+    org = Org(
+        name=name,
+        cat=data.get('cat') or None,
+        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
+        verified=False,
+        about_ru=(data.get('aboutRu') or '').strip() or None,
+        about_kz=(data.get('aboutKz') or '').strip() or None,
+        owner_id=g.user.id,
+    )
+    if g.user.role != 'org':
+        g.user.role = 'org'
+    db.session.add(org)
+    db.session.commit()
+    return jsonify({'org': serialize_org(org)}), 201
 
 
 @platform_bp.route('/orgs/<int:id>/follow', methods=['POST'])
@@ -221,6 +282,7 @@ def charity_detail(id):
 
 
 @platform_bp.route('/charity/<int:id>/donate', methods=['POST'])
+@rate_limit(20, 60)
 @profiled_required
 def donate(id):
     c = db.session.get(CharityRequest, id)
@@ -238,6 +300,42 @@ def donate(id):
     db.session.add(d)
     db.session.commit()
     return jsonify({'raised': c.raised, 'donationId': d.id})
+
+
+# ── жалобы (пользовательская модерация) ──
+REPORT_TARGETS = ('event', 'profile', 'message', 'org')
+
+
+@platform_bp.route('/reports', methods=['POST'])
+@profiled_required
+def create_report():
+    """Подать жалобу. Тело {targetType, targetId, reason}. Агрегируем по цели (count++)."""
+    data = request.get_json(silent=True) or {}
+    target_type = (data.get('targetType') or data.get('target_type') or '').strip()
+    if target_type not in REPORT_TARGETS:
+        return jsonify({'error': 'Некорректный тип цели'}), 400
+    try:
+        target_id = int(data.get('targetId') or data.get('target_id'))
+    except (TypeError, ValueError):
+        target_id = None
+    reason = (data.get('reason') or data.get('text') or '').strip()
+    if not reason:
+        return jsonify({'error': 'Опишите причину'}), 400
+
+    existing = (Report.query
+                .filter_by(target_type=target_type, target_id=target_id)
+                .filter(Report.status.in_(('open', 'reviewing'))).first())
+    if existing is not None:
+        existing.count = (existing.count or 1) + 1
+        existing.reporter_id = g.user.id
+        db.session.commit()
+        return jsonify({'report': existing.to_dict()}), 200
+
+    r = Report(target_type=target_type, target_id=target_id, reason=reason,
+               text_ru=reason, text_kz=reason, count=1, status='open', reporter_id=g.user.id)
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({'report': r.to_dict()}), 201
 
 
 # ── рейтинг ──
@@ -285,6 +383,41 @@ def conversations():
     rows = (Conversation.query.filter(Conversation.id.in_(ids)).all() if ids else [])
     rows.sort(key=lambda c: (c.messages[-1].created_at if c.messages else c.created_at), reverse=True)
     return jsonify({'conversations': [serialize_conversation(c, g.user.id) for c in rows]})
+
+
+@platform_bp.route('/conversations', methods=['POST'])
+@profiled_required
+def create_conversation():
+    """Начать (или найти) 1-на-1 диалог с пользователем. Тело: {peerUserId}.
+    Идемпотентно: если приватный диалог с этим пользователем уже есть — вернуть его."""
+    data = request.get_json(silent=True) or {}
+    raw = data.get('peerUserId') or data.get('peer_id')
+    try:
+        peer_id = int(raw)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'peerUserId обязателен'}), 400
+    if peer_id == g.user.id:
+        return jsonify({'error': 'Нельзя написать самому себе'}), 400
+    peer = db.session.get(User, peer_id)
+    if peer is None or not peer.is_active:
+        return jsonify({'error': 'Пользователь не найден'}), 404
+
+    # уже есть приватный (ровно 2 участника) диалог с этим пользователем?
+    mine = {m.conversation_id for m in ConversationMember.query.filter_by(user_id=g.user.id).all()}
+    theirs = {m.conversation_id for m in ConversationMember.query.filter_by(user_id=peer_id).all()}
+    for cid in (mine & theirs):
+        convo = db.session.get(Conversation, cid)
+        if convo and len(convo.members) == 2:
+            return jsonify({'conversation': serialize_conversation(convo, g.user.id)}), 200
+
+    role = 'coordinator' if g.user.role in ('coord', 'org') else 'nko'
+    convo = Conversation(title=peer.full_name or 'Диалог', role=role)
+    db.session.add(convo)
+    db.session.flush()
+    db.session.add(ConversationMember(conversation_id=convo.id, user_id=g.user.id))
+    db.session.add(ConversationMember(conversation_id=convo.id, user_id=peer_id))
+    db.session.commit()
+    return jsonify({'conversation': serialize_conversation(convo, g.user.id)}), 201
 
 
 @platform_bp.route('/conversations/<int:cid>', methods=['GET'])

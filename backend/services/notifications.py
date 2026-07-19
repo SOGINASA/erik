@@ -23,6 +23,59 @@ def unread_count(user_id):
             .scalar()) or 0
 
 
+# ── событийные уведомления (RSVP / accept / публикация) ──
+
+_ANSWER_RU = {'yes': 'Приду', 'maybe': 'Возможно', 'no': 'Не приду'}
+_ANSWER_KZ = {'yes': 'Келемін', 'maybe': 'Мүмкін', 'no': 'Келмеймін'}
+
+
+def notify_owner_answer(gathering, actor_name, answer):
+    """Уведомить владельца сбора, что участник ответил (тип 'answer')."""
+    if gathering is None or gathering.owner_id is None:
+        return
+    name = (actor_name or 'Участник').strip() or 'Участник'
+    title_ru = gathering.title_ru or 'сбор'
+    title_kz = gathering.title_kz or 'жиын'
+    create_notification(
+        gathering.owner_id, 'answer',
+        f'{name} ответил(а) «{_ANSWER_RU.get(answer, answer)}» на «{title_ru}»',
+        f'{name}: «{_ANSWER_KZ.get(answer, answer)}» — «{title_kz}»')
+
+
+def notify_application_decision(application, accepted):
+    """Уведомить заявителя о решении по заявке (тип 'event')."""
+    if application is None or application.applicant_id is None:
+        return
+    g = db.session.get(Gathering, application.gathering_id)
+    title_ru = (g.title_ru if g else None) or 'сбор'
+    title_kz = (g.title_kz if g else None) or 'жиын'
+    if accepted:
+        create_notification(application.applicant_id, 'event',
+                            f'Ваша заявка на «{title_ru}» принята',
+                            f'«{title_kz}» өтініміңіз қабылданды')
+    else:
+        create_notification(application.applicant_id, 'event',
+                            f'Заявка на «{title_ru}» отклонена',
+                            f'«{title_kz}» өтінімі қабылданбады')
+
+
+def notify_followers_new_event(gathering):
+    """Уведомить подписчиков НКО о новом событии (тип 'event'). Возвращает число адресатов."""
+    from models import Follow
+    if gathering is None or gathering.org_id is None:
+        return 0
+    follower_ids = [f.user_id for f in Follow.query.filter_by(org_id=gathering.org_id).all()]
+    title_ru = gathering.title_ru or 'новый сбор'
+    title_kz = gathering.title_kz or 'жаңа жиын'
+    for uid in follower_ids:
+        if uid == gathering.owner_id:
+            continue
+        create_notification(uid, 'event',
+                            f'Новый сбор рядом: «{title_ru}»',
+                            f'Жақын жерде жаңа жиын: «{title_kz}»')
+    return len(follower_ids)
+
+
 # ── бейджи ──
 
 def _has_badge(user_id, badge_id):

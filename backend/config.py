@@ -14,8 +14,13 @@ def _cors_origins():
     return ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000']
 
 
+# Публично известные dev-дефолты — в проде их использование запрещено (см. validate_config).
+_DEFAULT_SECRET = 'dev-secret-key-change-in-production'
+_DEFAULT_JWT_SECRET = 'dev-jwt-secret-key-change-in-production'
+
+
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+    SECRET_KEY = os.environ.get('SECRET_KEY', _DEFAULT_SECRET)
 
     # Database — всегда предпочитаем DATABASE_URL из окружения.
     # Без него создаётся ЛОКАЛЬНЫЙ SQLite-файл в database/.
@@ -27,12 +32,22 @@ class Config:
     CORS_ORIGINS = _cors_origins()
 
     # JWT
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-key-change-in-production')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', _DEFAULT_JWT_SECRET)
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
     # erik: базовый URL для ссылки-приглашения erik.kz/g/<code>
     SHARE_BASE_URL = os.environ.get('SHARE_BASE_URL', 'https://erik.kz')
+    # Базовый URL фронта (для ссылок сброса пароля/верификации в письмах)
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
+    # Почта (опционально). Без MAIL_SERVER письма логируются, а не отправляются (dev).
+    MAIL_SERVER = os.environ.get('MAIL_SERVER')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() != 'false'
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_FROM = os.environ.get('MAIL_FROM', 'no-reply@erik.kz')
 
 
 class DevelopmentConfig(Config):
@@ -66,18 +81,22 @@ def get_config():
 
 
 def validate_config():
-    """Проверить критичные настройки (вызывать при деплое)"""
+    """Проверить критичные настройки в проде. Бросает RuntimeError при небезопасной конфигурации.
+
+    Вызывается из create_app при FLASK_ENV=production, чтобы приложение НЕ поднималось
+    с публично известными dev-секретами (иначе тривиальная подделка JWT/админ-токена)."""
+    if os.environ.get('FLASK_ENV') != 'production':
+        return True
+
     errors = []
-    if os.environ.get('FLASK_ENV') == 'production':
-        for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL'):
-            if not os.environ.get(var):
-                errors.append(f'Переменная окружения {var} обязательна в продакшене')
+    for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL'):
+        if not os.environ.get(var):
+            errors.append(f'Переменная окружения {var} обязательна в продакшене')
+    if os.environ.get('SECRET_KEY') == _DEFAULT_SECRET:
+        errors.append('SECRET_KEY использует dev-дефолт — задайте уникальный секрет')
+    if os.environ.get('JWT_SECRET_KEY') == _DEFAULT_JWT_SECRET:
+        errors.append('JWT_SECRET_KEY использует dev-дефолт — задайте уникальный секрет')
 
     if errors:
-        print('Ошибки конфигурации:')
-        for error in errors:
-            print(f'   • {error}')
-        return False
-
-    print('Конфигурация корректна')
+        raise RuntimeError('Небезопасная конфигурация продакшена:\n  • ' + '\n  • '.join(errors))
     return True

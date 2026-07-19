@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { api, setAuth } from '../lib/api';
+import { api, setAuth, onAuthRefresh } from '../lib/api';
 
 // Кто я на этом устройстве. Персист: язык и личность (deviceId/имя/телефон).
 // token/loggedIn/role живут в памяти — демо начинается с лендинга.
@@ -28,6 +28,11 @@ export const useSessionStore = create(
       toggleLang: () => set((s) => ({ lang: s.lang === 'ru' ? 'kz' : 'ru' })),
       setRole: (role) => set({ role }),
       setIdentity: (name, phone) => set({ name, phone }),
+      // Доступ к админке: реальный аккаунт-админ (userType) или явный демо-вход (role='admin').
+      isAdmin: () => {
+        const s = get();
+        return s.userType === 'admin' || s.role === 'admin';
+      },
 
       // Поднять device-сессию (получить токен). Безопасно к офлайну — на моках работаем и так.
       boot: async () => {
@@ -39,11 +44,13 @@ export const useSessionStore = create(
             name: name || undefined,
             role: role || undefined,
           });
-          setAuth({ token: res.token });
+          setAuth({ token: res.token, refreshToken: res.refreshToken || null });
           set({
             token: res.token,
+            refreshToken: res.refreshToken || null,
             name: res.user.full_name || name,
             role: res.user.role || role || 'vol',
+            userType: res.user.user_type || null,   // для гейта админки (demo-coord = 'admin')
           });
           return res;
         } catch (_) {
@@ -61,7 +68,7 @@ export const useSessionStore = create(
       loginWithPassword: async ({ identifier, password }) => {
         setAuth({ deviceId: get().deviceId });
         const res = await api.login({ identifier, password });
-        setAuth({ token: res.access_token });
+        setAuth({ token: res.access_token, refreshToken: res.refresh_token || null });
         set((s) => ({
           token: res.access_token,
           refreshToken: res.refresh_token || null,
@@ -74,18 +81,28 @@ export const useSessionStore = create(
       },
 
       // Регистрация аккаунта. identifier — email ИЛИ nickname (бэк разберёт).
-      registerAccount: async ({ identifier, email, nickname, password, full_name }) => {
+      // role/phone/cityId дозаполняются в профиль через PATCH /me (у /auth/register их нет).
+      registerAccount: async ({ identifier, email, nickname, password, full_name, role, phone, cityId }) => {
         setAuth({ deviceId: get().deviceId });
         const res = await api.register({ identifier, email, nickname, password, full_name });
-        setAuth({ token: res.access_token });
+        setAuth({ token: res.access_token, refreshToken: res.refresh_token || null });
         set((s) => ({
           token: res.access_token,
           refreshToken: res.refresh_token || null,
           loggedIn: true,
           userType: (res.user && res.user.user_type) || 'user',
-          role: (res.user && res.user.role) || s.role || 'vol',
+          role: role || (res.user && res.user.role) || s.role || 'vol',
           name: (res.user && res.user.full_name) || full_name || s.name,
+          phone: phone || s.phone,
         }));
+        // профильные данные онбординга (город/роль/телефон) — в свой профиль
+        const patch = {};
+        if (role) patch.role = role;
+        if (phone) patch.phone = phone;
+        if (cityId) patch.cityId = cityId;
+        if (Object.keys(patch).length) {
+          try { await api.updateMe(patch); } catch (_) { /* не блокируем регистрацию */ }
+        }
         return res;
       },
 
@@ -106,8 +123,10 @@ export const useSessionStore = create(
   )
 );
 
-// Сразу отдаём deviceId клиенту API (в т.ч. после регидратации persist).
-setAuth({ deviceId: useSessionStore.getState().deviceId });
+// Сразу отдаём deviceId и (регидратированный) refreshToken клиенту API.
+setAuth({ deviceId: useSessionStore.getState().deviceId, refreshToken: useSessionStore.getState().refreshToken });
 useSessionStore.persist?.onFinishHydration?.(() =>
-  setAuth({ deviceId: useSessionStore.getState().deviceId })
+  setAuth({ deviceId: useSessionStore.getState().deviceId, refreshToken: useSessionStore.getState().refreshToken })
 );
+// Обновлённый по refresh access-токен пробрасываем обратно в стор.
+onAuthRefresh((token) => useSessionStore.setState({ token }));

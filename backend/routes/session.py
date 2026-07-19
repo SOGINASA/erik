@@ -8,7 +8,7 @@ from flask_jwt_extended import jwt_required
 
 from models import db, USER_ROLES
 from services.identity import resolve_device_user, make_tokens, current_user
-from utils.decorators import profiled_required
+from utils.decorators import profiled_required, rate_limit
 
 session_bp = Blueprint('session', __name__)
 
@@ -18,6 +18,7 @@ def _device_id(data):
 
 
 @session_bp.route('/session', methods=['POST'])
+@rate_limit(30, 60)
 def session():
     """Поднять/найти пользователя по устройству. Тело: {deviceId, name?, role?, phone?}."""
     data = request.get_json(silent=True) or {}
@@ -52,7 +53,7 @@ def me():
     user = current_user()
     if user is None or not user.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
-    return jsonify({'user': user.to_dict(include_sensitive=True)})
+    return jsonify({'user': user.to_dict(include_sensitive=True, include_device=True)})
 
 
 @session_bp.route('/me', methods=['PATCH'])

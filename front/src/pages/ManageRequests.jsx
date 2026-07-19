@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useT, useLang } from '../i18n';
 import { useOrganizerStore } from '../store/useOrganizerStore';
 import { useUiStore } from '../store/useUiStore';
@@ -15,11 +16,15 @@ export default function ManageRequests() {
   const isRu = useLang() === 'ru';
   const apps = useOrganizerStore((s) => s.applications);
   const events = useOrganizerStore((s) => s.events);
+  const load = useOrganizerStore((s) => s.load);
   const filter = useOrganizerStore((s) => s.reqFilter);
   const setFilter = useOrganizerStore((s) => s.setReqFilter);
   const accept = useOrganizerStore((s) => s.acceptApplication);
   const decline = useOrganizerStore((s) => s.declineApplication);
   const openSheet = useUiStore((s) => s.openSheet);
+
+  // Грузим заявки/сборы при прямом заходе на /manage/requests (иначе — моки).
+  useEffect(() => { load(); }, [load]);
 
   const eventTitle = (id) => {
     const e = events.find((x) => x.id === id);

@@ -49,6 +49,7 @@ function Sidebar({ route }) {
   const t = useT();
   const go = useGuardedNav();
   const loggedIn = useSessionStore((s) => s.loggedIn);
+  const isAdmin = useSessionStore((s) => s.isAdmin());
   const me = usePlatformStore((s) => s.me);
   const unread = useUnread();
 
@@ -88,7 +89,9 @@ function Sidebar({ route }) {
         <NavBtn icon="bell" label={t.navNotif} active={route === 'notifications'} onClick={() => go('/notifications', 'notifications')} badge={unread} />
         <NavBtn icon="trophy" label={t.navLeader} active={route === 'leaderboard'} onClick={() => go('/leaderboard', 'leaderboard')} />
         <NavBtn icon="heart" label={t.navCharity} active={route === 'charity'} onClick={() => go('/charity', 'charity')} />
-        <NavBtn icon="shield" label={t.navAdmin} active={route === 'admin'} onClick={() => go('/admin', 'admin')} />
+        {isAdmin && (
+          <NavBtn icon="shield" label={t.navAdmin} active={route === 'admin'} onClick={() => go('/admin', 'admin')} />
+        )}
       </nav>
       <div style={{ flex: 1 }} />
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>

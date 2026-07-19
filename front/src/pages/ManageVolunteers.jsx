@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useOrganizerStore } from '../store/useOrganizerStore';
+import { usePlatformStore } from '../store/usePlatformStore';
 import { useUiStore } from '../store/useUiStore';
+import { api } from '../lib/api';
 import { useIsDesktop } from '../lib/nav';
 import { plural } from '../lib/data';
 import { Container } from '../components/Container';
@@ -19,15 +22,32 @@ export default function ManageVolunteers() {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const volunteers = useOrganizerStore((s) => s.volunteers);
+  const load = useOrganizerStore((s) => s.load);
   const sort = useOrganizerStore((s) => s.volSort);
   const setSort = useOrganizerStore((s) => s.setVolSort);
+  const loadConversations = usePlatformStore((s) => s.loadConversations);
   const showToast = useUiStore((s) => s.showToast);
+
+  // Грузим базу волонтёров и при прямом заходе на /manage/volunteers (иначе — моки).
+  useEffect(() => { load(); }, [load]);
 
   const sorted = [...volunteers].sort((a, b) =>
     sort === 'hours' ? b.hours - a.hours : sort === 'events' ? b.events - a.events : b.reliability - a.reliability
   );
 
-  const write = (v) => { showToast(isRu ? `Открыт чат с ${v.name}` : `${v.name} чаты ашылды`); navigate('/messages'); };
+  // Найти/создать реальный диалог с волонтёром и открыть его.
+  const write = async (v) => {
+    const peerId = String(v.id).replace(/^\D+/, '');
+    try {
+      const res = await api.createConversation(peerId);
+      await loadConversations();
+      navigate('/messages/c' + res.conversation.id);
+    } catch (_) {
+      // офлайн/мок (v без реального id) — открываем общий список
+      showToast(isRu ? `Открыт чат с ${v.name}` : `${v.name} чаты ашылды`);
+      navigate('/messages');
+    }
+  };
 
   return (
     <div style={{ minHeight: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>

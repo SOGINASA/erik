@@ -55,3 +55,34 @@ def read_all():
      .update({'read': True, 'read_at': now}))
     db.session.commit()
     return jsonify({'unread': 0})
+
+
+@notifications_bp.route('/push/subscribe', methods=['POST'])
+@profiled_required
+def push_subscribe():
+    """Сохранить web-push подписку устройства. Тело: {endpoint, keys:{p256dh, auth}}.
+    Доставка web-push — позже (pywebpush); сейчас слой подписки существует и идемпотентен."""
+    from models import PushSubscription
+    data = request.get_json(silent=True) or {}
+    endpoint = (data.get('endpoint') or '').strip()
+    if not endpoint:
+        return jsonify({'error': 'endpoint обязателен'}), 400
+    keys = data.get('keys') or {}
+    sub = PushSubscription.query.filter_by(user_id=g.user.id, endpoint=endpoint).first()
+    if sub is None:
+        sub = PushSubscription(user_id=g.user.id, endpoint=endpoint,
+                               p256dh=keys.get('p256dh'), auth=keys.get('auth'))
+        db.session.add(sub)
+        db.session.commit()
+    return jsonify({'ok': True, 'id': sub.id}), 201
+
+
+@notifications_bp.route('/push/subscribe', methods=['DELETE'])
+@profiled_required
+def push_unsubscribe():
+    from models import PushSubscription
+    endpoint = (request.get_json(silent=True) or {}).get('endpoint', '').strip()
+    if endpoint:
+        PushSubscription.query.filter_by(user_id=g.user.id, endpoint=endpoint).delete()
+        db.session.commit()
+    return '', 204

@@ -179,6 +179,13 @@ export const usePlatformStore = create((set, get) => ({
     api.readAllNotifications().catch(() => {});
   },
 
+  // Отметить одно уведомление прочитанным (клик по карточке).
+  markRead: (id) => {
+    if (get().notifRead[id]) return;
+    set((s) => ({ notifRead: { ...s.notifRead, [id]: true } }));
+    api.readNotification(numId(id)).catch(() => {});
+  },
+
   unreadCount: () => {
     const s = get();
     return s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length;

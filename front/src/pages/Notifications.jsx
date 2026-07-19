@@ -15,6 +15,7 @@ export default function Notifications() {
   const notifs = usePlatformStore((s) => s.notifs);
   const notifRead = usePlatformStore((s) => s.notifRead);
   const markAllRead = usePlatformStore((s) => s.markAllRead);
+  const markRead = usePlatformStore((s) => s.markRead);
 
   return (
     <Container style={{ maxWidth: 720, paddingTop: 24, paddingBottom: 48 }}>
@@ -30,7 +31,14 @@ export default function Notifications() {
           {notifs.map((n) => {
             const unread = !n.read && !notifRead[n.id];
             return (
-              <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 4px', borderBottom: '1px solid var(--line)' }}>
+              <div
+                key={n.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => unread && markRead(n.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && unread) markRead(n.id); }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 4px', borderBottom: '1px solid var(--line)', cursor: unread ? 'pointer' : 'default' }}
+              >
                 <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-2)', background: NOTIF_ICON_BG[n.type] || '#EEF0EC' }}>
                   <Icon name={NOTIF_ICON[n.type] || 'bell'} size={18} />
                 </span>
