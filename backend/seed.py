@@ -23,19 +23,27 @@ THEME_KW = {
 }
 
 
-def _lock(s):
-    return sum(ord(c) for c in s) % 100000        # стабильный ключ картинки из кода/заголовка
+# Обложки лежат во фронте: front/public/assets/covers/<имя>.jpg — отдаются с его же
+# домена. Ни внешних сервисов, ни рейт-лимитов: картинка либо есть в репозитории, либо
+# карточка показывает тематический тинт. THEME_KW выше — ключевики, по которым файлы подбирались.
+COVERS = '/assets/covers'
+
+# ключевик запроса помощи -> имя файла обложки
+CHARITY_IMG = {
+    'cleanup,tools': 'charity-tools',
+    'warm,clothes': 'charity-clothes',
+    'pet,food': 'charity-petfood',
+    'books,school': 'charity-books',
+}
 
 
-def _img(keywords, lock):
-    # picsum отдаёт по seed стабильное фото и, в отличие от loremflickr, не режет
-    # пачку параллельных запросов и не 404-ит на редких связках ключевиков.
-    # Ключевики темы остаются в seed — чтобы у разных тем не совпадали обложки.
-    return f'https://picsum.photos/seed/{keywords.replace(",", "-")}{lock}/800/500'
+def _img(keywords):
+    return f'{COVERS}/{CHARITY_IMG.get(keywords, "eco")}.jpg'
 
 
 def _theme_image(theme, code):
-    return _img(THEME_KW.get(theme, 'volunteer,community'), _lock(code))
+    # code больше не влияет на выбор: на каждую тему один файл.
+    return f'{COVERS}/{theme if theme in THEME_KW else "eco"}.jpg'
 
 
 # Жалобы для экрана модерации: (target_type, ru, kz, count)
@@ -372,7 +380,7 @@ def _seed_platform():
     for titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw in CHARITY:
         db.session.add(CharityRequest(title_ru=titleRu, title_kz=titleKz, org_id=org_id,
                                       city_id=city, kind=kind, goal=goal, raised=raised, unit=unit,
-                                      image_url=_img(img_kw, _lock(titleRu))))
+                                      image_url=_img(img_kw)))
 
     # волонтёры-лидеры
     for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):
