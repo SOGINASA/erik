@@ -12,7 +12,7 @@ from models import (
     Conversation, ConversationMember, Message, Report,
 )
 
-# ── Обложки: внешние URL по теме (loremflickr — topical by keyword, детерминировано по lock).
+# ── Обложки: локальные файлы фронта, по одному на тему (см. COVERS ниже).
 # Чтобы поставить конкретную картинку, верните готовый URL из _theme_image/_img
 # или задайте image_url явно прямо в вызове конструктора.
 THEME_KW = {
@@ -23,16 +23,27 @@ THEME_KW = {
 }
 
 
-def _lock(s):
-    return sum(ord(c) for c in s) % 100000        # стабильный ключ картинки из кода/заголовка
+# Обложки лежат во фронте: front/public/assets/covers/<имя>.jpg — отдаются с его же
+# домена. Ни внешних сервисов, ни рейт-лимитов: картинка либо есть в репозитории, либо
+# карточка показывает тематический тинт. THEME_KW выше — ключевики, по которым файлы подбирались.
+COVERS = '/assets/covers'
+
+# ключевик запроса помощи -> имя файла обложки
+CHARITY_IMG = {
+    'cleanup,tools': 'charity-tools',
+    'warm,clothes': 'charity-clothes',
+    'pet,food': 'charity-petfood',
+    'books,school': 'charity-books',
+}
 
 
-def _img(keywords, lock):
-    return f'https://loremflickr.com/800/500/{keywords}?lock={lock}'
+def _img(keywords):
+    return f'{COVERS}/{CHARITY_IMG.get(keywords, "eco")}.jpg'
 
 
 def _theme_image(theme, code):
-    return _img(THEME_KW.get(theme, 'volunteer,community'), _lock(code))
+    # code больше не влияет на выбор: на каждую тему один файл.
+    return f'{COVERS}/{theme if theme in THEME_KW else "eco"}.jpg'
 
 
 # Жалобы для экрана модерации: (target_type, ru, kz, count)
@@ -308,6 +319,8 @@ def seed_demo(reset=False):
     db.session.commit()
 
     # демо-уведомления координатору (лента не должна быть пустой на защите)
+    # NB: Notification импортируется на уровне модуля. Локальный `from models import
+    # Notification` здесь делал имя локальным для ВСЕЙ функции и ронял блок reset выше.
     if not Notification.query.filter_by(user_id=coord.id).first():
         demo_notifs = [
             ('answer', 'Айгерім ответила «Приду» на «Уборка парка на Набережной»', 'Айгерім «Келемін» деп жауап берді'),
@@ -374,7 +387,7 @@ def _seed_platform():
     for titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw in CHARITY:
         db.session.add(CharityRequest(title_ru=titleRu, title_kz=titleKz, org_id=org_id,
                                       city_id=city, kind=kind, goal=goal, raised=raised, unit=unit,
-                                      image_url=_img(img_kw, _lock(titleRu))))
+                                      image_url=_img(img_kw)))
 
     # волонтёры-лидеры
     for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):
