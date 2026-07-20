@@ -37,20 +37,24 @@ export const ORGS = [
   { id: 'o5', name: 'Дети будущего', cat: 'edu', city: 'Шымкент', verified: true, aboutRu: 'Наставничество и репетиторство для сельских школьников.', aboutKz: 'Ауыл оқушыларына тәлімгерлік және репетиторлық.', events: 18, vol: 380 },
 ];
 
-// Обложки-заглушки (внешние URL, topical by keyword) для офлайн-фолбэка — зеркалит backend/seed.py.
+// Обложки-заглушки для офлайн-фолбэка — зеркалит backend/seed.py (COVERS/_theme_image/_img).
 // Онлайн реальный image приходит из API; здесь только на случай, когда сервер недоступен.
-const THEME_KW = {
-  eco: 'cleanup,park', elderly: 'elderly,care', animals: 'animal,shelter',
-  blood: 'blood,donation', edu: 'tutoring,children', trees: 'tree,planting',
-  homeless: 'warm,clothes', medical: 'hospital,care', disaster: 'flood,rescue',
-  sport: 'city,run', culture: 'books,festival', it: 'computer,seniors',
+// Файлы лежат в public/assets/covers/ — отдаются со своего домена, внешних запросов нет.
+const COVERS = '/assets/covers';
+const THEMES_WITH_COVER = ['eco', 'elderly', 'animals', 'blood', 'edu', 'trees',
+  'homeless', 'medical', 'disaster', 'sport', 'culture', 'it'];
+// ключевик запроса помощи -> имя файла (те же пары, что в CHARITY_IMG на бэкенде)
+const CHARITY_IMG = {
+  'cleanup,tools': 'charity-tools',
+  'warm,clothes': 'charity-clothes',
+  'pet,food': 'charity-petfood',
+  'books,school': 'charity-books',
 };
-const lockOf = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h += s.charCodeAt(i); return h % 100000; };
-export const themeImage = (theme, key) => `https://loremflickr.com/800/500/${THEME_KW[theme] || 'volunteer,community'}?lock=${lockOf(key || theme)}`;
-const charityImage = (kw, key) => `https://loremflickr.com/800/500/${kw}?lock=${lockOf(key)}`;
+export const themeImage = (theme) => `${COVERS}/${THEMES_WITH_COVER.includes(theme) ? theme : 'eco'}.jpg`;
+const charityImage = (kw) => `${COVERS}/${CHARITY_IMG[kw] || 'eco'}.jpg`;
 
 const ev = (id, code, ru, kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, mine) =>
-  ({ id, code, titleRu: ru, titleKz: kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, image: themeImage(theme, code), mine: !!mine });
+  ({ id, code, titleRu: ru, titleKz: kz, orgId, cityId, theme, placeRu, placeKz, dateRu, dateKz, time, format, needed, going, image: themeImage(theme), mine: !!mine });
 
 export const EVENTS = [
   ev('e1', 'PARK18', 'Уборка парка на Набережной', 'Жағалау саябағын тазалау', 'o1', 'pet', 'eco', 'Парк на Набережной, вход у фонтана', 'Жағалау саябағы, фонтан жанындағы кіреберіс', 'суббота, 18 июля', 'сенбі, 18 шілде', '10:00', 'one', 20, 15, true),
@@ -112,10 +116,10 @@ export const CONVOS = [
 ];
 
 export const CHARITY = [
-  { id: 'ch1', titleRu: 'Инвентарь для субботников', titleKz: 'Сенбілікке құрал-жабдық', org: 'o1', cityId: 'pet', kind: 'money', goal: 150000, raised: 98000, unit: '₸', image: charityImage('cleanup,tools', 'ch1') },
-  { id: 'ch2', titleRu: 'Тёплые вещи для приюта', titleKz: 'Баспанаға жылы киім', org: 'o2', cityId: 'alm', kind: 'items', goal: 200, raised: 134, unit: 'вещей', image: charityImage('warm,clothes', 'ch2') },
-  { id: 'ch3', titleRu: 'Корм для приюта «Лапа»', titleKz: '«Лапа» баспанасына жем', org: 'o3', cityId: 'alm', kind: 'money', goal: 90000, raised: 71500, unit: '₸', image: charityImage('pet,food', 'ch3') },
-  { id: 'ch4', titleRu: 'Учебники сельским школам', titleKz: 'Ауыл мектептеріне оқулық', org: 'o5', cityId: 'shy', kind: 'items', goal: 500, raised: 210, unit: 'книг', image: charityImage('books,school', 'ch4') },
+  { id: 'ch1', titleRu: 'Инвентарь для субботников', titleKz: 'Сенбілікке құрал-жабдық', org: 'o1', cityId: 'pet', kind: 'money', goal: 150000, raised: 98000, unit: '₸', image: charityImage('cleanup,tools') },
+  { id: 'ch2', titleRu: 'Тёплые вещи для приюта', titleKz: 'Баспанаға жылы киім', org: 'o2', cityId: 'alm', kind: 'items', goal: 200, raised: 134, unit: 'вещей', image: charityImage('warm,clothes') },
+  { id: 'ch3', titleRu: 'Корм для приюта «Лапа»', titleKz: '«Лапа» баспанасына жем', org: 'o3', cityId: 'alm', kind: 'money', goal: 90000, raised: 71500, unit: '₸', image: charityImage('pet,food') },
+  { id: 'ch4', titleRu: 'Учебники сельским школам', titleKz: 'Ауыл мектептеріне оқулық', org: 'o5', cityId: 'shy', kind: 'items', goal: 500, raised: 210, unit: 'книг', image: charityImage('books,school') },
 ];
 
 // Детерминированный сбор-демо: 14 «да», 24 «может», 7 «нет» с правдоподобной историей.

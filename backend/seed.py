@@ -12,7 +12,7 @@ from models import (
     Conversation, ConversationMember, Message, Report,
 )
 
-# ── Обложки: внешние URL, детерминировано по lock (picsum, seed = тема + lock).
+# ── Обложки: локальные файлы фронта, по одному на тему (см. COVERS ниже).
 # Чтобы поставить конкретную картинку, верните готовый URL из _theme_image/_img
 # или задайте image_url явно прямо в вызове конструктора.
 THEME_KW = {
