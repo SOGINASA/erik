@@ -43,6 +43,7 @@ export const usePlatformStore = create((set, get) => ({
   convos: [],
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
+  pendingEvents: [],   // сборы, ожидающие модерации админом (для AdminModeration)
 
   followed: {},
   notifRead: {},
@@ -122,6 +123,28 @@ export const usePlatformStore = create((set, get) => ({
     } catch (_) {
       /* не админ/офлайн — оставляем демо-жалобы */
     }
+  },
+
+  // Сборы на модерации (admin): очередь, одобрение (→ публикуем в ленту) и отклонение.
+  loadPendingEvents: async () => {
+    try {
+      const res = await api.adminEvents('?status=pending');
+      if (Array.isArray(res.events)) set({ pendingEvents: res.events });
+    } catch (_) {
+      /* не админ/офлайн */
+    }
+  },
+
+  approveEvent: (eventId) => {
+    set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
+    toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
+    api.approveEvent(numId(eventId)).catch(() => {});
+  },
+
+  rejectEvent: (eventId) => {
+    set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
+    toast(isRu() ? 'Сбор отклонён' : 'Жиын қабылданбады');
+    api.rejectEvent(numId(eventId)).catch(() => {});
   },
 
   approveOrg: (orgId) => {

@@ -59,6 +59,22 @@ def notify_application_decision(application, accepted):
                             f'«{title_kz}» өтінімі қабылданбады')
 
 
+def notify_event_moderated(gathering, approved):
+    """Уведомить владельца о решении модерации его сбора (тип 'event')."""
+    if gathering is None or gathering.owner_id is None:
+        return
+    title_ru = gathering.title_ru or 'сбор'
+    title_kz = gathering.title_kz or 'жиын'
+    if approved:
+        create_notification(gathering.owner_id, 'event',
+                            f'Ваш сбор «{title_ru}» одобрен и опубликован',
+                            f'«{title_kz}» жиыныңыз мақұлданып, жарияланды')
+    else:
+        create_notification(gathering.owner_id, 'event',
+                            f'Сбор «{title_ru}» отклонён модерацией',
+                            f'«{title_kz}» жиыны модерациядан өтпеді')
+
+
 def notify_followers_new_event(gathering):
     """Уведомить подписчиков НКО о новом событии (тип 'event'). Возвращает число адресатов."""
     from models import Follow

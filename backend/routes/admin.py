@@ -81,6 +81,8 @@ def moderation_stats():
         User.is_active.is_(True), User.role == 'org').scalar() or 0
     active_events = db.session.query(db.func.count(Gathering.id)).filter(
         Gathering.status == 'open').scalar() or 0
+    pending_events = db.session.query(db.func.count(Gathering.id)).filter(
+        Gathering.status == 'pending').scalar() or 0
     hours_total = db.session.query(db.func.coalesce(db.func.sum(User.hours_total), 0)).scalar() or 0
     raised = db.session.query(db.func.coalesce(db.func.sum(CharityRequest.raised), 0)).filter(
         CharityRequest.kind == 'money').scalar() or 0
@@ -110,6 +112,7 @@ def moderation_stats():
         'coordinators': coordinators,
         'nkoUsers': nko_users,
         'activeEvents': active_events,
+        'pendingEvents': pending_events,
         'hoursTotal': int(hours_total),
         'raised': int(raised),
         'avgReliability': int(round(avg_rel)) if avg_rel is not None else 0,
@@ -233,6 +236,8 @@ def admin_events():
         q = q.filter(Gathering.status == 'open')
     elif status == 'done':
         q = q.filter(db.or_(Gathering.status == 'done', Gathering.finalized_at.isnot(None)))
+    elif status == 'pending':
+        q = q.filter(Gathering.status == 'pending')
     rows = q.order_by(Gathering.starts_at.desc()).all()
     today = datetime.now(timezone.utc).date()
     return jsonify({'events': [_admin_event(x, today) for x in rows]})
@@ -249,6 +254,44 @@ def unpublish_event(eid):
         return jsonify({'error': 'Событие не найдено'}), 404
     gathering.status = 'deleted'
     gathering.bump()
+    db.session.commit()
+    return jsonify({'ok': True, 'id': eid})
+
+
+@admin_bp.route('/events/<int:eid>/approve', methods=['POST'])
+@admin_required
+def approve_event(eid):
+    """Одобрить сбор из очереди модерации → публикуем (status='open').
+    После ододрения он появляется в ленте/на карте у всех пользователей."""
+    from models import Gathering
+    from services.notifications import notify_event_moderated, notify_followers_new_event
+
+    gathering = db.session.get(Gathering, eid)
+    if gathering is None or gathering.status == 'deleted':
+        return jsonify({'error': 'Событие не найдено'}), 404
+    if gathering.status == 'pending':
+        gathering.status = 'open'
+        gathering.bump()
+        notify_event_moderated(gathering, approved=True)
+        if gathering.org_id is not None:
+            notify_followers_new_event(gathering)   # подписчикам НКО — теперь можно
+        db.session.commit()
+    return jsonify({'ok': True, 'id': eid, 'status': gathering.status})
+
+
+@admin_bp.route('/events/<int:eid>/reject', methods=['POST'])
+@admin_required
+def reject_event(eid):
+    """Отклонить сбор из очереди модерации — он не публикуется (status='deleted')."""
+    from models import Gathering
+    from services.notifications import notify_event_moderated
+
+    gathering = db.session.get(Gathering, eid)
+    if gathering is None or gathering.status == 'deleted':
+        return jsonify({'error': 'Событие не найдено'}), 404
+    gathering.status = 'deleted'
+    gathering.bump()
+    notify_event_moderated(gathering, approved=False)
     db.session.commit()
     return jsonify({'ok': True, 'id': eid})
 

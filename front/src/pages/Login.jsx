@@ -83,10 +83,11 @@ export default function Login() {
     }
   };
 
-  // Админка гейтится по user_type='admin'. Демо-админ — demo-coord (см. seed.py).
+  // Админка гейтится по user_type='admin'. Демо-админ — отдельный demo-admin (см. seed.py);
+  // demo-coord теперь обычный координатор без доступа к модерации.
   const quickAdmin = async () => {
     try {
-      await loginAsDevice('demo-coord');
+      await loginAsDevice('demo-admin');
       navigate('/admin');
       showToast('Вход как администратор');
     } catch (_) {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useT } from '../i18n';
+import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
@@ -17,13 +17,22 @@ export default function NewGathering() {
   const hasName = !!useSessionStore((s) => s.name);
   const createGathering = useGatheringStore((s) => s.create);
   const openSheet = useUiStore((s) => s.openSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const isRu = useLang() === 'ru';
 
   const [form, setForm] = useState({ what: '', where: '', date: '2026-07-18', time: '10:00', needed: 20, name: '' });
   const up = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const create = async () => {
-    await createGathering(form);
-    openSheet('share');
+    const res = await createGathering(form);
+    // Новый сбор уходит на модерацию к админу (RSVP пока закрыт) — не открываем шеринг кода,
+    // показываем статус и ведём в «Мои сборы».
+    if (res && res.gathering && res.gathering.status === 'pending') {
+      showToast(isRu ? 'Сбор отправлен на модерацию' : 'Жиын модерацияға жіберілді');
+      navigate('/me');
+    } else {
+      openSheet('share');
+    }
   };
 
   return (

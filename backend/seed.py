@@ -248,6 +248,13 @@ def seed_demo(reset=False):
         db.session.add(admin_acc)
         db.session.commit()
 
+    # демо-АДМИН как отдельная device-личность: кнопка «Войти как администратор» ведёт
+    # СЮДА. demo-coord теперь обычный координатор (без доступа к модерации).
+    if not User.query.filter_by(device_id='demo-admin').first():
+        db.session.add(User(device_id='demo-admin', full_name='Администратор erik',
+                            role='org', city_id='ast', user_type='admin', is_active=True))
+        db.session.commit()
+
     if Gathering.query.filter_by(code='PARK18').first():
         print('PARK18 уже есть — пропускаю (используй --reset для пересоздания)')
         return
@@ -255,9 +262,9 @@ def seed_demo(reset=False):
     # координатор-владелец (ME) со статами профиля
     coord = User.query.filter_by(device_id='demo-coord').first()
     if coord is None:
-        # user_type='admin' — для демо, чтобы этот же пользователь мог открыть «Модерацию»
+        # Обычный координатор (НЕ админ): модерация вынесена в отдельного demo-admin.
         coord = User(device_id='demo-coord', full_name='Асхат Жумабеков', role='coord',
-                     city_id='pet', user_type='admin', is_active=True,
+                     city_id='pet', user_type='user', is_active=True,
                      hours_total=47, events_attended=12, reliability=91, rank=34,
                      skills=['Организация', 'Первая помощь', 'Водитель кат. B', 'Фото'])
         db.session.add(coord)
@@ -301,7 +308,6 @@ def seed_demo(reset=False):
     db.session.commit()
 
     # демо-уведомления координатору (лента не должна быть пустой на защите)
-    from models import Notification
     if not Notification.query.filter_by(user_id=coord.id).first():
         demo_notifs = [
             ('answer', 'Айгерім ответила «Приду» на «Уборка парка на Набережной»', 'Айгерім «Келемін» деп жауап берді'),

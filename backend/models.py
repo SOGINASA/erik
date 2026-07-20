@@ -23,7 +23,7 @@ def _utc_iso(dt):
 # так проще с миграциями на SQLite).
 ANSWERS = ('yes', 'maybe', 'no')
 PRESENCES = ('came', 'missed')
-GATHERING_STATUSES = ('open', 'done', 'deleted')
+GATHERING_STATUSES = ('pending', 'open', 'done', 'deleted')
 GATHERING_FORMATS = ('one', 'reg')
 USER_ROLES = ('vol', 'coord', 'org')
 NOTIF_TYPES = ('answer', 'reminder', 'badge', 'event', 'system')
@@ -175,7 +175,7 @@ class Gathering(db.Model):
     starts_at = db.Column(db.DateTime(timezone=True))
     format = db.Column(db.String(4), default='one')       # one | reg
     needed = db.Column(db.Integer, default=20)
-    status = db.Column(db.String(8), default='open')      # open | done | deleted
+    status = db.Column(db.String(8), default='pending')   # pending (на модерации) | open | done | deleted
     ctx = db.Column(db.Float, default=1.0)
     revision = db.Column(db.Integer, default=0)           # для delta-поллинга
     going_cache = db.Column(db.Integer, nullable=True)    # демо-события ленты без реального ростера

@@ -106,6 +106,9 @@ def event_detail(id):
     if g_ is None or g_.status == 'deleted':
         return jsonify({'error': 'Событие не найдено'}), 404
     u = current_user()
+    # сбор на модерации виден по прямой ссылке только его владельцу
+    if g_.status == 'pending' and (u is None or u.id != g_.owner_id):
+        return jsonify({'error': 'Событие не найдено'}), 404
     return jsonify({'event': serialize_event_card(g_, u.id if u else None)})
 
 
@@ -200,7 +203,8 @@ def org_detail(id):
 @jwt_required(optional=True)
 def org_events(id):
     u = current_user()
-    rows = Gathering.query.filter(Gathering.org_id == id, Gathering.status != 'deleted').order_by(
+    rows = Gathering.query.filter(
+        Gathering.org_id == id, Gathering.status.notin_(('deleted', 'pending'))).order_by(
         Gathering.starts_at.asc()).all()
     return jsonify({'events': [serialize_event_card(x, u.id if u else None) for x in rows]})
 

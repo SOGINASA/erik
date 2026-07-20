@@ -34,6 +34,7 @@ export default function MyGatherings() {
   const metaOf = (g) => {
     const answered = g.answered ?? 0;
     const came = g.came ?? 0;
+    if (g.status === 'pending') return isRu ? 'ждёт одобрения администратора' : 'әкімшінің мақұлдауын күтуде';
     return g.status === 'done'
       ? isRu ? `пришло ${came} из ${answered}` : `${answered} адамнан ${came} келді`
       : isRu ? `открыт · ответили ${answered}` : `ашық · ${answered} жауап`;
@@ -46,6 +47,7 @@ export default function MyGatherings() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map((g) => {
             const isDone = g.status === 'done';
+            const isPending = g.status === 'pending';
             return (
               <button
                 key={g.id}
@@ -56,7 +58,10 @@ export default function MyGatherings() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <span style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 18, color: 'var(--ink)' }}>{isRu ? g.titleRu : g.titleKz}</span>
-                  {!isDone && <span style={{ height: 20, padding: '0 8px', display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 11, fontWeight: 600 }}>live</span>}
+                  {isPending
+                    ? <span style={{ height: 20, padding: '0 8px', display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--maybe-soft)', color: 'var(--maybe)', fontSize: 11, fontWeight: 600 }}>{isRu ? 'на модерации' : 'модерацияда'}</span>
+                    : !isDone ? <span style={{ height: 20, padding: '0 8px', display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 11, fontWeight: 600 }}>live</span>
+                    : null}
                 </div>
                 <div style={{ fontSize: 14, color: 'var(--ink-2)', marginBottom: 8 }}>{(isRu ? g.dateRu : g.dateKz)} · {g.time}</div>
                 <div style={{ fontFamily: 'var(--fm)', fontSize: 13, color: 'var(--ink-3)' }}>{metaOf(g)}</div>

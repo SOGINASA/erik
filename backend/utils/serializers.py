@@ -127,7 +127,7 @@ def serialize_event_card(g, viewer_id=None):
 def serialize_org(org, following=None):
     from models import db, City, Gathering, Participant
     events_count = db.session.query(db.func.count(Gathering.id)).filter(
-        Gathering.org_id == org.id, Gathering.status != 'deleted').scalar() or 0
+        Gathering.org_id == org.id, Gathering.status.notin_(('deleted', 'pending'))).scalar() or 0
     vol_count = db.session.query(db.func.count(db.distinct(Participant.user_id))).join(
         Gathering, Gathering.id == Participant.gathering_id).filter(
         Gathering.org_id == org.id, Participant.user_id.isnot(None)).scalar() or 0
@@ -229,7 +229,9 @@ def _ago_labels(dt):
 
 
 def _org_event_status(g, today):
-    """live (сегодня) | soon (в будущем) | done (прошёл/завершён). Статус — на СЕРВЕРЕ."""
+    """pending (на модерации) | live (сегодня) | soon (в будущем) | done. Статус — на СЕРВЕРЕ."""
+    if g.status == 'pending':
+        return 'pending'
     if g.status == 'done' or g.finalized_at is not None:
         return 'done'
     if g.starts_at is None:

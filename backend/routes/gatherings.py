@@ -74,15 +74,13 @@ def create_gathering():
         starts_at=starts_at,
         needed=_clamp_needed(data.get('needed', 20)),
         format=data.get('format') if data.get('format') in ('one', 'reg') else 'one',
-        status='open', ctx=compute_ctx(starts_at),   # реальный контекст (день недели/lead-time)
+        # Новый сбор уходит на модерацию к админу; в ленту/на карту попадёт только
+        # после одобрения (status='open'). Уведомление подписчикам НКО — при одобрении.
+        status='pending', ctx=compute_ctx(starts_at),   # реальный контекст (день недели/lead-time)
     )
     db.session.add(gathering)
     db.session.flush()
     db.session.add(GatheringCoordinator(gathering_id=gathering.id, user_id=user.id, role='owner'))
-    # подписчикам НКО — уведомление о новом событии (если сбор от организации)
-    if gathering.org_id is not None:
-        from services.notifications import notify_followers_new_event
-        notify_followers_new_event(gathering)
     db.session.commit()
 
     share_url = f"{current_app.config['SHARE_BASE_URL']}/g/{gathering.code}"

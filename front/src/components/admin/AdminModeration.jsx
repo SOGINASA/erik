@@ -46,17 +46,22 @@ function Warn() {
 export default function AdminModeration() {
   const orgs = usePlatformStore((s) => s.orgs);
   const reports = usePlatformStore((s) => s.reports);
+  const pendingEvents = usePlatformStore((s) => s.pendingEvents);
   const loadPlatform = usePlatformStore((s) => s.loadPlatform);
   const loadReports = usePlatformStore((s) => s.loadReports);
+  const loadPendingEvents = usePlatformStore((s) => s.loadPendingEvents);
   const approveOrg = usePlatformStore((s) => s.approveOrg);
   const rejectOrg = usePlatformStore((s) => s.rejectOrg);
+  const approveEvent = usePlatformStore((s) => s.approveEvent);
+  const rejectEvent = usePlatformStore((s) => s.rejectEvent);
   const reviewReport = usePlatformStore((s) => s.reviewReport);
   const resolveReport = usePlatformStore((s) => s.resolveReport);
   const lang = useLang();
+  const isRu = lang === 'ru';
   const [stats, setStats] = useState(null);
 
-  // Организации грузим из платформы, жалобы — отдельным вызовом (в App.jsx он не зовётся).
-  useEffect(() => { loadPlatform(); loadReports(); }, [loadPlatform, loadReports]);
+  // Организации — из платформы; жалобы и сборы на модерации — отдельными вызовами.
+  useEffect(() => { loadPlatform(); loadReports(); loadPendingEvents(); }, [loadPlatform, loadReports, loadPendingEvents]);
   // Реальная метрика «ср. время реакции» из /admin/stats.
   useEffect(() => { api.adminStats().then(setStats).catch(() => {}); }, []);
 
@@ -69,10 +74,37 @@ export default function AdminModeration() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* метрики */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+        <StatCard label="Сборы на модерации" value={pendingEvents.length} sub="ждут одобрения" subTone="maybe" icon="calendar" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Ср. время реакции" value={reaction} sub="от жалобы до решения" icon="clock" />
       </div>
+
+      {/* сборы, ожидающие модерации — новый сбор от волонтёра/координатора появляется здесь
+          и попадает в ленту/на карту только после «Одобрить» */}
+      <SectionCard title="Сборы на модерации" pad={8}>
+        {pendingEvents.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {pendingEvents.map((e, i) => (
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderBottom: i < pendingEvents.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <ThemeAvatar cat={e.theme} name={isRu ? e.titleRu : e.titleKz} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isRu ? e.titleRu : e.titleKz}</div>
+                  <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>{(isRu ? e.dateRu : e.dateKz) || ''}{e.time ? ` · ${e.time}` : ''} · {isRu ? e.placeRu : e.placeKz}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                  <Button size="sm" variant="secondary" onClick={() => rejectEvent(e.id)}>Отклонить</Button>
+                  <Button size="sm" variant="primary" onClick={() => approveEvent(e.id)}>Одобрить</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
+            Нет сборов на модерации
+          </div>
+        )}
+      </SectionCard>
 
       {/* заявки на верификацию */}
       <SectionCard title="Заявки на верификацию" pad={8}>

@@ -165,6 +165,8 @@ export const api = {
   resolveReport: (id) => request(`/admin/reports/${id}/resolve`, { method: 'POST' }),
   adminEvents: (qs = '') => request('/admin/events' + qs),
   unpublishEvent: (id) => request(`/admin/events/${id}/unpublish`, { method: 'POST' }),
+  approveEvent: (id) => request(`/admin/events/${id}/approve`, { method: 'POST' }),   // сбор из очереди модерации → в ленту
+  rejectEvent: (id) => request(`/admin/events/${id}/reject`, { method: 'POST' }),
   sendBroadcast: (body) => request('/admin/broadcast', { method: 'POST', body }), // {segment, title, textRu, textKz, cityId?}
   adminAnalytics: () => request('/admin/analytics'),
   closeCharity: (id) => request(`/admin/charity/${id}/close`, { method: 'POST' }),
