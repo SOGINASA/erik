@@ -12,7 +12,7 @@ from models import (
     Conversation, ConversationMember, Message, Report,
 )
 
-# ── Обложки: внешние URL по теме (loremflickr — topical by keyword, детерминировано по lock).
+# ── Обложки: внешние URL, детерминировано по lock (picsum, seed = тема + lock).
 # Чтобы поставить конкретную картинку, верните готовый URL из _theme_image/_img
 # или задайте image_url явно прямо в вызове конструктора.
 THEME_KW = {
@@ -28,7 +28,10 @@ def _lock(s):
 
 
 def _img(keywords, lock):
-    return f'https://loremflickr.com/800/500/{keywords}?lock={lock}'
+    # picsum отдаёт по seed стабильное фото и, в отличие от loremflickr, не режет
+    # пачку параллельных запросов и не 404-ит на редких связках ключевиков.
+    # Ключевики темы остаются в seed — чтобы у разных тем не совпадали обложки.
+    return f'https://picsum.photos/seed/{keywords.replace(",", "-")}{lock}/800/500'
 
 
 def _theme_image(theme, code):

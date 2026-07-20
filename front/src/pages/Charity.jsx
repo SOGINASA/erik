@@ -31,13 +31,14 @@ export default function Charity() {
           const goalText = c.kind === 'money' ? `${c.goal.toLocaleString('ru-RU')} ₸` : `${c.goal} ${c.unit}`;
           return (
             <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 18, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', overflow: 'hidden' }}>
+              {/* При ошибке прячем только <img> — блок с фоном остаётся, иначе карточки скачут по высоте. */}
               {c.image && (
-                <div style={{ margin: '-18px -18px 0', height: 150, overflow: 'hidden' }}>
+                <div style={{ margin: '-18px -18px 0', height: 150, overflow: 'hidden', background: 'var(--line)' }}>
                   <img
                     src={c.image}
                     alt=""
                     loading="lazy"
-                    onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 </div>
