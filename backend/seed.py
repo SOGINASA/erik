@@ -304,7 +304,8 @@ def seed_demo(reset=False):
     db.session.commit()
 
     # демо-уведомления координатору (лента не должна быть пустой на защите)
-    from models import Notification
+    # NB: Notification импортируется на уровне модуля. Локальный `from models import
+    # Notification` здесь делал имя локальным для ВСЕЙ функции и ронял блок reset выше.
     if not Notification.query.filter_by(user_id=coord.id).first():
         demo_notifs = [
             ('answer', 'Айгерім ответила «Приду» на «Уборка парка на Набережной»', 'Айгерім «Келемін» деп жауап берді'),
