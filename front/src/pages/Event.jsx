@@ -6,9 +6,19 @@ import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
-import { THEMES, avatarOf, initialOf } from '../lib/data';
+import { THEMES, EVENTS, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import Icon from '../components/Icon';
+
+// Лента держит демо и серверные события под одним видом id ('e'+число) — по самому id
+// реальный сбор от выдуманного не отличить. Признак — коллекция: пока events это ТА ЖЕ
+// ссылка, что мок EVENTS, ответ сервера не приходил. Раньше здесь стоял replace(/^\D+/, ''),
+// и демо-'e4' уходил жалобой на ЧУЖОЙ настоящий сбор №4.
+const feedGatheringId = (eventId, events) => {
+  if (events === EVENTS) return null;
+  const m = /^e(\d+)$/.exec(String(eventId));
+  return m ? m[1] : null;
+};
 
 // Страница события: обложка темы, детали, участники, запись/ответ.
 export default function Event() {
@@ -33,22 +43,27 @@ export default function Event() {
 
   // Реальные участники события (стопка аватаров) — по id события, а не из демо-сбора.
   useEffect(() => {
+    const gid = feedGatheringId(ev.id, events);
+    if (gid === null) { setParticipants([]); return; }   // демо-событие: чужой ростер не тянем
     let alive = true;
-    api.eventParticipants(String(ev.id).replace(/^\D+/, ''))
+    api.eventParticipants(gid)
       .then((r) => { if (alive) setParticipants(r.participants || []); })
       .catch(() => { if (alive) setParticipants([]); });
     return () => { alive = false; };
-  }, [ev.id]);
+  }, [ev.id, events]);
 
   // Действия, требующие личности (RSVP/заявка/жалоба) — гостя (без имени) ведём в вход.
   const report = () => {
     if (!name) { openSheet('auth'); return; }
+    const gid = feedGatheringId(ev.id, events);
+    // Спрашивать причину, а потом молча выбросить её — хуже, чем сказать сразу.
+    if (gid === null) { showToast(isRu ? 'Это демо-событие — жалоба не отправляется' : 'Бұл демо-іс-шара — шағым жіберілмейді'); return; }
     const asked = (typeof window !== 'undefined' && window.prompt)
       ? window.prompt(isRu ? 'Причина жалобы:' : 'Шағым себебі:')
       : '';
     if (asked === null) return; // отмена
     const reason = (asked || '').trim() || (isRu ? 'Жалоба на событие' : 'Іс-шараға шағым');
-    api.submitReport({ targetType: 'event', targetId: String(ev.id).replace(/^\D+/, ''), reason })
+    api.submitReport({ targetType: 'event', targetId: gid, reason })
       .then(() => showToast(isRu ? 'Жалоба отправлена' : 'Шағым жіберілді'))
       .catch(() => showToast(isRu ? 'Не удалось отправить' : 'Жіберілмеді'));
   };

@@ -22,6 +22,7 @@ import MyGatherings from './pages/MyGatherings';
 import Manage from './pages/Manage';
 import ManageRequests from './pages/ManageRequests';
 import ManageVolunteers from './pages/ManageVolunteers';
+import ManageOrg from './pages/ManageOrg';
 import Profile from './pages/Profile';
 import Org from './pages/Org';
 import Leaderboard from './pages/Leaderboard';
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="/manage" element={<Manage />} />
           <Route path="/manage/requests" element={<ManageRequests />} />
           <Route path="/manage/volunteers" element={<ManageVolunteers />} />
+          <Route path="/manage/org" element={<ManageOrg />} />
           <Route path="/u/:id" element={<Profile />} />
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />

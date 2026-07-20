@@ -17,14 +17,17 @@ const rel = (iso) => {
   return Math.floor(diff / 86400) + ' дн';
 };
 
-// API отдаёт целочисленные id; фронт-экраны ждут строковые id мока ('e1','o1','ch1').
-// Адаптер переводит один в другой; мутации снимают префикс обратно.
-const numId = (id) => String(id).replace(/^\D+/, '');
+// API отдаёт целочисленные id; фронт-экраны и роутинг ждут строковые id с мок-префиксом
+// ('e1','o1','ch1','c1','r1') — они идут в React-ключи и в URL. map-функции добавляют
+// префикс, но РЯДОМ кладут sid — серверный id ВЕРБАТИМ. Мутации шлют в API именно sid,
+// снятия префикса (replace) больше нет. У демо-записей из lib/data поля sid нет — это и
+// есть явный признак источника (как source:'demo' в useOrganizerStore): по таким записям
+// мутации в сеть НЕ уходят, чтобы демо-'o1'/'ch1' не попали в ЧУЖОЙ реальный объект №1.
 const mapEvent = (e) => ({ ...e, id: 'e' + e.id, orgId: e.orgId != null ? 'o' + e.orgId : null });
-const mapOrg = (o) => ({ ...o, id: 'o' + o.id });
-const mapCharity = (c) => ({ ...c, id: 'ch' + c.id, org: c.org != null ? 'o' + c.org : null });
+const mapOrg = (o) => ({ ...o, id: 'o' + o.id, sid: o.id });
+const mapCharity = (c) => ({ ...c, id: 'ch' + c.id, sid: c.id, org: c.org != null ? 'o' + c.org : null });
 const mapConvo = (c) => ({
-  id: 'c' + c.id, name: c.name, role: c.role,
+  id: 'c' + c.id, sid: c.id, name: c.name, role: c.role,
   msgs: (c.msgs || []).map((m) => ({ me: m.me, txt: m.txt, t: rel(m.created_at) })),
 });
 
@@ -112,14 +115,18 @@ export const usePlatformStore = create((set, get) => ({
   toggleFollow: (id) => {
     const willFollow = !get().followed[id];
     set((s) => ({ followed: { ...s.followed, [id]: willFollow } }));
-    (willFollow ? api.followOrg(numId(id)) : api.unfollowOrg(numId(id))).catch(() => {});
+    // sid есть только у серверной НКО (mapOrg); демо-НКО (офлайн-фолбэк) в API не шлём.
+    const org = get().orgs.find((o) => o.id === id);
+    if (org && org.sid != null) {
+      (willFollow ? api.followOrg(org.sid) : api.unfollowOrg(org.sid)).catch(() => {});
+    }
   },
 
   // Модерация (admin): жалобы из API (мок-фолбэк), одобрение/отклонение НКО, проверка жалоб.
   loadReports: async () => {
     try {
       const res = await api.adminReports();
-      if (Array.isArray(res.reports)) set({ reports: res.reports.map((r) => ({ ...r, id: 'r' + r.id })) });
+      if (Array.isArray(res.reports)) set({ reports: res.reports.map((r) => ({ ...r, id: 'r' + r.id, sid: r.id })) });
     } catch (_) {
       /* не админ/офлайн — оставляем демо-жалобы */
     }
@@ -135,47 +142,50 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
+  // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в
+  // тело POST .../reject). Отдельного rejectEvent в сторе больше нет: он был мёртвым —
+  // ни к одной кнопке не подключён — и слал reject без причины.
   approveEvent: (eventId) => {
     set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
     toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
-    api.approveEvent(numId(eventId)).catch(() => {});
-  },
-
-  rejectEvent: (eventId) => {
-    set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
-    toast(isRu() ? 'Сбор отклонён' : 'Жиын қабылданбады');
-    api.rejectEvent(numId(eventId)).catch(() => {});
+    // Очередь модерации только серверная (adminEvents), демо-фолбэка нет — id вербатим.
+    api.approveEvent(eventId).catch(() => {});
   },
 
   approveOrg: (orgId) => {
+    const org = get().orgs.find((o) => o.id === orgId);
     set((s) => ({ orgs: s.orgs.map((o) => (o.id === orgId ? { ...o, verified: true } : o)) }));
     toast(isRu() ? 'Организация одобрена' : 'Ұйым мақұлданды');
-    api.approveOrg(numId(orgId)).catch(() => {});
+    if (org && org.sid != null) api.approveOrg(org.sid).catch(() => {}); // демо-НКО в API не уходит
   },
 
   rejectOrg: (orgId) => {
+    const org = get().orgs.find((o) => o.id === orgId); // sid берём ДО удаления из списка
     set((s) => ({ orgs: s.orgs.filter((o) => o.id !== orgId) }));
     toast(isRu() ? 'Отклонено' : 'Қабылданбады');
-    api.rejectOrg(numId(orgId)).catch(() => {});
+    if (org && org.sid != null) api.rejectOrg(org.sid).catch(() => {});
   },
 
   reviewReport: (reportId) => {
+    const rep = get().reports.find((r) => r.id === reportId);
     set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'reviewing' } : r)) }));
     toast(isRu() ? 'Отправлено на проверку' : 'Тексеруге жіберілді');
-    api.reviewReport(numId(reportId)).catch(() => {});
+    if (rep && rep.sid != null) api.reviewReport(rep.sid).catch(() => {});
   },
 
   resolveReport: (reportId) => {
+    const rep = get().reports.find((r) => r.id === reportId);
     set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'resolved' } : r)) }));
     toast(isRu() ? 'Жалоба закрыта' : 'Шағым жабылды');
-    api.resolveReport(numId(reportId)).catch(() => {});
+    if (rep && rep.sid != null) api.resolveReport(rep.sid).catch(() => {});
   },
 
   // Закрыть благотворительную кампанию (админ). Модель без статуса → отмечаем достигнутой.
   closeCharity: (charityId) => {
+    const item = get().charity.find((c) => c.id === charityId);
     set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? { ...c, raised: c.goal, closed: true } : c)) }));
     toast(isRu() ? 'Кампания закрыта' : 'Науқан жабылды');
-    api.closeCharity(numId(charityId)).catch(() => {});
+    if (item && item.sid != null) api.closeCharity(item.sid).catch(() => {}); // демо-сбор в API не уходит
   },
 
   // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
@@ -205,7 +215,7 @@ export const usePlatformStore = create((set, get) => ({
   markRead: (id) => {
     if (get().notifRead[id]) return;
     set((s) => ({ notifRead: { ...s.notifRead, [id]: true } }));
-    api.readNotification(numId(id)).catch(() => {});
+    api.readNotification(id).catch(() => {}); // уведомления только серверные (id: n.id) — id вербатим
   },
 
   unreadCount: () => {
@@ -225,13 +235,16 @@ export const usePlatformStore = create((set, get) => ({
   sendMsg: (convoId) => {
     const d = (get().msgDraft || '').trim();
     if (!d) return;
+    const convo = get().convos.find((c) => c.id === convoId);
     set((s) => ({
       convos: s.convos.map((c) =>
         c.id === convoId ? { ...c, msgs: [...c.msgs, { me: true, txt: d, t: 'сейчас' }] } : c
       ),
       msgDraft: '',
     }));
-    api.sendConversationMessage(String(convoId).replace(/^\D+/, ''), d).catch(() => {});
+    // sid — серверный id диалога ВЕРБАТИМ (mapConvo). Демо-диалога в сторе нет; будь он
+    // (без sid) — сообщение в ЧУЖОЙ реальный диалог №1 НЕ ушло бы.
+    if (convo && convo.sid != null) api.sendConversationMessage(convo.sid, d).catch(() => {});
   },
 
   donate: () => {
@@ -246,6 +259,6 @@ export const usePlatformStore = create((set, get) => ({
     }));
     toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
     const body = item && item.kind === 'money' ? { amount: donateAmt } : { quantity: 1 };
-    api.donateCharity(numId(donateId), body).catch(() => {});
+    if (item && item.sid != null) api.donateCharity(item.sid, body).catch(() => {}); // демо-сбор в API не уходит
   },
 }));

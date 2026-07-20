@@ -3,11 +3,11 @@ import { useEffect } from 'react';
 import Icon from '../Icon';
 import Avatar from '../ui/Avatar';
 import { Logo, LangToggle } from './Brand';
-import { useT } from '../../i18n';
+import { useT, useLang } from '../../i18n';
 import { useSessionStore } from '../../store/useSessionStore';
 import { useUiStore } from '../../store/useUiStore';
 import { usePlatformStore } from '../../store/usePlatformStore';
-import { routeName, useIsDesktop, useGuardedNav, useUnread, GATED_ROUTES } from '../../lib/nav';
+import { routeName, useIsDesktop, useGuardedNav, useUnread, useRouteAccess, accessDeniedText } from '../../lib/nav';
 import { ADMIN_SECTIONS, adminSectionId } from '../admin/nav';
 
 // Шелл приложения: сайдбар (десктоп) / шапка + таббар (мобиль) вокруг страниц.
@@ -17,18 +17,29 @@ export default function Shell() {
   const desktop = useIsDesktop();
   const loggedIn = useSessionStore((s) => s.loggedIn);
   const openSheet = useUiStore((s) => s.openSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const isRu = useLang() === 'ru';
+  // Единый гейт прямых заходов по адресу: вход + роль. До него /manage открывался
+  // любому залогиненному, а /admin — вообще любому, кто знал адрес.
+  const access = useRouteAccess(route);
+  const denied = access === 'role' || access === 'admin';
 
   // Бэкстоп для прямых ссылок на закрытые роуты: гостя просим войти.
   useEffect(() => {
-    if (!loggedIn && GATED_ROUTES.has(route)) openSheet('auth');
-  }, [loggedIn, route, openSheet]);
-  if (!loggedIn && GATED_ROUTES.has(route)) return <Navigate to="/feed" replace />;
+    if (access === 'guest') openSheet('auth');
+  }, [access, openSheet]);
+  // Не хватает роли — уводим в ленту, но обязательно с объяснением: молчаливый
+  // редирект читается как поломка, а не как отказ в доступе.
+  useEffect(() => {
+    if (denied) showToast(accessDeniedText(access, isRu));
+  }, [denied, access, isRu, showToast]);
+  if (access === 'guest' || denied) return <Navigate to="/feed" replace />;
 
   const showGuestBanner = !loggedIn && (route === 'feed' || route === 'map' || route === 'event');
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--paper)', overflowX: 'hidden' }}>
-      {desktop && (route === 'admin' ? <AdminSidebar pathname={location.pathname} /> : <Sidebar route={route} />)}
+      {desktop && (route === 'admin' && access === 'ok' ? <AdminSidebar pathname={location.pathname} /> : <Sidebar route={route} />)}
       <div
         style={{
           minHeight: '100dvh',
@@ -38,7 +49,7 @@ export default function Shell() {
       >
         {!desktop && <MobileHeader />}
         {showGuestBanner && <GuestBanner />}
-        <Outlet />
+        {access === 'pending' ? <RolePending isRu={isRu} /> : <Outlet />}
       </div>
       {!desktop && <Tabbar route={route} />}
     </div>
@@ -93,6 +104,9 @@ function Sidebar({ route }) {
         )}
         {isOrganizer && (
           <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
+        )}
+        {role === 'org' && (
+          <NavBtn icon="users" label={t.myOrgNav} active={route === 'manageOrg'} onClick={() => go('/manage/org', 'manageOrg')} />
         )}
         <NavBtn icon="message" label={t.navMessages} active={route === 'messages' || route === 'convo'} onClick={() => go('/messages', 'messages')} />
         <NavBtn icon="bell" label={t.navNotif} active={route === 'notifications'} onClick={() => go('/notifications', 'notifications')} badge={unread} />
@@ -229,7 +243,7 @@ function Tabbar({ route }) {
     letterSpacing: '.01em', cursor: 'pointer', height: '100%', fontFamily: 'var(--fb)', transform: on ? 'translateY(-1px)' : 'none',
     transition: 'color var(--t-fast), transform var(--t-fast)',
   });
-  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers'].includes(route) || (loggedIn && route === 'notifications');
+  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers', 'manageOrg'].includes(route) || (loggedIn && route === 'notifications');
 
   return (
     <nav className="erik-tap" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, height: 'calc(64px + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)', display: 'flex', alignItems: 'stretch', background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(18px) saturate(1.4)', WebkitBackdropFilter: 'blur(18px) saturate(1.4)', borderTop: '1px solid var(--line)', boxShadow: '0 -1px 12px rgba(20,24,26,.04)' }}>
@@ -257,6 +271,18 @@ function Tabbar({ route }) {
         {unread > 0 && <span style={{ position: 'absolute', top: 8, right: 'calc(50% - 20px)', minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: 'var(--maybe)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid var(--surface)' }}>{unread}</span>}
       </button>
     </nav>
+  );
+}
+
+// Роль ещё не пришла из boot() — держим место страницы пустым. Мигнуть штабом
+// организатора и тут же увести в ленту хуже, чем секунда ожидания.
+function RolePending({ isRu }) {
+  return (
+    <div style={{ padding: '80px 20px', display: 'flex', justifyContent: 'center' }}>
+      <span style={{ fontSize: 14, color: 'var(--ink-3)' }}>
+        {isRu ? 'Проверяем доступ…' : 'Қолжетімділік тексерілуде…'}
+      </span>
+    </div>
   );
 }
 

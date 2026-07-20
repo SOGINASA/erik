@@ -21,11 +21,12 @@ export default function Profile() {
 
   const isSelf = !id || id === 'me' || String(id) === String(me.id);
 
-  // Чужой профиль (:id — число) грузим из API; свой берём из стора (loadMe).
+  // Чужой профиль (:id — серверный id пользователя из /u/:id) грузим из API; свой берём
+  // из стора (loadMe). id уходит ВЕРБАТИМ: снятие префикса открыло бы ЧУЖОЙ профиль №1.
   useEffect(() => {
     if (isSelf) { setOther(null); return; }
     let alive = true;
-    api.userPublic(String(id).replace(/^\D+/, ''))
+    api.userPublic(id)
       .then((r) => { if (alive) setOther({ ...r.user, historyRu: r.user.history || [] }); })
       .catch(() => { if (alive) setOther(null); });
     return () => { alive = false; };

@@ -69,6 +69,19 @@ def serialize_participant(p, coordinator=False):
     return d
 
 
+def serialize_coordinator(c, user=None):
+    """Со-координатор сбора для экрана управления ростером (role: owner | cocoord)."""
+    from models import db, User
+    if user is None and c.user_id:
+        user = db.session.get(User, c.user_id)
+    return {
+        'id': c.id,
+        'userId': c.user_id,
+        'name': (user.full_name if user else None) or 'Без имени',
+        'role': c.role,
+    }
+
+
 def serialize_gathering_owner(g):
     """Полный вид для координатора: ростер + ctx + counts (без прогноза — он отдельным
     эндпоинтом, но counts безопасны и нужны для полосы/фильтров)."""
@@ -77,6 +90,10 @@ def serialize_gathering_owner(g):
     d['ctx'] = g.ctx
     d['revision'] = g.revision
     d['ownerId'] = g.owner_id
+    d['rejectReason'] = g.reject_reason   # причина отклонения (status='rejected'); иначе None
+    # orgId/image редактируются через PATCH — отдаём назад, иначе форма правки их теряет
+    d['orgId'] = g.org_id
+    d['image'] = g.image_url
     d['participants'] = [serialize_participant(p, coordinator=True) for p in g.participants]
     d['counts'] = compute_forecast(g.participants, g.ctx or 1.0)['counts']
     return d
@@ -101,6 +118,7 @@ def serialize_gathering_card(g):
     d['answered'] = answered
     d['going'] = going
     d['came'] = came
+    d['rejectReason'] = g.reject_reason   # причина отклонения (status='rejected'); иначе None
     return d
 
 
@@ -127,7 +145,7 @@ def serialize_event_card(g, viewer_id=None):
 def serialize_org(org, following=None):
     from models import db, City, Gathering, Participant
     events_count = db.session.query(db.func.count(Gathering.id)).filter(
-        Gathering.org_id == org.id, Gathering.status.notin_(('deleted', 'pending'))).scalar() or 0
+        Gathering.org_id == org.id, Gathering.status.notin_(('deleted', 'pending', 'rejected'))).scalar() or 0
     vol_count = db.session.query(db.func.count(db.distinct(Participant.user_id))).join(
         Gathering, Gathering.id == Participant.gathering_id).filter(
         Gathering.org_id == org.id, Participant.user_id.isnot(None)).scalar() or 0
@@ -229,9 +247,11 @@ def _ago_labels(dt):
 
 
 def _org_event_status(g, today):
-    """pending (на модерации) | live (сегодня) | soon (в будущем) | done. Статус — на СЕРВЕРЕ."""
+    """pending (на модерации) | rejected (отклонён) | live (сегодня) | soon (в будущем) | done. Статус — на СЕРВЕРЕ."""
     if g.status == 'pending':
         return 'pending'
+    if g.status == 'rejected':
+        return 'rejected'
     if g.status == 'done' or g.finalized_at is not None:
         return 'done'
     if g.starts_at is None:
@@ -263,6 +283,7 @@ def serialize_org_event(g, applied=0, today=None):
         'dateRu': date_ru, 'dateKz': date_kz, 'time': time,
         'dateISO': g.starts_at.strftime('%Y-%m-%d') if g.starts_at else None,
         'status': _org_event_status(g, today),
+        'rejectReason': g.reject_reason,
         'needed': g.needed,
         'yes': yes, 'maybe': maybe, 'no': no,
         'applied': applied, 'answered': yes + maybe + no, 'came': came,

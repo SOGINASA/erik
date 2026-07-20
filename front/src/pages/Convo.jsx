@@ -18,13 +18,13 @@ export default function Convo() {
   const desktop = useIsDesktop();
 
   const convo = convos.find((c) => c.id === id) || convos[0] || null;
-  const convoId = convo && convo.id;
+  const convoSid = convo && convo.sid; // серверный id диалога ВЕРБАТИМ (mapConvo); у демо его нет
   const send = () => { if (convo) sendMsg(convo.id); };
 
-  // Помечаем диалог прочитанным на сервере при открытии.
+  // Помечаем диалог прочитанным на сервере при открытии — по серверному id как есть.
   useEffect(() => {
-    if (convoId) api.readConversation(String(convoId).replace(/^\D+/, '')).catch(() => {});
-  }, [convoId]);
+    if (convoSid != null) api.readConversation(convoSid).catch(() => {});
+  }, [convoSid]);
 
   // Диалогов ещё нет (не загрузились/пусто) — не падаем.
   if (!convo) {

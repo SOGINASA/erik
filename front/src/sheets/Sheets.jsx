@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet } from '../components/ui/Sheet';
 import Button from '../components/ui/Button';
@@ -12,12 +12,13 @@ import { useSessionStore } from '../store/useSessionStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { counts } from '../lib/forecast';
-import { SKILL_LIST, skillLabel } from '../lib/data';
+import { SKILL_LIST, THEMES, skillLabel } from '../lib/data';
 import { useOrganizerStore } from '../store/useOrganizerStore';
 import { RelChip, SkillTags } from '../components/manage/parts';
-import { useGuardedNav } from '../lib/nav';
+import { useGuardedNav, isOrganizerRole } from '../lib/nav';
 import { copyToClipboard } from '../lib/share';
 import { api } from '../lib/api';
+import { commit } from '../lib/optimistic';
 
 // Единый диспетчер листов/модалок по ui.sheet.
 export default function Sheets() {
@@ -37,6 +38,7 @@ export default function Sheets() {
     case 'editprofile': return <EditProfileSheet />;
     case 'apply': return <ApplySheet />;
     case 'applicant': return <ApplicantSheet />;
+    case 'coordinators': return <CoordinatorsSheet />;
     default: return null;
   }
 }
@@ -45,7 +47,6 @@ function EditProfileSheet() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
-  const showToast = useUiStore((s) => s.showToast);
   const me = usePlatformStore((s) => s.me);
   const cities = usePlatformStore((s) => s.cities);
   const loadMe = usePlatformStore((s) => s.loadMe);
@@ -54,18 +55,28 @@ function EditProfileSheet() {
   const [name, setName] = useState(me.name || '');
   const [cityId, setCityId] = useState(me.cityId || '');
   const [skills, setSkills] = useState((me.skills || []).join(', '));
+  const [busy, setBusy] = useState(false);
 
   const save = async () => {
+    if (busy) return;
     const payload = {
       name: name.trim() || undefined,
       cityId: cityId || undefined,
       skills: skills.split(',').map((x) => x.trim()).filter(Boolean),
     };
-    try { await api.updateMe(payload); } catch (_) { /* офлайн */ }
+    setBusy(true);
+    // Раньше ошибка глоталась (`catch (_) {}`), а «Профиль сохранён» тостилось всё равно:
+    // при офлайне пользователь получал успех, локальное имя менялось, сервер — нет.
+    const r = await commit({
+      call: () => api.updateMe(payload),
+      okRu: 'Профиль сохранён', okKz: 'Профиль сақталды',
+      errRu: 'Не удалось сохранить профиль', errKz: 'Профильді сақтау мүмкін болмады',
+    });
+    setBusy(false);
+    if (!r.ok) return; // причину показал commit, шторку не закрываем — данные в форме целы
     if (payload.name) setIdentity(payload.name, phone);
     loadMe();
     close();
-    showToast(isRu ? 'Профиль сохранён' : 'Профиль сақталды');
   };
 
   return (
@@ -81,7 +92,7 @@ function EditProfileSheet() {
         </div>
         <Field label={isRu ? 'Навыки (через запятую)' : 'Дағдылар (үтір арқылы)'} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder={isRu ? 'Организация, Первая помощь' : 'Ұйымдастыру, Алғашқы көмек'} />
       </div>
-      <Button full size="lg" style={{ marginTop: 20 }} onClick={save}>{t.save}</Button>
+      <Button full size="lg" style={{ marginTop: 20 }} loading={busy} onClick={save}>{t.save}</Button>
     </Sheet>
   );
 }
@@ -153,7 +164,10 @@ function MoreSheet() {
   const loggedIn = useSessionStore((s) => s.loggedIn);
   const isAdmin = useSessionStore((s) => s.isAdmin());
   const role = useSessionStore((s) => s.role);
-  const isOrganizer = role === 'coord' || role === 'org';
+  // Тот же предикат, что и у гейта роутов (lib/nav: ORGANIZER_ROUTES → isOrganizerRole),
+  // а не своя копия 'coord'||'org': расходясь, меню показывало бы пункты, на которые
+  // гейт потом отвечает отказом.
+  const isOrganizer = isOrganizerRole(role);
   const logout = useSessionStore((s) => s.logout);
   const item = (icon, label, onClick, danger) => (
     <button type="button" className="erik-row-hover" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 12px', border: 'none', background: 'transparent', borderRadius: 'var(--r-m)', cursor: 'pointer', textAlign: 'left', fontSize: 16, color: danger ? 'var(--danger)' : 'var(--ink)' }}>
@@ -165,7 +179,10 @@ function MoreSheet() {
     <Sheet open onClose={close} title={t.moreMenuTitle}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {isOrganizer && item('calendar', t.manageEyebrow, () => goClose('/manage', 'manage'))}
-        {isOrganizer && item('list', t.myGatherings, () => goClose('/me', 'me'))}
+        {/* «Мои сборы» — роут 'me': он в GATED_ROUTES (нужен вход), но НЕ в ORGANIZER_ROUTES.
+            Пряча его за ролью, меню было строже гейта: волонтёр без сборов не видел
+            экрана, который его же и зовёт создать первый. Гостя развернёт goClose. */}
+        {item('list', t.myGatherings, () => goClose('/me', 'me'))}
         {item('users', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}
@@ -191,12 +208,26 @@ function ConfirmSheet() {
   const isFinish = payload === 'finish';
   const title = isFinish ? t.confirmFinishTitle : isRu ? 'Удалить сбор?' : 'Жиынды жою?';
   const body = isFinish ? t.confirmFinishBody : isRu ? 'Сбор и все ответы удалятся безвозвратно.' : 'Жиын мен барлық жауаптар қайтарымсыз жойылады.';
-  const act = () => { if (isFinish) finish(); else del(); close(); navigate('/me'); };
+  const [busy, setBusy] = useState(false);
+
+  // Уводим на /me ТОЛЬКО после ответа сервера: finish/delete — оптимистичные commit(),
+  // при провале они откатывают состояние и тостят причину. Навигация до ответа читалась
+  // как успех: сбор оставался открытым на сервере, а координатор уже был на «Моих сборах».
+  const act = async () => {
+    if (busy) return;
+    setBusy(true);
+    const r = await (isFinish ? finish() : del());
+    setBusy(false);
+    if (!r.ok) return; // причину показал commit, шторку не закрываем — можно повторить
+    close();
+    navigate('/me');
+  };
+
   return (
     <Sheet open onClose={close} title={title} maxWidth={420}>
       <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 20px' }}>{body}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button full size="lg" variant={isFinish ? 'primary' : 'danger'} onClick={act}>{isFinish ? t.finish : t.deleteGathering}</Button>
+        <Button full size="lg" loading={busy} variant={isFinish ? 'primary' : 'danger'} onClick={act}>{isFinish ? t.finish : t.deleteGathering}</Button>
         <Button full variant="ghost" onClick={close}>{t.cancel}</Button>
       </div>
     </Sheet>
@@ -255,15 +286,52 @@ function RemindSheet() {
     ? `Напоминаю про завтрашний сбор «${g.titleRu}». Если планы поменялись — просто поменяйте ответ по ссылке, это ок.`
     : `Ертеңгі «${g.titleKz}» жиынын еске саламын. Жоспар өзгерсе — сілтеме арқылы жауабыңызды өзгертіңіз, бұл қалыпты жағдай.`;
   const [text, setText] = useState(def);
+  const [sending, setSending] = useState(false);
+
+  // remind() возвращает null при ошибке, а при успехе — { recipient_count }.
+  // Раньше результат выбрасывался и «Напоминание отправлено» тостилось безусловно:
+  // офлайн и 403 выглядели ровно как успех. Тостим по факту и не закрываем шторку
+  // на ошибке — набранный текст нужен для повторной попытки.
+  const send = async () => {
+    if (sending) return;
+    if (!text.trim()) { showToast(isRu ? 'Текст напоминания пуст' : 'Еске салу мәтіні бос'); return; }
+    setSending(true);
+    const res = await remind(text);
+    setSending(false);
+    if (!res) { showToast(isRu ? 'Не удалось отправить напоминание' : 'Еске салуды жіберу мүмкін болмады'); return; }
+    close();
+    const n = res.recipient_count;
+    // Сервер говорит, скольким реально ушло: локальный счётчик по ростеру может
+    // разойтись с его выборкой, а «отправлено» при нуле получателей — неправда.
+    if (n === 0) { showToast(isRu ? 'Напоминать некому — все уже определились' : 'Еске салатын ешкім жоқ — бәрі жауап берген'); return; }
+    showToast(
+      typeof n === 'number'
+        ? (isRu ? `Напоминание отправлено — ${n}` : `Еске салу жіберілді — ${n}`)
+        : (isRu ? 'Напоминание отправлено' : 'Еске салу жіберілді')
+    );
+  };
+
   return (
     <Sheet open onClose={close} title={t.remindTitle}>
       <div style={{ fontSize: 14, color: 'var(--ink-2)', marginBottom: 14 }}>{isRu ? `Уйдёт ${maybeCount} участникам «под вопросом»` : `${maybeCount} «белгісіз» қатысушыға жіберіледі`}</div>
       <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
-        <Button full size="lg" onClick={async () => { await remind(text); close(); showToast(isRu ? 'Напоминание отправлено' : 'Еске салу жіберілді'); }}>{t.send}</Button>
+        <Button full size="lg" loading={sending} onClick={send}>{t.send}</Button>
         <Button full variant="ghost" onClick={close}>{t.cancel}</Button>
       </div>
     </Sheet>
+  );
+}
+
+// Селект в стиле поля EditProfileSheet: те же 48px/рамка/радиус, лейбл-caption сверху.
+function SheetSelect({ label, value, onChange, children }) {
+  return (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
+      <select value={value} onChange={onChange} className="erik-input" style={{ width: '100%', height: 48, padding: '0 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 16 }}>
+        {children}
+      </select>
+    </div>
   );
 }
 
@@ -275,21 +343,73 @@ function SettingsSheet() {
   const g = useGatheringStore((s) => s.gathering);
   const setTitle = useGatheringStore((s) => s.setTitle);
   const setPlace = useGatheringStore((s) => s.setPlace);
+  const setTheme = useGatheringStore((s) => s.setTheme);
+  const setCity = useGatheringStore((s) => s.setCity);
+  const setOrg = useGatheringStore((s) => s.setOrg);
+  const setImage = useGatheringStore((s) => s.setImage);
   const incNeeded = useGatheringStore((s) => s.incNeeded);
   const decNeeded = useGatheringStore((s) => s.decNeeded);
   const saveGathering = useGatheringStore((s) => s.saveGathering);
+  // Города берём из платформы (их уже грузит loadPlatform), как в NewGathering —
+  // второй api.getCities() за тем же справочником не нужен.
+  const cities = usePlatformStore((s) => s.cities);
+  const [orgs, setOrgs] = useState([]);   // мои НКО для привязки сбора (пусто = без НКО)
+  const [busy, setBusy] = useState(false);
+
+  // Список моих организаций для селекта привязки. Ошибку глотаем: без НКО селект
+  // просто остаётся с одним пунктом «Без НКО».
+  useEffect(() => {
+    let alive = true;
+    api.myOrgs().then((r) => { if (alive && r && Array.isArray(r.orgs)) setOrgs(r.orgs); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Закрывать шторку до ответа нельзя: правка уже лежит в сторе (setTitle/setPlace пишут
+  // прямо в gathering), а отката у saveGathering нет намеренно. С закрытой формой
+  // непрошедшее сохранение выглядит применённым — заголовок у координатора показывал бы
+  // новый текст до следующего loadCoord.
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    const r = await saveGathering();
+    setBusy(false);
+    if (!r.ok) return; // причину показал commit, форма открыта — текст цел, можно повторить
+    close();
+  };
+
   return (
     <Sheet open onClose={close} title={t.settingsTitle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Field label={t.fWhat} value={isRu ? g.titleRu : g.titleKz} onChange={(e) => setTitle(e.target.value)} />
-        <Field label={t.fWhere} value={isRu ? g.placeRu : g.placeKz} onChange={(e) => setPlace(e.target.value)} />
+        {/* Правка идёт в поле ТОГО языка, который показан в поле: setTitle/setPlace
+            пишут в titleRu/titleKz по языку, а раньше одна строка уходила в оба —
+            правка при KZ-интерфейсе затирала русское название. Язык передаём явно,
+            тем же значением, что и в value: показанное и записанное — одно поле. */}
+        <Field label={t.fWhat} value={isRu ? g.titleRu : g.titleKz} onChange={(e) => setTitle(e.target.value, isRu ? 'ru' : 'kz')} />
+        <Field label={t.fWhere} value={isRu ? g.placeRu : g.placeKz} onChange={(e) => setPlace(e.target.value, isRu ? 'ru' : 'kz')} />
+        {/* Тема/город/орг/обложка правятся теми же сеттерами, что уходят в saveGathering —
+            это закрывает «ошибочный город или тему нельзя исправить после создания».
+            Темы берём из общего словаря lib/data (тот же набор, что у чипов ленты), как в
+            NewGathering; города — из платформы; НКО — из моих организаций. */}
+        <SheetSelect label={isRu ? 'Тема' : 'Тақырып'} value={g.theme || ''} onChange={(e) => setTheme(e.target.value)}>
+          <option value="">{isRu ? 'Выберите тему' : 'Тақырыпты таңдаңыз'}</option>
+          {Object.keys(THEMES).map((k) => <option key={k} value={k}>{isRu ? THEMES[k].ru : THEMES[k].kz}</option>)}
+        </SheetSelect>
+        <SheetSelect label={isRu ? 'Город' : 'Қала'} value={g.cityId || ''} onChange={(e) => setCity(e.target.value)}>
+          <option value="">{isRu ? 'Выберите город' : 'Қаланы таңдаңыз'}</option>
+          {cities.map((c) => <option key={c.id} value={c.id}>{isRu ? c.ru : c.kz}</option>)}
+        </SheetSelect>
+        <SheetSelect label={isRu ? 'Организация' : 'Ұйым'} value={g.orgId || ''} onChange={(e) => setOrg(e.target.value)}>
+          <option value="">{isRu ? 'Без НКО' : 'ҮЕҰ жоқ'}</option>
+          {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </SheetSelect>
+        <Field label={isRu ? 'Обложка (ссылка)' : 'Мұқаба (сілтеме)'} value={g.image || ''} onChange={(e) => setImage(e.target.value)} placeholder="https://…" />
         <div>
           <FieldLabel>{t.fNeeded}</FieldLabel>
           <Stepper value={g.needed} onDec={decNeeded} onInc={incNeeded} />
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
-        <Button full size="lg" onClick={() => { saveGathering(); close(); }}>{t.save}</Button>
+        <Button full size="lg" loading={busy} onClick={save}>{t.save}</Button>
         <Button full variant="ghost" onClick={() => openSheet('confirm', 'delete')} style={{ color: 'var(--danger)' }}>{t.deleteGathering}</Button>
       </div>
     </Sheet>
@@ -371,12 +491,20 @@ function ApplySheet() {
   const title = ev ? (isRu ? ev.titleRu : ev.titleKz) : '';
   const [skills, setSkills] = useState([]);
   const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
   const toggle = (id) => setSkills((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  const send = () => {
+  const send = async () => {
+    if (sending) return;
     // Имя/город берёт сервер из профиля (createApplication игнорирует клиентские PII).
     // Клиентские поля — только для оптимистичного отображения; мок ME не используем.
-    addApplication({ eventId, name: name || me.name, phone, city: (me && me.cityId ? me.city : ''), skills, message });
+    setSending(true);
+    // Ждём ответ и тостим успех по факту: раньше «Заявка отправлена» показывалась до
+    // запроса, и упавший POST (стор откатывал заявку и тостил причину) выглядел успехом.
+    // При провале шторку не закрываем — набранное сообщение и навыки целы для повтора.
+    const res = await addApplication({ eventId, name: name || me.name, phone, city: (me && me.cityId ? me.city : ''), skills, message });
+    setSending(false);
+    if (!res.ok) return; // причину показал стор
     close();
     showToast(t.mgApplySent);
   };
@@ -407,7 +535,7 @@ function ApplySheet() {
         })}
       </div>
       <Textarea label={t.mgApplyMsg} value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder={t.mgApplyMsgPh} />
-      <Button full size="lg" style={{ marginTop: 18 }} onClick={send}>{t.mgApplySend}</Button>
+      <Button full size="lg" loading={sending} style={{ marginTop: 18 }} onClick={send}>{t.mgApplySend}</Button>
     </Sheet>
   );
 }
@@ -422,6 +550,19 @@ function ApplicantSheet() {
   const events = useOrganizerStore((s) => s.events);
   const accept = useOrganizerStore((s) => s.acceptApplication);
   const decline = useOrganizerStore((s) => s.declineApplication);
+
+  // Решение целиком на сторе: он сам закрывает шторку (синхронно, до запроса — поэтому
+  // второй тап невозможен), оптимистично правит список, откатывает при ошибке и тостит
+  // и успех, и причину провала. Дублировать тут нечего.
+  // Молчит стор в одном случае — заявки уже нет в его коллекции (её унёс refresh);
+  // тогда шторка осталась бы открытой без единого признака, что клик ничего не сделал.
+  const decideOn = async (act) => {
+    const r = await act(a.id);
+    if (r && r.ok === false && !r.error) {
+      close();
+      showToast(isRu ? 'Заявка больше не актуальна — обновите список' : 'Өтінім өзекті емес — тізімді жаңартыңыз');
+    }
+  };
 
   const ev = events.find((e) => e.id === a.eventId);
   const evTitle = ev ? (isRu ? ev.titleRu : ev.titleKz) : '';
@@ -464,16 +605,124 @@ function ApplicantSheet() {
       {pending ? (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Button full size="lg" icon="check" onClick={() => accept(a.id)}>{t.mgAccept}</Button>
+            <Button full size="lg" icon="check" onClick={() => decideOn(accept)}>{t.mgAccept}</Button>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button variant="secondary" icon="phone" onClick={() => a.phone ? (window.location.href = `tel:${a.phone}`) : showToast(isRu ? 'Телефон не указан' : 'Телефон көрсетілмеген')} style={{ flex: 1 }}>{t.personCall}</Button>
-              <Button variant="ghost" onClick={() => decline(a.id)} style={{ color: 'var(--ink-2)' }}>{t.mgDecline}</Button>
+              <Button variant="ghost" onClick={() => decideOn(decline)} style={{ color: 'var(--ink-2)' }}>{t.mgDecline}</Button>
             </div>
           </div>
         </>
       ) : (
         <div style={{ fontSize: 14, color: 'var(--ink-3)' }}>{a.status === 'accepted' ? t.mgStatusAccepted : t.mgStatusDeclined}</div>
       )}
+    </Sheet>
+  );
+}
+
+// Со-координаторы сбора: список + добавить/снять. Список читают и владелец, и cocoord,
+// а менять состав может ТОЛЬКО владелец — гейт живёт на бэке (403), поэтому контролы не
+// прячем, а показываем внятный тост по факту ответа (как ApplicantSheet — по факту, не до).
+function CoordinatorsSheet() {
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const payload = useUiStore((s) => s.sheetPayload);
+  const gid = useGatheringStore((s) => s.gathering.id);
+  const id = payload || gid;   // открыли с id сбора в payload либо берём текущий сбор
+  const [list, setList] = useState(null);   // null — ещё грузим; [] — пусто
+  const [userId, setUserId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Список со-координаторов при открытии. Ошибку показываем пустым состоянием + тостом,
+  // а не белым листом.
+  useEffect(() => {
+    let alive = true;
+    api.gatheringCoordinators(id)
+      .then((r) => { if (alive) setList(Array.isArray(r.coordinators) ? r.coordinators : []); })
+      .catch(() => { if (alive) { setList([]); showToast(isRu ? 'Не удалось загрузить координаторов' : 'Координаторларды жүктеу мүмкін болмады'); } });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Внятный тост по статусу ответа бэка (сообщения сервера русские — разводим сами по коду).
+  const errToast = (err) => {
+    const s = err && err.status;
+    if (s === 404) return showToast(isRu ? 'Пользователь не найден' : 'Пайдаланушы табылмады');
+    if (s === 400) return showToast(isRu ? 'Этот пользователь — владелец сбора' : 'Бұл пайдаланушы — жиын иесі');
+    if (s === 403) return showToast(isRu ? 'Координаторами управляет только владелец' : 'Координаторларды тек иесі басқарады');
+    return showToast(isRu ? 'Не удалось изменить состав' : 'Құрамды өзгерту мүмкін болмады');
+  };
+
+  const add = async () => {
+    if (busy) return;
+    const uid = parseInt(userId, 10);
+    if (!uid) { showToast(isRu ? 'Укажите ID пользователя' : 'Пайдаланушы ID-ін көрсетіңіз'); return; }
+    setBusy(true);
+    try {
+      const r = await api.addCoordinator(id, uid);
+      const c = r && r.coordinator;
+      // Повторное добавление бэк отдаёт существующей строкой — дедупим по userId.
+      if (c) setList((prev) => (prev || []).some((x) => x.userId === c.userId) ? prev : [...(prev || []), c]);
+      setUserId('');
+      showToast(isRu ? 'Со-координатор добавлен' : 'Қосымша координатор қосылды');
+    } catch (err) {
+      errToast(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (uid) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api.removeCoordinator(id, uid);
+      setList((prev) => (prev || []).filter((x) => x.userId !== uid));
+      showToast(isRu ? 'Со-координатор снят' : 'Қосымша координатор алынды');
+    } catch (err) {
+      errToast(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Со-координаторы' : 'Қосымша координаторлар'}>
+      <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 16px' }}>
+        {isRu ? 'Помогают отмечать явку на этом сборе.' : 'Осы жиында келгендерді белгілеуге көмектеседі.'}
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
+        {list == null ? (
+          <div style={{ fontSize: 14, color: 'var(--ink-3)', padding: '8px 0' }}>{isRu ? 'Загрузка…' : 'Жүктелуде…'}</div>
+        ) : list.length === 0 ? (
+          <div style={{ fontSize: 14, color: 'var(--ink-3)', padding: '8px 0' }}>{isRu ? 'Пока нет со-координаторов' : 'Әзірге қосымша координатор жоқ'}</div>
+        ) : (
+          list.map((c) => {
+            const owner = c.role === 'owner';
+            return (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
+                <Avatar name={c.name} size={40} fontScale={0.4} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 15, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                  <div style={{ fontFamily: 'var(--fm)', fontSize: 13, color: 'var(--ink-3)' }}>ID {c.userId}</div>
+                </div>
+                {owner
+                  ? <span style={{ height: 24, padding: '0 10px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 12, whiteSpace: 'nowrap' }}>{isRu ? 'Владелец' : 'Иесі'}</span>
+                  : <Button variant="ghost" onClick={() => remove(c.userId)} style={{ color: 'var(--danger)' }}>{isRu ? 'Снять' : 'Алып тастау'}</Button>}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <FieldLabel>{isRu ? 'Добавить по ID пользователя' : 'Пайдаланушы ID-і арқылы қосу'}</FieldLabel>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <Field value={userId} onChange={(e) => setUserId(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={isRu ? 'ID пользователя' : 'Пайдаланушы ID-і'} />
+        </div>
+        <Button loading={busy} onClick={add} style={{ height: 48, flex: 'none' }}>{isRu ? 'Добавить' : 'Қосу'}</Button>
+      </div>
     </Sheet>
   );
 }

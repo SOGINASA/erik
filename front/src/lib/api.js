@@ -83,6 +83,7 @@ export const api = {
   finalize: (id) => request(`/gatherings/${id}/finalize`, { method: 'POST' }),
   share: (id) => request(`/gatherings/${id}/share`),
   myGatherings: () => request('/gatherings/mine'),
+  resubmitGathering: (id) => request(`/gatherings/${id}/resubmit`, { method: 'POST' }), // только владелец: отклонённый сбор → на повторную модерацию
 
   // ростер (координатор)
   setAnswer: (id, pid, answer) =>
@@ -150,12 +151,22 @@ export const api = {
   reviewReport: (id) => request(`/admin/reports/${id}/review`, { method: 'POST' }),
 
   // ── организатор / штаб (Manage HQ) ──
-  // Бэкенд отдаёт целочисленные id — стор снимает мок-префиксы перед вызовом.
+  // id идут как есть — стор работает на серверных целочисленных id, снятие мок-префиксов удалено.
   orgEvents: () => request('/me/org/events'),
   myApplications: () => request('/me/org/applications'),
   orgVolunteers: () => request('/me/org/volunteers'),
   createApplication: (eventId, body) => request(`/events/${eventId}/applications`, { method: 'POST', body }),
   actOnApplication: (id, action) => request(`/applications/${id}/${action}`, { method: 'POST' }), // action=accept|decline
+  orgAnalytics: () => request('/me/org/analytics'),
+  eventApplications: (eventId, status = 'pending') =>
+    request(`/events/${eventId}/applications?status=${status}`), // status=pending|accepted|declined|all
+  bulkApplications: (ids, action) => request('/applications/bulk', { method: 'POST', body: { ids, action } }), // action=accept|decline
+  gatheringCoordinators: (id) => request(`/gatherings/${id}/coordinators`),
+  addCoordinator: (id, userId) => request(`/gatherings/${id}/coordinators`, { method: 'POST', body: { userId } }), // только владелец
+  removeCoordinator: (id, userId) => request(`/gatherings/${id}/coordinators/${userId}`, { method: 'DELETE' }),   // владельца снять нельзя
+  myOrgs: () => request('/me/orgs'),
+  patchOrg: (id, patch) => request(`/orgs/${id}`, { method: 'PATCH', body: patch }), // {name?,cat?,cityId?,aboutRu?,aboutKz?}
+  orgBroadcast: (body) => request('/me/org/broadcast', { method: 'POST', body }), // {title, textRu, textKz}
 
   // ── админ-панель (под уже существующие и новые роуты) ──
   adminUsers: (page = 1, search = '') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}`),
@@ -166,7 +177,7 @@ export const api = {
   adminEvents: (qs = '') => request('/admin/events' + qs),
   unpublishEvent: (id) => request(`/admin/events/${id}/unpublish`, { method: 'POST' }),
   approveEvent: (id) => request(`/admin/events/${id}/approve`, { method: 'POST' }),   // сбор из очереди модерации → в ленту
-  rejectEvent: (id) => request(`/admin/events/${id}/reject`, { method: 'POST' }),
+  rejectEvent: (id, reason = '') => request(`/admin/events/${id}/reject`, { method: 'POST', body: { reason } }), // reason уходит в тело, пустой допустим
   sendBroadcast: (body) => request('/admin/broadcast', { method: 'POST', body }), // {segment, title, textRu, textKz, cityId?}
   adminAnalytics: () => request('/admin/analytics'),
   closeCharity: (id) => request(`/admin/charity/${id}/close`, { method: 'POST' }),

@@ -99,25 +99,43 @@ def events():
     return jsonify(payload)
 
 
+def _visible_gathering(gid, user):
+    """Сбор, видимый читателю, иначе None: 'deleted' — никому, 'pending' (на модерации) —
+    только владельцу по прямой ссылке. Одно правило на карточку и на ростер, чтобы
+    видимость участников не разъезжалась с видимостью самого события."""
+    g_ = db.session.get(Gathering, gid)
+    if g_ is None or g_.status == 'deleted':
+        return None
+    if g_.status == 'pending' and (user is None or user.id != g_.owner_id):
+        return None
+    return g_
+
+
 @platform_bp.route('/events/<int:id>', methods=['GET'])
 @jwt_required(optional=True)
 def event_detail(id):
-    g_ = db.session.get(Gathering, id)
-    if g_ is None or g_.status == 'deleted':
-        return jsonify({'error': 'Событие не найдено'}), 404
     u = current_user()
-    # сбор на модерации виден по прямой ссылке только его владельцу
-    if g_.status == 'pending' and (u is None or u.id != g_.owner_id):
+    g_ = _visible_gathering(id, u)
+    if g_ is None:
         return jsonify({'error': 'Событие не найдено'}), 404
     return jsonify({'event': serialize_event_card(g_, u.id if u else None)})
 
 
 @platform_bp.route('/events/<int:id>/participants', methods=['GET'])
+@jwt_required(optional=True)
 def event_participants(id):
-    g_ = db.session.get(Gathering, id)
+    # Ростер виден ровно там же, где само событие (_visible_gathering): раньше имена
+    # утекали из 'deleted' и не прошедших модерацию 'pending' сборов по любому id.
+    # Анонима не режем намеренно: лента и карточка события публичны, а отдаём только имя.
+    u = current_user()
+    g_ = _visible_gathering(id, u)
     if g_ is None:
         return jsonify({'error': 'Событие не найдено'}), 404
-    limit = min(int(request.args.get('limit', 7)), 30)
+    try:
+        limit = int(request.args.get('limit', 7))
+    except (TypeError, ValueError):
+        limit = 7
+    limit = max(1, min(30, limit))
     yes = [p for p in g_.participants if p.answer == 'yes'][:limit]
     # публично: только имя/инициалы, без PII
     return jsonify({'participants': [{'id': p.id, 'name': p.name} for p in yes]})
@@ -186,6 +204,17 @@ def my_registrations():
 
 
 # ── НКО ──
+def _ref_exists(model, key):
+    """Есть ли строка справочника (Theme/City) с таким id. Не-строку отвергаем сразу:
+    db.session.get() на dict/list из тела запроса упал бы 500-й."""
+    return isinstance(key, str) and db.session.get(model, key) is not None
+
+
+def _text(v):
+    """Текст из тела запроса → обрезанная строка или None (пустое/не-строка → None)."""
+    return (v.strip() or None) if isinstance(v, str) else None
+
+
 @platform_bp.route('/orgs/<int:id>', methods=['GET'])
 @jwt_required(optional=True)
 def org_detail(id):
@@ -236,6 +265,58 @@ def create_org():
     db.session.add(org)
     db.session.commit()
     return jsonify({'org': serialize_org(org)}), 201
+
+
+@platform_bp.route('/me/orgs', methods=['GET'])
+@profiled_required
+def my_orgs():
+    """Мои организации (я — owner_id): вход в админ-контур НКО.
+
+    Гейтим по владению, а не по User.role: role юзер ставит себе сам через PATCH /me.
+    """
+    rows = Org.query.filter(Org.owner_id == g.user.id).order_by(Org.id.desc()).all()
+    return jsonify({'orgs': [serialize_org(o) for o in rows]})
+
+
+@platform_bp.route('/orgs/<int:id>', methods=['PATCH'])
+@profiled_required
+def update_org(id):
+    """Редактирование карточки НКО владельцем (или админом).
+
+    verified не трогаем ни при каких данных в теле — статус модерации ставит только
+    админ через /admin/orgs/<id>/approve, иначе self-reg верифицировал бы себя сам.
+    """
+    org = db.session.get(Org, id)
+    if org is None:
+        return jsonify({'error': 'Организация не найдена'}), 404
+    # owner_id у сид-организаций пустой — None == None не должно давать доступ
+    is_owner = org.owner_id is not None and org.owner_id == g.user.id
+    if not (is_owner or g.user.user_type == 'admin'):
+        return jsonify({'error': 'Это не ваша организация'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if 'name' in data:
+        name = _text(data.get('name'))
+        if not name:
+            return jsonify({'error': 'Название организации обязательно'}), 400
+        org.name = name
+    if 'cat' in data:
+        cat = data.get('cat') or None
+        if cat is not None and not _ref_exists(Theme, cat):
+            return jsonify({'error': 'Неизвестная тема'}), 400
+        org.cat = cat
+    if 'cityId' in data or 'city_id' in data:
+        city_id = data.get('cityId') or data.get('city_id') or None
+        if city_id is not None and not _ref_exists(City, city_id):
+            return jsonify({'error': 'Неизвестный город'}), 400
+        org.city_id = city_id
+    if 'aboutRu' in data:
+        org.about_ru = _text(data.get('aboutRu'))
+    if 'aboutKz' in data:
+        org.about_kz = _text(data.get('aboutKz'))
+
+    db.session.commit()
+    return jsonify({'org': serialize_org(org)})
 
 
 @platform_bp.route('/orgs/<int:id>/follow', methods=['POST'])

@@ -35,6 +35,32 @@ _HINTS = {
     'error': 'Не удалось загрузить ML-модель — см. логи сервера',
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Калибровка ML → шкала матмодели.
+#
+#  ML-модель обучена на синтетике с оптимистичным базовым уровнем явки (~62%): её
+#  per-participant вероятность P(came=1) — это «сырая» склонность прийти. Матмодель
+#  же (ядро продукта, services/forecast.py) намеренно консервативна: честное
+#  p_i = base·trust·ctx, где base входит ДВАЖДЫ (для новичка → base²). Поэтому на
+#  одних и тех же ответах сумма сырых ML-вероятностей выходит примерно втрое выше
+#  честного E (демо PARK18: expected ≈ 20.8 против E ≈ 7.8).
+#
+#  Сводим их одной МОНОТОННОЙ калибровкой — степенным преобразованием p → p**γ. Оно:
+#    1) не трогает ранжирование и решение модели «придёт/не придёт» — порог возводим
+#       в ту же степень, а p ≥ t ⇔ p**γ ≥ t**γ (число willAttend не меняется);
+#    2) поджимает завышенные средние вероятности на консервативную шкалу матмодели
+#       (per-segment средние ML сходятся к матмодельным: yes≈0.46 vs 0.41, maybe≈0.12 vs 0.08);
+#    3) это ОДИН глобальный параметр, а не подгонка по сегментам/ответам.
+#  γ подобран так, чтобы на демо-распределении ответов expected попадал РЯДОМ с честным E
+#  (в пределах ~±25%: PARK18 → ≈9.3 при E≈7.8), а не строго в одно число.
+_CALIBRATION_GAMMA = 2.6
+
+
+def _calibrate(p):
+    """Перевести сырую ML-вероятность на консервативную шкалу матмодели (монотонно)."""
+    return p ** _CALIBRATION_GAMMA
+
+
 # Ленивое одноразовое состояние моста.
 _predictor = None      # inference.AttendancePredictor | None
 _status = None         # 'ok' | ключ из _HINTS
@@ -139,8 +165,9 @@ def predict_participant(part, event_type):
 def forecast_gathering(gathering):
     """ML-прогноз по сбору: вероятность явки на каждого + агрегат.
 
-    `expected` — сумма вероятностей ответивших (не 'no'): ML-оценка ожидаемой явки,
-    компаньон аналитического E из services/forecast.py. При недоступной модели —
+    `expected` — сумма КАЛИБРОВАННЫХ вероятностей всех ответивших: ML-оценка ожидаемой
+    явки, компаньон аналитического E из services/forecast.py, сведённый на его
+    консервативную шкалу (см. _CALIBRATION_GAMMA). При недоступной модели —
     {'available': False, 'reason', 'hint'} (бэкенд не падает)."""
     if not is_available():
         return {'available': False, 'reason': _status, 'hint': _HINTS.get(_status)}
@@ -151,20 +178,21 @@ def forecast_gathering(gathering):
         pred = predict_participant(part, gathering.theme)
         if pred is None:
             continue
-        expected += pred['probability']
+        prob = _calibrate(pred['probability'])   # на шкале матмодели (сумма ≈ честному E)
+        expected += prob
         people.append({
             'id': part.id,
             'name': part.name,
             'answer': part.answer,
-            'probability': pred['probability'],
-            'willAttend': pred['will_attend'],
-            'confidence': pred['confidence'],
+            'probability': round(prob, 4),
+            'willAttend': pred['will_attend'],   # решение модели не меняется (порог монотонен)
+            'confidence': pred['confidence'],    # уверенность — по «сырой» вероятности модели
         })
 
     return {
         'available': True,
         'model': _predictor.model_name,
-        'threshold': _predictor.threshold,
+        'threshold': round(_calibrate(_predictor.threshold), 4),
         'expected': round(expected, 1),
         'needed': gathering.needed,
         'participants': people,

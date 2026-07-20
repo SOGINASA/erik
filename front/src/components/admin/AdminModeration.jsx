@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePlatformStore } from '../../store/usePlatformStore';
+import { useUiStore } from '../../store/useUiStore';
 import { useLang } from '../../i18n';
 import { api } from '../../lib/api';
 import { StatCard, SectionCard, StatusPill } from './kit';
@@ -53,12 +54,17 @@ export default function AdminModeration() {
   const approveOrg = usePlatformStore((s) => s.approveOrg);
   const rejectOrg = usePlatformStore((s) => s.rejectOrg);
   const approveEvent = usePlatformStore((s) => s.approveEvent);
-  const rejectEvent = usePlatformStore((s) => s.rejectEvent);
   const reviewReport = usePlatformStore((s) => s.reviewReport);
   const resolveReport = usePlatformStore((s) => s.resolveReport);
+  const showToast = useUiStore((s) => s.showToast);
   const lang = useLang();
   const isRu = lang === 'ru';
   const [stats, setStats] = useState(null);
+  // Отклонение сбора спрашивает причину: rejectingId — раскрытая строка, reason — её текст,
+  // hidden — оптимистично скрытые из очереди id (→ true), с откатом при ошибке.
+  const [rejectingId, setRejectingId] = useState(null);
+  const [reason, setReason] = useState('');
+  const [hidden, setHidden] = useState({});
 
   // Организации — из платформы; жалобы и сборы на модерации — отдельными вызовами.
   useEffect(() => { loadPlatform(); loadReports(); loadPendingEvents(); }, [loadPlatform, loadReports, loadPendingEvents]);
@@ -69,12 +75,26 @@ export default function AdminModeration() {
   const openReports = reports.filter((r) => r.status === 'open').length;
   // ср. время реакции модерации: реальное из бэкенда, иначе «—»
   const reaction = stats && stats.avgReactionHours != null ? `${stats.avgReactionHours} ч` : '—';
+  const visiblePending = pendingEvents.filter((e) => !hidden[e.id]);
+
+  // Отклонить сбор с причиной (пустая допустима): прячем строку, тостим, шлём reason в
+  // тело POST .../reject; при ошибке возвращаем строку в очередь и сообщаем.
+  const doReject = (id) => {
+    setRejectingId(null);
+    const body = reason;
+    setHidden((h) => ({ ...h, [id]: true }));
+    showToast(isRu ? 'Сбор отклонён' : 'Жиын қабылданбады');
+    api.rejectEvent(id, body).catch(() => {
+      setHidden((h) => { const n = { ...h }; delete n[id]; return n; });
+      showToast(isRu ? 'Не удалось отклонить сбор' : 'Жиынды қабылдамау мүмкін болмады');
+    });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* метрики */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
-        <StatCard label="Сборы на модерации" value={pendingEvents.length} sub="ждут одобрения" subTone="maybe" icon="calendar" accent="var(--maybe)" tint="var(--maybe-soft)" />
+        <StatCard label="Сборы на модерации" value={visiblePending.length} sub="ждут одобрения" subTone="maybe" icon="calendar" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Ср. время реакции" value={reaction} sub="от жалобы до решения" icon="clock" />
@@ -83,19 +103,36 @@ export default function AdminModeration() {
       {/* сборы, ожидающие модерации — новый сбор от волонтёра/координатора появляется здесь
           и попадает в ленту/на карту только после «Одобрить» */}
       <SectionCard title="Сборы на модерации" pad={8}>
-        {pendingEvents.length ? (
+        {visiblePending.length ? (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {pendingEvents.map((e, i) => (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderBottom: i < pendingEvents.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                <ThemeAvatar cat={e.theme} name={isRu ? e.titleRu : e.titleKz} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isRu ? e.titleRu : e.titleKz}</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>{(isRu ? e.dateRu : e.dateKz) || ''}{e.time ? ` · ${e.time}` : ''} · {isRu ? e.placeRu : e.placeKz}</div>
+            {visiblePending.map((e, i) => (
+              <div key={e.id} style={{ borderBottom: i < visiblePending.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px' }}>
+                  <ThemeAvatar cat={e.theme} name={isRu ? e.titleRu : e.titleKz} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isRu ? e.titleRu : e.titleKz}</div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>{(isRu ? e.dateRu : e.dateKz) || ''}{e.time ? ` · ${e.time}` : ''} · {isRu ? e.placeRu : e.placeKz}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                    <Button size="sm" variant="secondary" onClick={() => { setRejectingId(e.id); setReason(''); }}>Отклонить</Button>
+                    <Button size="sm" variant="primary" onClick={() => approveEvent(e.id)}>Одобрить</Button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  <Button size="sm" variant="secondary" onClick={() => rejectEvent(e.id)}>Отклонить</Button>
-                  <Button size="sm" variant="primary" onClick={() => approveEvent(e.id)}>Одобрить</Button>
-                </div>
+                {/* причина отклонения — инлайн, пустая допустима */}
+                {rejectingId === e.id && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0 8px 12px' }}>
+                    <input
+                      value={reason}
+                      onChange={(ev) => setReason(ev.target.value)}
+                      placeholder={isRu ? 'Причина отклонения (необязательно)' : 'Қабылдамау себебі (міндетті емес)'}
+                      maxLength={400}
+                      autoFocus
+                      style={{ flex: 1, minWidth: 0, height: 36, padding: '0 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 14 }}
+                    />
+                    <Button size="sm" variant="secondary" onClick={() => setRejectingId(null)}>{isRu ? 'Отмена' : 'Болдырмау'}</Button>
+                    <Button size="sm" variant="primary" onClick={() => doReject(e.id)}>{isRu ? 'Отклонить' : 'Қабылдамау'}</Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

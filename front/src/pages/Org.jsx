@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
+import { api } from '../lib/api';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useGatheringStore } from '../store/useGatheringStore';
+import { useSessionStore } from '../store/useSessionStore';
 import { THEMES, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import Icon from '../components/Icon';
@@ -19,11 +22,27 @@ export default function Org() {
   const followedMap = usePlatformStore((s) => s.followed);
   const toggleFollow = usePlatformStore((s) => s.toggleFollow);
   const regs = useGatheringStore((s) => s.regs);
+  const loggedIn = useSessionStore((s) => s.loggedIn);
+
+  // Мои организации (я — owner): на своей странице самоподписка бессмысленна, вместо
+  // неё — вход в кабинет НКО. serialize_org owner не отдаёт, поэтому сверяем по /me/orgs
+  // (там мои id) с серверным org.sid (у демо-НКО из lib/data его нет — значит, не моя).
+  const [myOrgIds, setMyOrgIds] = useState([]);
+  useEffect(() => {
+    if (!loggedIn) { setMyOrgIds([]); return undefined; }
+    let alive = true;
+    api.myOrgs().then(
+      (r) => { if (alive) setMyOrgIds((r.orgs || []).map((o) => o.id)); },
+      () => { /* офлайн — считаем, что своих НКО нет */ },
+    );
+    return () => { alive = false; };
+  }, [loggedIn]);
 
   const org = orgs.find((o) => o.id === id) || orgs[0];
   const T = THEMES[org.cat] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
   const followed = !!followedMap[org.id];
   const orgEvents = events.filter((e) => e.orgId === org.id);
+  const mine = org.sid != null && myOrgIds.includes(org.sid);
 
   const secTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '28px 0 12px' };
   const statNum = { fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 20, color: 'var(--ink)' };
@@ -59,15 +78,26 @@ export default function Org() {
           <div><span style={statNum}>{org.vol}</span> <span style={statLbl}>{t.volWord}</span></div>
         </div>
 
-        {/* Подписка */}
-        <button
-          type="button"
-          className="erik-btn"
-          onClick={() => toggleFollow(org.id)}
-          style={{ height: 44, padding: '0 22px', borderRadius: 'var(--r-m)', border: followed ? '1px solid var(--line)' : '1px solid transparent', background: followed ? 'var(--surface)' : 'var(--yard)', color: followed ? 'var(--ink)' : '#fff', fontFamily: 'var(--fb)', fontWeight: 500, fontSize: 15, cursor: 'pointer', transition: 'all var(--t-fast)' }}
-        >
-          {followed ? (isRu ? 'Вы подписаны' : 'Жазылдыңыз') : (isRu ? 'Подписаться' : 'Жазылу')}
-        </button>
+        {/* Своей НКО подписка ни к чему — ведём в кабинет НКО; чужой оставляем подписку */}
+        {mine ? (
+          <button
+            type="button"
+            className="erik-btn"
+            onClick={() => navigate('/manage/org')}
+            style={{ height: 44, padding: '0 22px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--fb)', fontWeight: 500, fontSize: 15, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+          >
+            {t.orgEditMine}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="erik-btn"
+            onClick={() => toggleFollow(org.id)}
+            style={{ height: 44, padding: '0 22px', borderRadius: 'var(--r-m)', border: followed ? '1px solid var(--line)' : '1px solid transparent', background: followed ? 'var(--surface)' : 'var(--yard)', color: followed ? 'var(--ink)' : '#fff', fontFamily: 'var(--fb)', fontWeight: 500, fontSize: 15, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+          >
+            {followed ? (isRu ? 'Вы подписаны' : 'Жазылдыңыз') : (isRu ? 'Подписаться' : 'Жазылу')}
+          </button>
+        )}
 
         {/* События организации */}
         <div style={secTitle}>{t.orgEventsTitle}</div>

@@ -282,18 +282,31 @@ def approve_event(eid):
 @admin_bp.route('/events/<int:eid>/reject', methods=['POST'])
 @admin_required
 def reject_event(eid):
-    """Отклонить сбор из очереди модерации — он не публикуется (status='deleted')."""
+    """Отклонить сбор из очереди модерации: status='rejected' + причина (reason).
+    Сбор НЕ исчезает — владелец видит его с причиной и может пересдать. reason необязателен."""
     from models import Gathering
-    from services.notifications import notify_event_moderated
+    from services.notifications import create_notification, notify_event_moderated
 
     gathering = db.session.get(Gathering, eid)
     if gathering is None or gathering.status == 'deleted':
         return jsonify({'error': 'Событие не найдено'}), 404
-    gathering.status = 'deleted'
+    reason = ((request.get_json(silent=True) or {}).get('reason') or '').strip()[:400]
+    gathering.status = 'rejected'
+    gathering.reject_reason = reason or None
     gathering.bump()
-    notify_event_moderated(gathering, approved=False)
+    # Уведомляем владельца — с причиной, если она указана, иначе общий текст отклонения.
+    if reason and gathering.owner_id is not None:
+        title_ru = gathering.title_ru or 'сбор'
+        title_kz = gathering.title_kz or 'жиын'
+        create_notification(
+            gathering.owner_id, 'event',
+            f'Сбор «{title_ru}» отклонён модерацией. Причина: {reason}'[:300],
+            f'«{title_kz}» жиыны модерациядан өтпеді. Себебі: {reason}'[:300])
+    else:
+        notify_event_moderated(gathering, approved=False)
     db.session.commit()
-    return jsonify({'ok': True, 'id': eid})
+    return jsonify({'ok': True, 'id': eid, 'status': gathering.status,
+                    'rejectReason': gathering.reject_reason})
 
 
 # ── Помощь (charity) ──

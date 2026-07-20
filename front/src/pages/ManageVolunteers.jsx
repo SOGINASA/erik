@@ -1,10 +1,9 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
-import { useOrganizerStore } from '../store/useOrganizerStore';
+import { useOrganizerStore, orgNotice } from '../store/useOrganizerStore';
 import { usePlatformStore } from '../store/usePlatformStore';
-import { useUiStore } from '../store/useUiStore';
-import { api } from '../lib/api';
+import { useSessionStore } from '../store/useSessionStore';
 import { useIsDesktop } from '../lib/nav';
 import { plural } from '../lib/data';
 import { Container } from '../components/Container';
@@ -13,7 +12,7 @@ import Avatar from '../components/ui/Avatar';
 import { SegTabs } from '../components/ui/controls';
 import ManageHeader from '../components/manage/ManageHeader';
 import { SkillTags, RelChip } from '../components/manage/parts';
-import { EmptyState } from '../components/ui/feedback';
+import { EmptyState, Skeleton } from '../components/ui/feedback';
 
 // База волонтёров организатора: сортировка, навыки, быстрый контакт.
 export default function ManageVolunteers() {
@@ -25,28 +24,32 @@ export default function ManageVolunteers() {
   const load = useOrganizerStore((s) => s.load);
   const sort = useOrganizerStore((s) => s.volSort);
   const setSort = useOrganizerStore((s) => s.setVolSort);
+  const openConversationWith = useOrganizerStore((s) => s.openConversationWith);
+  const source = useOrganizerStore((s) => s.source);
+  const status = useOrganizerStore((s) => s.status);
   const loadConversations = usePlatformStore((s) => s.loadConversations);
-  const showToast = useUiStore((s) => s.showToast);
+  const loggedIn = useSessionStore((s) => s.loggedIn);
 
   // Грузим базу волонтёров и при прямом заходе на /manage/volunteers (иначе — моки).
   useEffect(() => { load(); }, [load]);
+
+  // Пока идёт первая загрузка — скелетон: выдуманные волонтёры не должны
+  // выглядеть базой организатора.
+  const booting = status === 'loading' && source === 'demo';
+  const notice = orgNotice(source, status, isRu, loggedIn);
 
   const sorted = [...volunteers].sort((a, b) =>
     sort === 'hours' ? b.hours - a.hours : sort === 'events' ? b.events - a.events : b.reliability - a.reliability
   );
 
-  // Найти/создать реальный диалог с волонтёром и открыть его.
+  // Найти/создать реальный диалог с волонтёром и открыть его. Диалог создаёт стор
+  // (единый слой доступа к API); он же тостит причину провала. Раньше в catch
+  // показывался тост «Открыт чат с …» и шла навигация — провал рисовался успехом.
   const write = async (v) => {
-    const peerId = String(v.id).replace(/^\D+/, '');
-    try {
-      const res = await api.createConversation(peerId);
-      await loadConversations();
-      navigate('/messages/c' + res.conversation.id);
-    } catch (_) {
-      // офлайн/мок (v без реального id) — открываем общий список
-      showToast(isRu ? `Открыт чат с ${v.name}` : `${v.name} чаты ашылды`);
-      navigate('/messages');
-    }
+    const cid = await openConversationWith(v);
+    if (cid == null) return;
+    await loadConversations();
+    navigate('/messages/c' + cid);
   };
 
   return (
@@ -54,9 +57,21 @@ export default function ManageVolunteers() {
       <Container style={{ paddingTop: 16, paddingBottom: 56 }}>
         <ManageHeader active="volunteers" />
 
+        {/* Честная пометка источника: демо-данные и ошибка загрузки видны, а не молчат */}
+        {notice && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', marginBottom: 14, borderRadius: 'var(--r-s)', border: '1px solid var(--line)', background: notice.tone === 'error' ? 'var(--maybe-soft)' : 'var(--paper)', fontSize: 13, lineHeight: 1.4, color: 'var(--ink-2)' }}>
+            <span>{notice.text}</span>
+            {notice.retry && (
+              <button type="button" className="erik-btn" onClick={load} style={{ flex: 'none', height: 32, padding: '0 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>{isRu ? 'Повторить' : 'Қайталау'}</button>
+            )}
+          </div>
+        )}
+
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>{volunteers.length} {isRu ? plural(volunteers.length, ['волонтёр', 'волонтёра', 'волонтёров']) : 'волонтёр'}</div>
+            <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>
+              {booting ? <Skeleton width={110} height={14} /> : `${volunteers.length} ${isRu ? plural(volunteers.length, ['волонтёр', 'волонтёра', 'волонтёров']) : 'волонтёр'}`}
+            </div>
             <SegTabs
               value={sort}
               onChange={setSort}
@@ -65,7 +80,19 @@ export default function ManageVolunteers() {
             />
           </div>
 
-          {sorted.length === 0 ? (
+          {booting ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start' }}>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
+                  <Skeleton width={46} height={46} radius={999} />
+                  <div style={{ flex: 1 }}>
+                    <Skeleton width="60%" height={16} />
+                    <Skeleton width="80%" height={13} style={{ marginTop: 8 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : sorted.length === 0 ? (
             <EmptyState icon="users" title={t.mgVolEmpty} sub={t.mgVolEmptySub} />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start' }}>

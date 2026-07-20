@@ -7,18 +7,38 @@ from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
 
 
 # ── лёгкий in-memory rate-limit (без внешних зависимостей) ──
-# Скользящее окно на процесс; ключ = IP + имя функции. Для демо/одного воркера достаточно;
-# для нескольких воркеров/инстансов вынести в Redis. Отключается под TESTING.
+# Скользящее окно на процесс; ключ = IP + имя функции (или identity JWT при by_user=True).
+# Для демо/одного воркера достаточно; для нескольких воркеров/инстансов вынести в Redis.
+# Отключается под TESTING.
 _rl_hits = defaultdict(deque)
 
 
-def rate_limit(max_calls, per_seconds):
+def rate_limit(max_calls, per_seconds, by_user=False):
+    """Ограничение частоты на скользящем окне.
+
+    by_user=False — ключ по IP+функции (как было): для эндпоинтов до авторизации
+    (/session, /auth/*), где токена ещё нет. by_user=True — ключ по identity JWT,
+    если токен есть; иначе фолбэк на IP: чтобы лимит авторизованного действия
+    (напр. рассылки) был персональным, а не глобальным за общим прокси/NAT.
+    Неуспешные попытки тоже считаются — намеренно, как защита от абьюза.
+    """
     def deco(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if current_app.config.get('TESTING') or current_app.config.get('RATELIMIT_DISABLED'):
                 return fn(*args, **kwargs)
-            key = f'{request.remote_addr or "?"}:{fn.__name__}'
+            ident = None
+            if by_user:
+                # берём identity из токена, не роняя запрос без/с битым токеном
+                try:
+                    verify_jwt_in_request(optional=True)
+                    ident = get_jwt_identity()
+                except Exception:
+                    ident = None
+            if ident is not None:
+                key = f'u:{ident}:{fn.__name__}'
+            else:
+                key = f'{request.remote_addr or "?"}:{fn.__name__}'
             now = time.monotonic()
             dq = _rl_hits[key]
             while dq and now - dq[0] > per_seconds:
