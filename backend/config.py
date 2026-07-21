@@ -14,6 +14,27 @@ def _cors_origins():
     return ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000']
 
 
+def _database_uri():
+    """URI БД. DATABASE_URL из окружения имеет приоритет.
+
+    ОТНОСИТЕЛЬНЫЙ sqlite-путь (напр. sqlite:///database/database.db) приводим к
+    АБСОЛЮТНОМУ относительно backend/. Иначе Flask-SQLAlchemy разрешает его
+    относительно instance-папки (backend/instance/…) — файл создаётся не там,
+    где app.py создаёт директорию → sqlite3 'unable to open database file'.
+    Абсолютные пути (в т.ч. sqlite:////app/... из docker-compose), :memory: и
+    не-sqlite URL (postgres и пр.) не трогаем.
+    """
+    url = os.environ.get('DATABASE_URL')
+    if not url:
+        return f'sqlite:///{os.path.join(DATABASE_DIR, "database.db")}'
+    prefix = 'sqlite:///'
+    if url.startswith(prefix):
+        path = url[len(prefix):]
+        if path and path != ':memory:' and not os.path.isabs(path):
+            return f'{prefix}{os.path.join(BACKEND_DIR, path)}'
+    return url
+
+
 # Публично известные dev-дефолты — в проде их использование запрещено (см. validate_config).
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 _DEFAULT_JWT_SECRET = 'dev-jwt-secret-key-change-in-production'
@@ -24,8 +45,7 @@ class Config:
 
     # Database — всегда предпочитаем DATABASE_URL из окружения.
     # Без него создаётся ЛОКАЛЬНЫЙ SQLite-файл в database/.
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        f'sqlite:///{os.path.join(DATABASE_DIR, "database.db")}'
+    SQLALCHEMY_DATABASE_URI = _database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # CORS

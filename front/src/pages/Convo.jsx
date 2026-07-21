@@ -36,9 +36,9 @@ export default function Convo() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
+    <div style={{ position: 'fixed', top: 0, left: desktop ? 248 : 0, right: 0, bottom: desktop ? 0 : 'calc(66px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', background: 'var(--paper)', zIndex: 35, animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
       {/* Шапка: назад + имя/роль */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', background: 'rgba(244,245,241,.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid var(--line)' }}>
+      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', background: 'rgba(244,245,241,.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid var(--line)' }}>
         <button
           type="button"
           onClick={() => navigate('/messages')}
@@ -79,19 +79,15 @@ export default function Convo() {
         ))}
       </div>
 
-      {/* Строка ввода снизу (sticky, над таббаром на мобиле) */}
+      {/* Строка ввода снизу — фикс-контейнер уже стоит над таббаром, поэтому просто flex-дитя */}
       <div
         style={{
-          position: 'sticky',
-          bottom: desktop ? 0 : 'calc(66px + env(safe-area-inset-bottom))',
-          left: 0,
-          right: 0,
-          padding: desktop ? '14px 20px calc(14px + env(safe-area-inset-bottom))' : '14px 20px 14px',
+          flex: 'none',
+          padding: '14px 20px',
           background: 'rgba(255,255,255,.82)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid var(--line)',
-          zIndex: 20,
         }}
       >
         <div style={{ display: 'flex', gap: 10, maxWidth: 720, margin: '0 auto', width: '100%' }}>

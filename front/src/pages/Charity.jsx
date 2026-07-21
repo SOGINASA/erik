@@ -1,5 +1,6 @@
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { Container } from '../components/Container';
 import Button from '../components/ui/Button';
@@ -13,6 +14,7 @@ export default function Charity() {
   const cities = usePlatformStore((s) => s.cities);
   const setDonateId = usePlatformStore((s) => s.setDonateId);
   const openSheet = useUiStore((s) => s.openSheet);
+  const role = useSessionStore((s) => s.role);
 
   const cityName = (id) => {
     const c = cities.find((x) => x.id === id);
@@ -21,7 +23,12 @@ export default function Charity() {
 
   return (
     <Container style={{ paddingTop: 24, paddingBottom: 48 }}>
-      <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 28, letterSpacing: '-.02em', margin: '0 0 18px' }}>{t.charityTitle}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 18px' }}>
+        <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 28, letterSpacing: '-.02em', margin: 0 }}>{t.charityTitle}</h1>
+        {role === 'org' && (
+          <Button icon="plus" onClick={() => openSheet('newCharity')}>{isRu ? 'Создать сбор помощи' : 'Көмек жинағын құру'}</Button>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
         {charity.map((c) => {

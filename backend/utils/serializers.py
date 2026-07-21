@@ -199,6 +199,20 @@ def serialize_user_public(u):
     }
 
 
+def serialize_message_target(u):
+    """Минимум для карточки поиска пользователя (личные сообщения)."""
+    from models import db, City
+    city = db.session.get(City, u.city_id) if u.city_id else None
+    phone = u.phone or ''
+    return {
+        'id': u.id,
+        'name': u.full_name or 'Без имени',
+        'city': city.name_ru if city else None,
+        'role': u.role,
+        'phoneTail': phone[-4:] if phone else None,   # для подтверждения совпадения номера
+    }
+
+
 def serialize_conversation(convo, viewer_id):
     from models import db, User
     other = None

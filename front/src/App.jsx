@@ -19,6 +19,7 @@ import GuestGathering from './pages/GuestGathering';
 import CoordGathering from './pages/CoordGathering';
 import CheckIn from './pages/CheckIn';
 import MyGatherings from './pages/MyGatherings';
+import MyEvents from './pages/MyEvents';
 import Manage from './pages/Manage';
 import ManageRequests from './pages/ManageRequests';
 import ManageVolunteers from './pages/ManageVolunteers';
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/c/:id" element={<CoordGathering />} />
           <Route path="/c/:id/check" element={<CheckIn />} />
           <Route path="/me" element={<MyGatherings />} />
+          <Route path="/my-events" element={<MyEvents />} />
           <Route path="/manage" element={<Manage />} />
           <Route path="/manage/requests" element={<ManageRequests />} />
           <Route path="/manage/volunteers" element={<ManageVolunteers />} />

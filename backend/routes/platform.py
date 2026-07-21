@@ -56,6 +56,36 @@ def user_public(uid):
     return jsonify({'user': serialize_user_public(u)})
 
 
+@platform_bp.route('/users/search', methods=['GET'])
+@profiled_required
+def users_search():
+    """Поиск пользователя для личных сообщений: ?q=<телефон или имя>.
+    Телефон матчим по цифрам (игнорируя пробелы/+/-); короткий текст — по имени.
+    (Роут '/users/search' не конфликтует с '/users/<int:uid>' — 'search' не число.)"""
+    from utils.serializers import serialize_message_target
+    raw = (request.args.get('q') or request.args.get('phone') or '').strip()
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    if len(digits) < 3 and len(raw) < 2:
+        return jsonify({'users': []})   # слишком короткий запрос — не отдаём всех
+    q = User.query.filter(User.is_active.is_(True), User.id != g.user.id)
+    if len(digits) >= 3:
+        # нормализуем хранимый телефон до цифр и ищем вхождение введённых цифр
+        norm = db.func.replace(db.func.replace(db.func.replace(
+            db.func.coalesce(User.phone, ''), ' ', ''), '+', ''), '-', '')
+        # КЗ/РФ часто набирают 8XXX вместо 7XXX — матчим оба варианта
+        alt = ('7' + digits[1:]) if (len(digits) == 11 and digits[0] == '8') else digits
+        cond = norm.like(f'%{digits}%')
+        if alt != digits:
+            cond = db.or_(cond, norm.like(f'%{alt}%'))
+        q = q.filter(User.phone.isnot(None), cond)
+    else:
+        # SQLite lower() не трогает кириллицу — матчим и как введено, и с заглавной буквы
+        cap = raw[:1].upper() + raw[1:]
+        q = q.filter(db.or_(User.full_name.like(f'%{raw}%'), User.full_name.like(f'%{cap}%')))
+    rows = q.order_by(User.full_name.asc()).limit(15).all()
+    return jsonify({'users': [serialize_message_target(u) for u in rows]})
+
+
 # ── лента событий (открытые сборы) ──
 def _feed_query():
     q = Gathering.query.filter(Gathering.status == 'open')
@@ -201,6 +231,27 @@ def delete_registration(id):
 def my_registrations():
     rows = Participant.query.filter_by(user_id=g.user.id).all()
     return jsonify({'registrations': {str(p.gathering_id): p.answer for p in rows if p.answer}})
+
+
+@platform_bp.route('/me/events', methods=['GET'])
+@profiled_required
+def my_events():
+    """События, на которые волонтёр записался (RSVP): карточка + его ответ и явка.
+    Для страницы «Мои мероприятия». Скрытые сборы (deleted/pending/rejected) пропускаем."""
+    parts = (Participant.query
+             .filter(Participant.user_id == g.user.id, Participant.answer.isnot(None))
+             .all())
+    out = []
+    for p in parts:
+        gathering = db.session.get(Gathering, p.gathering_id)
+        if gathering is None or gathering.status in ('deleted', 'pending', 'rejected'):
+            continue
+        card = serialize_event_card(gathering, g.user.id)
+        card['myAnswer'] = p.answer
+        card['myPresence'] = p.presence
+        out.append(card)
+    out.sort(key=lambda e: e.get('startsAt') or '')   # ближайшие сверху
+    return jsonify({'events': out})
 
 
 # ── НКО ──
@@ -356,6 +407,37 @@ def charity_list():
     if kind and kind != 'all':
         q = q.filter(CharityRequest.kind == kind)
     return jsonify({'charity': [serialize_charity(c) for c in q.all()]})
+
+
+@platform_bp.route('/charity', methods=['POST'])
+@profiled_required
+def create_charity_request():
+    """НКО создаёт сбор помощи (деньги/вещи). Только роль 'org'; привязываем к её организации."""
+    if g.user.role != 'org':
+        return jsonify({'error': 'Сборы помощи создают только НКО'}), 403
+    data = request.get_json(silent=True) or {}
+    title = (data.get('titleRu') or data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'Укажите название'}), 400
+    kind = data.get('kind') if data.get('kind') in ('money', 'items') else 'money'
+    try:
+        goal = max(0, int(data.get('goal', 0) or 0))
+    except (TypeError, ValueError):
+        goal = 0
+    org = Org.query.filter_by(owner_id=g.user.id).first()
+    c = CharityRequest(
+        title_ru=title,
+        title_kz=(data.get('titleKz') or title).strip(),
+        org_id=org.id if org else None,
+        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
+        kind=kind,
+        unit=((data.get('unit') or ('₸' if kind == 'money' else 'шт')).strip() or '₸')[:16],
+        goal=goal,
+        raised=0,
+    )
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({'charity': serialize_charity(c)}), 201
 
 
 @platform_bp.route('/charity/<int:id>', methods=['GET'])

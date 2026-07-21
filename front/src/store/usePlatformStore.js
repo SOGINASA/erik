@@ -47,6 +47,7 @@ export const usePlatformStore = create((set, get) => ({
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
   pendingEvents: [],   // сборы, ожидающие модерации админом (для AdminModeration)
+  myEvents: [],        // события, на которые волонтёр записался (для «Мои мероприятия»)
 
   followed: {},
   notifRead: {},
@@ -63,6 +64,11 @@ export const usePlatformStore = create((set, get) => ({
   setDonateAmt: (donateAmt) => set({ donateAmt }),
   setDonateId: (donateId) => set({ donateId }),
   setMsgDraft: (msgDraft) => set({ msgDraft }),
+
+  // Обновить счётчик «идут» у события ленты после RSVP (оптимистично / по ответу сервера).
+  setEventGoing: (eventId, going) => set((s) => ({
+    events: s.events.map((e) => (e.id === eventId ? { ...e, going } : e)),
+  })),
 
   // Загрузка платформы из API (мок-фолбэк: пусто/офлайн — остаёмся на демо-данных).
   loadPlatform: async () => {
@@ -142,14 +148,28 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
-  // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в
-  // тело POST .../reject). Отдельного rejectEvent в сторе больше нет: он был мёртвым —
-  // ни к одной кнопке не подключён — и слал reject без причины.
-  approveEvent: (eventId) => {
+  // Пересобрать ленту событий из API (после одобрения сбора — чтобы он сразу появился).
+  loadEvents: async () => {
+    try {
+      const res = await api.getEvents();
+      if (Array.isArray(res.events)) set({ events: res.events.map(mapEvent) });
+    } catch (_) { /* офлайн — оставляем как есть */ }
+  },
+
+  // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в тело
+  // POST .../reject). Одобрение — здесь: НЕ глотаем ошибку (иначе админ думает «одобрено», а
+  // на бэк не ушло и сбор навсегда виснет в pending) и рефетчим ленту, чтобы он появился.
+  approveEvent: async (eventId) => {
+    const ev = get().pendingEvents.find((e) => e.id === eventId);
     set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
-    toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
-    // Очередь модерации только серверная (adminEvents), демо-фолбэка нет — id вербатим.
-    api.approveEvent(eventId).catch(() => {});
+    try {
+      await api.approveEvent(eventId);   // id вербатим (adminEvents отдаёт числовой id)
+      toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
+      get().loadEvents();                // одобренный сбор теперь в ленте
+    } catch (_) {
+      if (ev) set((s) => ({ pendingEvents: [ev, ...s.pendingEvents.filter((e) => e.id !== ev.id)] }));
+      toast(isRu() ? 'Не удалось одобрить — попробуйте снова' : 'Мақұлдау мүмкін болмады — қайталаңыз');
+    }
   },
 
   approveOrg: (orgId) => {
@@ -232,6 +252,30 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
+  // События, на которые волонтёр записался («Мои мероприятия»). Пусто/офлайн — пустой экран.
+  loadMyEvents: async () => {
+    try {
+      const res = await api.myEvents();
+      if (Array.isArray(res.events)) set({ myEvents: res.events });
+    } catch (_) {
+      /* не залогинен/офлайн — оставляем пусто */
+    }
+  },
+
+  // Начать (или открыть существующий) диалог с найденным пользователем.
+  // Возвращает локальный id диалога ('c'+id) для навигации; null при ошибке/офлайне.
+  startConversation: async (peerUserId) => {
+    try {
+      const res = await api.createConversation(peerUserId);
+      if (res && res.conversation) {
+        const c = mapConvo(res.conversation);
+        set((s) => ({ convos: [c, ...s.convos.filter((x) => x.id !== c.id)] }));
+        return c.id;
+      }
+    } catch (_) { /* офлайн/ошибка */ }
+    return null;
+  },
+
   sendMsg: (convoId) => {
     const d = (get().msgDraft || '').trim();
     if (!d) return;
@@ -245,6 +289,21 @@ export const usePlatformStore = create((set, get) => ({
     // sid — серверный id диалога ВЕРБАТИМ (mapConvo). Демо-диалога в сторе нет; будь он
     // (без sid) — сообщение в ЧУЖОЙ реальный диалог №1 НЕ ушло бы.
     if (convo && convo.sid != null) api.sendConversationMessage(convo.sid, d).catch(() => {});
+  },
+
+  // НКО создаёт сбор помощи — на бэк и в начало списка (карточки на странице «Помощь»).
+  createCharity: async (form) => {
+    try {
+      const res = await api.createCharity(form);
+      if (res && res.charity) {
+        const c = mapCharity(res.charity);
+        set((s) => ({ charity: [c, ...s.charity] }));
+        return c;
+      }
+    } catch (_) {
+      toast(isRu() ? 'Не удалось создать сбор помощи' : 'Көмек жинағын құру мүмкін болмады');
+    }
+    return null;
   },
 
   donate: () => {

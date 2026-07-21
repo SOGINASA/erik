@@ -318,6 +318,17 @@ def seed_demo(reset=False):
     _seed_platform()
     db.session.commit()
 
+    # демо-волонтёр (demo-v0) записан на пару событий ленты — чтобы «Мои мероприятия»
+    # были не пустыми при входе как «Волонтёр».
+    vol = User.query.filter_by(device_id='demo-v0').first()
+    if vol is not None:
+        for code, ans in [('ELD19', 'yes'), ('PAW20', 'maybe'), ('BLD21', 'yes')]:
+            gv = Gathering.query.filter_by(code=code).first()
+            if gv and not Participant.query.filter_by(gathering_id=gv.id, user_id=vol.id).first():
+                db.session.add(Participant(gathering_id=gv.id, user_id=vol.id, name=vol.full_name,
+                                           answer=ans, answered_at=datetime.now(timezone.utc)))
+        db.session.commit()
+
     # демо-уведомления координатору (лента не должна быть пустой на защите)
     # NB: Notification импортируется на уровне модуля. Локальный `from models import
     # Notification` здесь делал имя локальным для ВСЕЙ функции и ронял блок reset выше.
