@@ -27,6 +27,7 @@ export default function Messages() {
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null); // null = не искали; [] = искали, пусто
   const [busy, setBusy] = useState(false);
+  const [errKind, setErrKind] = useState(null);  // 'profile' (нужен профиль) | 'net' | null
 
   // Поиск с дебаунсом: телефон (по цифрам, ≥3) или имя (≥2 симв.). Короткие запросы игнорируем.
   useEffect(() => {
@@ -37,9 +38,10 @@ export default function Messages() {
     const id = setTimeout(async () => {
       try {
         const res = await api.searchUsers(raw);
-        setResults(res.users || []);
-      } catch (_) {
+        setResults(res.users || []); setErrKind(null);
+      } catch (err) {
         setResults([]);
+        setErrKind(err && err.status === 403 ? 'profile' : 'net');
       } finally {
         setBusy(false);
       }
@@ -65,7 +67,7 @@ export default function Messages() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          inputMode="tel"
+          inputMode="search"
           placeholder={isRu ? 'Поиск по номеру телефона или имени' : 'Телефон нөмірі не есім бойынша іздеу'}
           className="erik-input"
           style={{ width: '100%', height: 48, padding: '0 40px 0 42px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 15, outline: 'none' }}
@@ -102,7 +104,13 @@ export default function Messages() {
           </div>
         ) : (
           <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
-            {busy ? (isRu ? 'Поиск…' : 'Іздеу…') : (isRu ? 'Никого не найдено по этому номеру' : 'Бұл нөмір бойынша ешкім табылмады')}
+            {busy
+              ? (isRu ? 'Поиск…' : 'Іздеу…')
+              : errKind === 'profile'
+              ? (isRu ? 'Заполните имя в профиле, чтобы искать и писать' : 'Іздеу үшін профильде атыңызды толтырыңыз')
+              : errKind === 'net'
+              ? (isRu ? 'Нет связи с сервером — попробуйте позже' : 'Сервермен байланыс жоқ — кейінірек көріңіз')
+              : (isRu ? 'Никого не найдено' : 'Ешкім табылмады')}
           </div>
         )
       ) : convos.length === 0 ? (

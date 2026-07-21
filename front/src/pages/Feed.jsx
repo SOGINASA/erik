@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
@@ -16,7 +17,11 @@ export default function Feed() {
   const fTheme = usePlatformStore((s) => s.fTheme);
   const fCity = usePlatformStore((s) => s.fCity);
   const setFeedFilter = usePlatformStore((s) => s.setFeedFilter);
+  const loadEvents = usePlatformStore((s) => s.loadEvents);
   const regs = useGatheringStore((s) => s.regs);
+
+  // Обновляем ленту при заходе — чтобы только что одобренные админом сборы появлялись.
+  useEffect(() => { loadEvents(); }, [loadEvents]);
 
   const list = events.filter((e) => (fTheme === 'all' || e.theme === fTheme) && (fCity === 'all' || e.cityId === fCity));
 

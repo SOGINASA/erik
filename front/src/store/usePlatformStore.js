@@ -148,14 +148,28 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
-  // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в
-  // тело POST .../reject). Отдельного rejectEvent в сторе больше нет: он был мёртвым —
-  // ни к одной кнопке не подключён — и слал reject без причины.
-  approveEvent: (eventId) => {
+  // Пересобрать ленту событий из API (после одобрения сбора — чтобы он сразу появился).
+  loadEvents: async () => {
+    try {
+      const res = await api.getEvents();
+      if (Array.isArray(res.events)) set({ events: res.events.map(mapEvent) });
+    } catch (_) { /* офлайн — оставляем как есть */ }
+  },
+
+  // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в тело
+  // POST .../reject). Одобрение — здесь: НЕ глотаем ошибку (иначе админ думает «одобрено», а
+  // на бэк не ушло и сбор навсегда виснет в pending) и рефетчим ленту, чтобы он появился.
+  approveEvent: async (eventId) => {
+    const ev = get().pendingEvents.find((e) => e.id === eventId);
     set((s) => ({ pendingEvents: s.pendingEvents.filter((e) => e.id !== eventId) }));
-    toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
-    // Очередь модерации только серверная (adminEvents), демо-фолбэка нет — id вербатим.
-    api.approveEvent(eventId).catch(() => {});
+    try {
+      await api.approveEvent(eventId);   // id вербатим (adminEvents отдаёт числовой id)
+      toast(isRu() ? 'Сбор одобрен и опубликован' : 'Жиын мақұлданып, жарияланды');
+      get().loadEvents();                // одобренный сбор теперь в ленте
+    } catch (_) {
+      if (ev) set((s) => ({ pendingEvents: [ev, ...s.pendingEvents.filter((e) => e.id !== ev.id)] }));
+      toast(isRu() ? 'Не удалось одобрить — попробуйте снова' : 'Мақұлдау мүмкін болмады — қайталаңыз');
+    }
   },
 
   approveOrg: (orgId) => {

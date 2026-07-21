@@ -64,7 +64,7 @@ export default function Home() {
       {/* hero */}
       <section style={{ ...wrap, padding: 'clamp(40px,7vw,72px) clamp(20px,4vw,40px) 32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 40, alignItems: 'center' }}>
         <div>
-          <div style={{ ...eyebrow, marginBottom: 16 }}>{isRu ? 'Соседская взаимопомощь · Казахстан' : 'Көршілік өзара көмек · Қазақстан'}</div>
+          <div style={{ ...eyebrow, marginBottom: 16 }}>{isRu ? 'Волонтёрство · Казахстан' : 'Көршілік өзара көмек · Қазақстан'}</div>
           <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 'clamp(34px,5vw,54px)', lineHeight: 1.02, letterSpacing: '-.035em', margin: '0 0 18px', textWrap: 'balance' }}>{t.mHeroTitle}</h1>
           <p style={{ fontSize: 17, lineHeight: 1.5, color: 'var(--ink-2)', margin: '0 0 28px', maxWidth: 520 }}>{t.mHeroSub}</p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

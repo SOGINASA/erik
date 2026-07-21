@@ -72,7 +72,12 @@ def users_search():
         # нормализуем хранимый телефон до цифр и ищем вхождение введённых цифр
         norm = db.func.replace(db.func.replace(db.func.replace(
             db.func.coalesce(User.phone, ''), ' ', ''), '+', ''), '-', '')
-        q = q.filter(User.phone.isnot(None), norm.like(f'%{digits}%'))
+        # КЗ/РФ часто набирают 8XXX вместо 7XXX — матчим оба варианта
+        alt = ('7' + digits[1:]) if (len(digits) == 11 and digits[0] == '8') else digits
+        cond = norm.like(f'%{digits}%')
+        if alt != digits:
+            cond = db.or_(cond, norm.like(f'%{alt}%'))
+        q = q.filter(User.phone.isnot(None), cond)
     else:
         # SQLite lower() не трогает кириллицу — матчим и как введено, и с заглавной буквы
         cap = raw[:1].upper() + raw[1:]
