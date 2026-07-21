@@ -195,14 +195,15 @@ def my_applications():
 @organizer_bp.route('/me/org/volunteers', methods=['GET'])
 @profiled_required
 def org_volunteers():
-    """База волонтёров: те, кто приходил (presence='came') на мои прошлые сборы."""
+    """База волонтёров моих сборов: пришедшие (presence='came') И записавшиеся (yes/maybe).
+    Только 'came' давало пустой список, пока ни один сбор не финализирован."""
     ids = _my_gathering_ids(g.user)
     if not ids:
         return jsonify({'volunteers': []})
     rows = (Participant.query.filter(
         Participant.gathering_id.in_(ids),
         Participant.user_id.isnot(None),
-        Participant.presence == 'came').all())
+        db.or_(Participant.presence == 'came', Participant.answer.in_(('yes', 'maybe')))).all())
 
     # агрегируем по волонтёру, запоминая последний (по времени) сбор
     by_user = {}
