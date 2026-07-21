@@ -78,6 +78,7 @@ function Sidebar({ route }) {
   const role = useSessionStore((s) => s.role);
   const logout = useSessionStore((s) => s.logout);
   const isOrganizer = role === 'coord' || role === 'org';
+  const openSheet = useUiStore((s) => s.openSheet);
   const me = usePlatformStore((s) => s.me);
   const showToast = useUiStore((s) => s.showToast);
   const unread = useUnread();
@@ -112,10 +113,16 @@ function Sidebar({ route }) {
       <div style={{ padding: '4px 10px', marginBottom: M.logoMb }}>
         <Logo size={24} onClick={() => go('/feed', 'feed')} />
       </div>
-      {loggedIn && (
+      {role === 'coord' && (
         <button className="erik-btn erik-btn-primary" onClick={() => go('/new', 'new')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: M.createH, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 15, cursor: 'pointer', marginBottom: M.createMb }}>
           <Icon name="plus" size={18} stroke={1.9} />
           {t.navCreate}
+        </button>
+      )}
+      {role === 'org' && (
+        <button className="erik-btn erik-btn-primary" onClick={() => openSheet('newCharity')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: M.createH, border: 'none', borderRadius: 'var(--r-m)', background: 'var(--yard)', color: '#fff', fontWeight: 500, fontSize: 15, cursor: 'pointer', marginBottom: M.createMb }}>
+          <Icon name="plus" size={18} stroke={1.9} />
+          {isRu ? 'Создать помощь' : 'Көмек жасау'}
         </button>
       )}
       <nav style={{ display: 'flex', flexDirection: 'column', gap: M.navGap }}>
@@ -267,7 +274,8 @@ function Tabbar({ route }) {
   const go = useGuardedNav();
   const openSheet = useUiStore((s) => s.openSheet);
   const unread = useUnread();
-  const loggedIn = useSessionStore((s) => s.loggedIn);
+  const role = useSessionStore((s) => s.role);
+  const isOrganizer = role === 'coord' || role === 'org';
 
   const tab = (on) => ({
     position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
@@ -275,18 +283,18 @@ function Tabbar({ route }) {
     letterSpacing: '.01em', cursor: 'pointer', height: '100%', fontFamily: 'var(--fb)', transform: on ? 'translateY(-1px)' : 'none',
     transition: 'color var(--t-fast), transform var(--t-fast)',
   });
-  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers', 'manageOrg'].includes(route) || (loggedIn && route === 'notifications');
+  const moreActive = ['profile', 'me', 'leaderboard', 'charity', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers', 'manageOrg'].includes(route) || (isOrganizer && route === 'notifications');
 
   return (
     <nav className="erik-tap" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, height: 'calc(64px + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)', display: 'flex', alignItems: 'stretch', background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(18px) saturate(1.4)', WebkitBackdropFilter: 'blur(18px) saturate(1.4)', borderTop: '1px solid var(--line)', boxShadow: '0 -1px 12px rgba(20,24,26,.04)' }}>
       <button style={tab(route === 'feed')} onClick={() => go('/feed', 'feed')}><Icon name="feed" size={23} /><span>{t.navFeed}</span></button>
       <button style={tab(route === 'map')} onClick={() => go('/map', 'map')}><Icon name="map" size={23} /><span>{t.navMap}</span></button>
-      {loggedIn ? (
-        <button className="erik-press erik-tap" aria-label={t.navCreate} onClick={() => go('/new', 'new')} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 6, gap: 4, border: 'none', background: 'transparent', cursor: 'pointer' }}>
+      {isOrganizer ? (
+        <button className="erik-press erik-tap" aria-label={role === 'org' ? t.navCharity : t.navCreate} onClick={() => (role === 'org' ? openSheet('newCharity') : go('/new', 'new'))} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 6, gap: 4, border: 'none', background: 'transparent', cursor: 'pointer' }}>
           <span style={{ width: 50, height: 50, marginTop: -16, borderRadius: 999, background: 'var(--yard)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(47,111,79,.4), 0 0 0 4px var(--paper)' }}>
             <Icon name="plus" size={24} stroke={2} />
           </span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)' }}>{t.navCreate}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)' }}>{role === 'org' ? t.navCharity : t.navCreate}</span>
         </button>
       ) : (
         <button style={tab(route === 'notifications')} onClick={() => go('/notifications', 'notifications')}>

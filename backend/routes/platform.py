@@ -409,6 +409,37 @@ def charity_list():
     return jsonify({'charity': [serialize_charity(c) for c in q.all()]})
 
 
+@platform_bp.route('/charity', methods=['POST'])
+@profiled_required
+def create_charity_request():
+    """НКО создаёт сбор помощи (деньги/вещи). Только роль 'org'; привязываем к её организации."""
+    if g.user.role != 'org':
+        return jsonify({'error': 'Сборы помощи создают только НКО'}), 403
+    data = request.get_json(silent=True) or {}
+    title = (data.get('titleRu') or data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'Укажите название'}), 400
+    kind = data.get('kind') if data.get('kind') in ('money', 'items') else 'money'
+    try:
+        goal = max(0, int(data.get('goal', 0) or 0))
+    except (TypeError, ValueError):
+        goal = 0
+    org = Org.query.filter_by(owner_id=g.user.id).first()
+    c = CharityRequest(
+        title_ru=title,
+        title_kz=(data.get('titleKz') or title).strip(),
+        org_id=org.id if org else None,
+        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
+        kind=kind,
+        unit=((data.get('unit') or ('₸' if kind == 'money' else 'шт')).strip() or '₸')[:16],
+        goal=goal,
+        raised=0,
+    )
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({'charity': serialize_charity(c)}), 201
+
+
 @platform_bp.route('/charity/<int:id>', methods=['GET'])
 def charity_detail(id):
     c = db.session.get(CharityRequest, id)

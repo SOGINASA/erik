@@ -291,6 +291,21 @@ export const usePlatformStore = create((set, get) => ({
     if (convo && convo.sid != null) api.sendConversationMessage(convo.sid, d).catch(() => {});
   },
 
+  // НКО создаёт сбор помощи — на бэк и в начало списка (карточки на странице «Помощь»).
+  createCharity: async (form) => {
+    try {
+      const res = await api.createCharity(form);
+      if (res && res.charity) {
+        const c = mapCharity(res.charity);
+        set((s) => ({ charity: [c, ...s.charity] }));
+        return c;
+      }
+    } catch (_) {
+      toast(isRu() ? 'Не удалось создать сбор помощи' : 'Көмек жинағын құру мүмкін болмады');
+    }
+    return null;
+  },
+
   donate: () => {
     const { donateId, donateAmt } = get();
     const item = get().charity.find((c) => c.id === donateId);
