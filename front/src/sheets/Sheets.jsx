@@ -183,6 +183,7 @@ function MoreSheet() {
             Пряча его за ролью, меню было строже гейта: волонтёр без сборов не видел
             экрана, который его же и зовёт создать первый. Гостя развернёт goClose. */}
         {item('list', t.myGatherings, () => goClose('/me', 'me'))}
+        {loggedIn && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
         {item('users', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}

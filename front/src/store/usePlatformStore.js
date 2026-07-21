@@ -47,6 +47,7 @@ export const usePlatformStore = create((set, get) => ({
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
   pendingEvents: [],   // сборы, ожидающие модерации админом (для AdminModeration)
+  myEvents: [],        // события, на которые волонтёр записался (для «Мои мероприятия»)
 
   followed: {},
   notifRead: {},
@@ -63,6 +64,11 @@ export const usePlatformStore = create((set, get) => ({
   setDonateAmt: (donateAmt) => set({ donateAmt }),
   setDonateId: (donateId) => set({ donateId }),
   setMsgDraft: (msgDraft) => set({ msgDraft }),
+
+  // Обновить счётчик «идут» у события ленты после RSVP (оптимистично / по ответу сервера).
+  setEventGoing: (eventId, going) => set((s) => ({
+    events: s.events.map((e) => (e.id === eventId ? { ...e, going } : e)),
+  })),
 
   // Загрузка платформы из API (мок-фолбэк: пусто/офлайн — остаёмся на демо-данных).
   loadPlatform: async () => {
@@ -230,6 +236,30 @@ export const usePlatformStore = create((set, get) => ({
     } catch (_) {
       /* офлайн/ошибка — оставляем демо-диалоги */
     }
+  },
+
+  // События, на которые волонтёр записался («Мои мероприятия»). Пусто/офлайн — пустой экран.
+  loadMyEvents: async () => {
+    try {
+      const res = await api.myEvents();
+      if (Array.isArray(res.events)) set({ myEvents: res.events });
+    } catch (_) {
+      /* не залогинен/офлайн — оставляем пусто */
+    }
+  },
+
+  // Начать (или открыть существующий) диалог с найденным пользователем.
+  // Возвращает локальный id диалога ('c'+id) для навигации; null при ошибке/офлайне.
+  startConversation: async (peerUserId) => {
+    try {
+      const res = await api.createConversation(peerUserId);
+      if (res && res.conversation) {
+        const c = mapConvo(res.conversation);
+        set((s) => ({ convos: [c, ...s.convos.filter((x) => x.id !== c.id)] }));
+        return c.id;
+      }
+    } catch (_) { /* офлайн/ошибка */ }
+    return null;
   },
 
   sendMsg: (convoId) => {

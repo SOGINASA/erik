@@ -56,6 +56,31 @@ def user_public(uid):
     return jsonify({'user': serialize_user_public(u)})
 
 
+@platform_bp.route('/users/search', methods=['GET'])
+@profiled_required
+def users_search():
+    """Поиск пользователя для личных сообщений: ?q=<телефон или имя>.
+    Телефон матчим по цифрам (игнорируя пробелы/+/-); короткий текст — по имени.
+    (Роут '/users/search' не конфликтует с '/users/<int:uid>' — 'search' не число.)"""
+    from utils.serializers import serialize_message_target
+    raw = (request.args.get('q') or request.args.get('phone') or '').strip()
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    if len(digits) < 3 and len(raw) < 2:
+        return jsonify({'users': []})   # слишком короткий запрос — не отдаём всех
+    q = User.query.filter(User.is_active.is_(True), User.id != g.user.id)
+    if len(digits) >= 3:
+        # нормализуем хранимый телефон до цифр и ищем вхождение введённых цифр
+        norm = db.func.replace(db.func.replace(db.func.replace(
+            db.func.coalesce(User.phone, ''), ' ', ''), '+', ''), '-', '')
+        q = q.filter(User.phone.isnot(None), norm.like(f'%{digits}%'))
+    else:
+        # SQLite lower() не трогает кириллицу — матчим и как введено, и с заглавной буквы
+        cap = raw[:1].upper() + raw[1:]
+        q = q.filter(db.or_(User.full_name.like(f'%{raw}%'), User.full_name.like(f'%{cap}%')))
+    rows = q.order_by(User.full_name.asc()).limit(15).all()
+    return jsonify({'users': [serialize_message_target(u) for u in rows]})
+
+
 # ── лента событий (открытые сборы) ──
 def _feed_query():
     q = Gathering.query.filter(Gathering.status == 'open')
@@ -201,6 +226,27 @@ def delete_registration(id):
 def my_registrations():
     rows = Participant.query.filter_by(user_id=g.user.id).all()
     return jsonify({'registrations': {str(p.gathering_id): p.answer for p in rows if p.answer}})
+
+
+@platform_bp.route('/me/events', methods=['GET'])
+@profiled_required
+def my_events():
+    """События, на которые волонтёр записался (RSVP): карточка + его ответ и явка.
+    Для страницы «Мои мероприятия». Скрытые сборы (deleted/pending/rejected) пропускаем."""
+    parts = (Participant.query
+             .filter(Participant.user_id == g.user.id, Participant.answer.isnot(None))
+             .all())
+    out = []
+    for p in parts:
+        gathering = db.session.get(Gathering, p.gathering_id)
+        if gathering is None or gathering.status in ('deleted', 'pending', 'rejected'):
+            continue
+        card = serialize_event_card(gathering, g.user.id)
+        card['myAnswer'] = p.answer
+        card['myPresence'] = p.presence
+        out.append(card)
+    out.sort(key=lambda e: e.get('startsAt') or '')   # ближайшие сверху
+    return jsonify({'events': out})
 
 
 # ── НКО ──

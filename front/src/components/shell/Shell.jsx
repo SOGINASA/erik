@@ -58,6 +58,7 @@ export default function Shell() {
 
 function Sidebar({ route }) {
   const t = useT();
+  const isRu = useLang() === 'ru';
   const go = useGuardedNav();
   const navigate = useNavigate();
   const loggedIn = useSessionStore((s) => s.loggedIn);
@@ -99,6 +100,9 @@ function Sidebar({ route }) {
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <NavBtn icon="feed" label={t.navFeed} active={route === 'feed'} onClick={() => go('/feed', 'feed')} />
         <NavBtn icon="map" label={t.navMap} active={route === 'map'} onClick={() => go('/map', 'map')} />
+        {loggedIn && (
+          <NavBtn icon="check" label={isRu ? 'Мои мероприятия' : 'Менің іс-шараларым'} active={route === 'myEvents'} onClick={() => go('/my-events', 'myEvents')} />
+        )}
         {isOrganizer && (
           <NavBtn icon="calendar" label={t.mgNav} active={route === 'manage' || route === 'manageRequests' || route === 'manageVolunteers'} onClick={() => go('/manage', 'manage')} />
         )}
@@ -118,6 +122,13 @@ function Sidebar({ route }) {
       </nav>
       <div style={{ flex: 1 }} />
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>
+        <button
+          className="erik-row-hover"
+          onClick={() => navigate('/')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '8px', marginBottom: 6, borderRadius: 'var(--r-m)', color: 'var(--ink-2)', fontSize: 14, fontFamily: 'var(--fb)' }}
+        >
+          <Icon name="back" size={18} />{isRu ? 'На главную' : 'Басты бетке'}
+        </button>
         {loggedIn ? (
           <button className="erik-row-hover" onClick={() => go('/u/me', 'profile')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 8px', borderRadius: 'var(--r-m)', textAlign: 'left' }}>
             <Avatar name={me.name} size={38} />

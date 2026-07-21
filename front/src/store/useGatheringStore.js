@@ -76,6 +76,13 @@ const upsertOp = (queue, op) => {
 
 // Данные текущего сбора + отметки явки + анимация числа прогноза.
 // Оптимистичные мутации: сначала локально, затем в API; при офлайне остаёмся на моках.
+// Подправить счётчик «идут» у события ленты (usePlatformStore): going считает только 'yes'.
+const bumpGoing = (eventId, d) => {
+  if (!d) return;
+  const ev = usePlatformStore.getState().events.find((e) => e.id === eventId);
+  if (ev && typeof ev.going === 'number') usePlatformStore.getState().setEventGoing(eventId, Math.max(0, ev.going + d));
+};
+
 export const useGatheringStore = create((set, get) => ({
   gathering: buildGathering(),
   myGatherings: [],   // список своих сборов (для /me), с сервера
@@ -494,11 +501,14 @@ export const useGatheringStore = create((set, get) => ({
       return;
     }
     const prev = get().regs[eventId];
+    // «идут» считает только 'yes' — счётчик двигаем по переходу prev → a (оптимистично,
+    // с откатом при ошибке). Фронт и бэк считают одинаково, поэтому дельта точная.
+    const delta = (a === 'yes' ? 1 : 0) - (prev === 'yes' ? 1 : 0);
     return commit({
-      apply: () => set((s) => ({ regs: withReg(s.regs, eventId, a) })),
+      apply: () => { set((s) => ({ regs: withReg(s.regs, eventId, a) })); bumpGoing(eventId, delta); },
       // Откатываем, только если наш ответ ещё стоит: пока PUT летел, пользователь мог
       // выбрать другой (и тот уже сохранился) — иначе сотрём чужую запись насовсем.
-      rollback: () => set((s) => (s.regs[eventId] === a ? { regs: withReg(s.regs, eventId, prev) } : {})),
+      rollback: () => { if (get().regs[eventId] !== a) return; bumpGoing(eventId, -delta); set((s) => ({ regs: withReg(s.regs, eventId, prev) })); },
       call: () => api.setEventReg(numeric, a),
       okRu: 'Ответ сохранён', okKz: 'Жауап сақталды',
       errRu: 'Не удалось сохранить ответ', errKz: 'Жауапты сақтау мүмкін болмады',
@@ -512,11 +522,12 @@ export const useGatheringStore = create((set, get) => ({
       return;
     }
     const prev = get().regs[eventId];
+    const delta = prev === 'yes' ? -1 : 0;   // снятие 'yes' уменьшает «идут»
     return commit({
-      apply: () => set((s) => ({ regs: withReg(s.regs, eventId, null) })),
+      apply: () => { set((s) => ({ regs: withReg(s.regs, eventId, null) })); bumpGoing(eventId, delta); },
       // Тот же guard, что в registerEvent: записи может уже не быть нашей — apply писал
       // null, поэтому откатываем, только пока ключ так и остаётся снятым.
-      rollback: () => set((s) => (s.regs[eventId] == null ? { regs: withReg(s.regs, eventId, prev) } : {})),
+      rollback: () => { if (get().regs[eventId] != null) return; bumpGoing(eventId, -delta); set((s) => ({ regs: withReg(s.regs, eventId, prev) })); },
       call: () => api.deleteEventReg(numeric),
       okRu: 'Запись отменена', okKz: 'Жазылу тоқтатылды',
       errRu: 'Не удалось отменить запись', errKz: 'Жазылуды тоқтату мүмкін болмады',

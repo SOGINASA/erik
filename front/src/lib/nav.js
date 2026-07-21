@@ -8,7 +8,7 @@ import { useLang } from '../i18n';
 
 // Роуты, требующие входа. Гость видит ленту, карту, событие, НКО — остальное просит войти.
 export const GATED_ROUTES = new Set([
-  'me', 'messages', 'convo', 'notifications', 'leaderboard', 'charity',
+  'me', 'myEvents', 'messages', 'convo', 'notifications', 'leaderboard', 'charity',
   'coord', 'check', 'new', 'admin', 'profile',
   'manage', 'manageRequests', 'manageVolunteers', 'manageOrg',
 ]);
@@ -43,6 +43,7 @@ export function routeName(pathname) {
   if (pathname.match(/^\/c\/[^/]+\/check/)) return 'check';
   if (pathname.startsWith('/c/')) return 'coord';
   if (pathname === '/me') return 'me';
+  if (pathname.startsWith('/my-events')) return 'myEvents';
   if (pathname.startsWith('/manage/requests')) return 'manageRequests';
   if (pathname.startsWith('/manage/volunteers')) return 'manageVolunteers';
   if (pathname.startsWith('/manage/org')) return 'manageOrg';
