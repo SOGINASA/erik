@@ -133,6 +133,7 @@ export const api = {
   unfollowOrg: (id) => request(`/orgs/${id}/follow`, { method: 'DELETE' }),
   myFollows: () => request('/me/follows'),
   getCharity: () => request('/charity'),
+  createCharity: (body) => request('/charity', { method: 'POST', body }),   // НКО создаёт сбор помощи
   donateCharity: (id, body) => request(`/charity/${id}/donate`, { method: 'POST', body }),
   leaderboardVolunteers: () => request('/leaderboard/volunteers'),
   userPublic: (id) => request(`/users/${id}`),
