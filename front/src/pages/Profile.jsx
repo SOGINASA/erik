@@ -18,21 +18,38 @@ export default function Profile() {
   const badges = usePlatformStore((s) => s.badges);
   const openSheet = useUiStore((s) => s.openSheet);
   const [other, setOther] = useState(null);
+  const [otherState, setOtherState] = useState('idle'); // idle | loading | ready | error
 
   const isSelf = !id || id === 'me' || String(id) === String(me.id);
 
   // Чужой профиль (:id — серверный id пользователя из /u/:id) грузим из API; свой берём
   // из стора (loadMe). id уходит ВЕРБАТИМ: снятие префикса открыло бы ЧУЖОЙ профиль №1.
   useEffect(() => {
-    if (isSelf) { setOther(null); return; }
+    if (isSelf) { setOther(null); setOtherState('idle'); return undefined; }
     let alive = true;
-    api.userPublic(id)
-      .then((r) => { if (alive) setOther({ ...r.user, historyRu: r.user.history || [] }); })
-      .catch(() => { if (alive) setOther(null); });
+    setOtherState('loading');
+    api.userPublic(id).then(
+      (r) => { if (alive) { setOther({ ...r.user, historyRu: r.user.history || [] }); setOtherState('ready'); } },
+      () => { if (alive) { setOther(null); setOtherState('error'); } },
+    );
     return () => { alive = false; };
   }, [id, isSelf]);
 
-  const person = isSelf ? me : (other || me);
+  // Чужой профиль не загрузился (404 у заблокированного/несуществующего, сеть) — честный
+  // экран, а НЕ откат на `me`: иначе под чужим URL показывались данные самого зрителя.
+  if (!isSelf && otherState !== 'ready') {
+    return (
+      <Container style={{ paddingTop: 24, paddingBottom: 48 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          {otherState === 'error'
+            ? <EmptyState icon="users" title={isRu ? 'Профиль не найден' : 'Профиль табылмады'} sub={isRu ? 'Пользователь не существует или недоступен.' : 'Пайдаланушы жоқ немесе қолжетімсіз.'} />
+            : <div style={{ padding: '48px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>{isRu ? 'Загрузка…' : 'Жүктелуде…'}</div>}
+        </div>
+      </Container>
+    );
+  }
+
+  const person = isSelf ? me : other;
 
   // Заголовок секции (капс, приглушённый).
   const secTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)' };

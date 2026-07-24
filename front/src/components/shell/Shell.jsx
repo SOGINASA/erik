@@ -134,7 +134,12 @@ function Sidebar({ route }) {
         {isOrganizer && (
           <NavBtn icon="calendar" label={t.mgNav} active={route === 'manage' || route === 'manageRequests' || route === 'manageVolunteers'} onClick={() => go('/manage', 'manage')} />
         )}
-        {isOrganizer && (
+        {/* «Мои сборы» — любому вошедшему (роут 'me' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES),
+            как в мобильном MoreSheet. Раньше пункт был только у организаторов, и волонтёр на
+            десктопе не имел ни одной точки входа к созданию сбора (пустой /me ведёт на /new →
+            бэк повышает vol→coord). !isAdmin НЕ ставим: demo-coord имеет userType=admin, и
+            под этим условием он бы ПОТЕРЯЛ «Мои сборы», которые видел раньше. */}
+        {loggedIn && (
           <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
         )}
         {role === 'org' && (

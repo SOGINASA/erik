@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
-from models import db, User, Org, Report
+from models import db, User, Org, Report, Gathering, CharityRequest, Follow
 from utils.decorators import admin_required
 from utils.serializers import serialize_org
 
@@ -351,7 +351,15 @@ def reject_org(oid):
     org = db.session.get(Org, oid)
     if org is None:
         return jsonify({'error': 'Организация не найдена'}), 404
-    org.verified = False
+    # Отклонение = удаление заявки НКО. Раньше здесь стоял org.verified=False —
+    # но неверифицированная заявка и так verified=False, а публичный /orgs отдаёт все,
+    # поэтому отклонённая НКО вечно возвращалась в очередь модерации (Org.verified.is_(False)).
+    # Открепляем зависимые записи (FK nullable) и снимаем подписки, чтобы не осталось
+    # висячих ссылок на удалённую организацию.
+    Gathering.query.filter_by(org_id=org.id).update({'org_id': None})
+    CharityRequest.query.filter_by(org_id=org.id).update({'org_id': None})
+    Follow.query.filter_by(org_id=org.id).delete()
+    db.session.delete(org)
     db.session.commit()
     return jsonify({'ok': True})
 

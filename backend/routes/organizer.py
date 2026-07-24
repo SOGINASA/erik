@@ -351,6 +351,11 @@ def org_broadcast():
     /api/admin/broadcast — только админу, /gatherings/<id>/remind — только по ростеру
     одного сбора; организатору написать своим было нечем.
     """
+    # Рассылка — функция кабинета НКО (единственная точка входа в UI). Ограничиваем ролью
+    # 'org', чтобы контракт бэка совпадал с UI-гейтом (ORG_ROUTES). Координаторам объявления
+    # своей базе — отдельная фича на будущее (нужен вход в штабе координатора).
+    if g.user.role != 'org':
+        return jsonify({'error': 'Рассылку ведут только НКО'}), 403
     data = request.get_json(silent=True) or {}
     title = (data.get('title') or '').strip()
     body_ru = (data.get('textRu') or data.get('text_ru') or '').strip()

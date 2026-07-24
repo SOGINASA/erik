@@ -123,6 +123,25 @@ export default function GuestGathering() {
     );
   }
 
+  // Сбор ещё НЕ открыт для записи (на модерации 'pending' или отклонён 'rejected'): показываем
+  // честно и НЕ рисуем активные кнопки. Иначе тап уходил в 409 и рисовался ложный «Сбор завершён»
+  // (координатор мог раздать ссылку /g/CODE ещё до одобрения модерацией).
+  if (g.status && g.status !== 'open') {
+    return (
+      <Frame>
+        <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 30, lineHeight: 1.15, letterSpacing: '-.02em', margin: '12px 0 8px', textWrap: 'balance' }}>{title}</h1>
+        <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>{when} · {place}</div>
+        <div style={{ marginTop: 20 }}>
+          <EmptyState
+            icon="clock"
+            title={isRu ? 'Сбор ещё не открыт для записи' : 'Жиынға жазылу әлі ашылмаған'}
+            sub={isRu ? 'Он проходит модерацию. Загляните чуть позже — запись откроется после одобрения.' : 'Ол модерациядан өтуде. Сәл кейінірек қараңыз — мақұлдаудан кейін жазылу ашылады.'}
+          />
+        </div>
+      </Frame>
+    );
+  }
+
   // Публичный вид отдаёт comingCount; на моке считаем из ростера.
   const coming = g.comingCount != null ? g.comingCount : counts(g.participants || []).yes;
   const needLine = isRu

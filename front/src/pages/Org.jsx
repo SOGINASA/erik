@@ -38,7 +38,38 @@ export default function Org() {
     return () => { alive = false; };
   }, [loggedIn]);
 
-  const org = orgs.find((o) => o.id === id) || orgs[0];
+  // НКО берём сперва из кэша платформы; если её там нет (только что созданная, прошёл
+  // офлайн-фолбэк) — грузим по id, а не подставляем orgs[0] (чужую организацию).
+  const numMatch = /^o?(\d+)$/.exec(String(id || ''));
+  const numericOrgId = numMatch ? numMatch[1] : null;
+  const [fetched, setFetched] = useState(null);
+  const [orgState, setOrgState] = useState('idle'); // idle | loading | ready | error
+  const fromCache = orgs.find((o) => o.id === id);
+  useEffect(() => {
+    if (fromCache) { setOrgState('ready'); return undefined; }
+    if (numericOrgId == null) { setOrgState('error'); return undefined; }
+    let alive = true;
+    setOrgState('loading');
+    api.getOrg(numericOrgId).then(
+      (r) => { if (alive) { setFetched({ ...r.org, id: 'o' + r.org.id, sid: r.org.id }); setOrgState('ready'); } },
+      () => { if (alive) setOrgState('error'); },
+    );
+    return () => { alive = false; };
+  }, [id, fromCache, numericOrgId]);
+
+  const org = fromCache || fetched;
+  if (!org) {
+    return (
+      <Container style={{ paddingTop: 20, paddingBottom: 48 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <BackButton onClick={() => navigate('/feed')} label={isRu ? 'Назад' : 'Артқа'} />
+          {orgState === 'error'
+            ? <EmptyState icon="search" title={isRu ? 'Организация не найдена' : 'Ұйым табылмады'} sub={isRu ? 'Она не существует или недоступна.' : 'Ол жоқ немесе қолжетімсіз.'} />
+            : <div style={{ padding: '48px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>{isRu ? 'Загрузка…' : 'Жүктелуде…'}</div>}
+        </div>
+      </Container>
+    );
+  }
   const T = THEMES[org.cat] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
   const followed = !!followedMap[org.id];
   const orgEvents = events.filter((e) => e.orgId === org.id);

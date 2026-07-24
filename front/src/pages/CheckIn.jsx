@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
@@ -13,10 +14,17 @@ export default function CheckIn() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
+  const { id } = useParams();
   const desktop = useIsDesktop();
   const g = useGatheringStore((s) => s.gathering);
+  const loadCoord = useGatheringStore((s) => s.loadCoord);
   const marks = useGatheringStore((s) => s.marks);
   const toggleMark = useGatheringStore((s) => s.toggleMark);
+
+  // При прямом заходе/перезагрузке на /c/:id/check в сторе лежит демо-сбор PARK18 (стор без
+  // persist сбрасывается на buildGathering()). Поднимаем настоящий сбор и офлайн-очередь по
+  // id из URL — как CoordGathering; иначе отметки шли на демо-id и молча терялись (404).
+  useEffect(() => { loadCoord(id); }, [id, loadCoord]);
   const online = useGatheringStore((s) => s.online);
   const syncing = useGatheringStore((s) => s.syncing);
   const pending = useGatheringStore((s) => s.checkinQueue.length);

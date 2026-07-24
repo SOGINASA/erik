@@ -32,7 +32,7 @@ export default function Charity() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
         {charity.map((c) => {
-          const pct = Math.min(100, Math.round((c.raised / c.goal) * 100));
+          const pct = c.goal > 0 ? Math.min(100, Math.round((c.raised / c.goal) * 100)) : 0;
           const org = orgs.find((o) => o.id === c.org) || {};
           const raisedText = c.kind === 'money' ? `${c.raised.toLocaleString('ru-RU')} ₸` : `${c.raised} ${c.unit}`;
           const goalText = c.kind === 'money' ? `${c.goal.toLocaleString('ru-RU')} ₸` : `${c.goal} ${c.unit}`;

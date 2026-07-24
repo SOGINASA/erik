@@ -1,19 +1,23 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../i18n';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { Logo, LangToggle } from '../components/shell/Brand';
+import { Field } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 
-// Онбординг: выбор роли. Standalone-экран без шелла.
+// Онбординг: выбор роли + имя. Standalone-экран без шелла.
 export default function Onboarding() {
   const t = useT();
   const navigate = useNavigate();
   const role = useSessionStore((s) => s.role) || 'vol';
   const setRole = useSessionStore((s) => s.setRole);
+  const setIdentity = useSessionStore((s) => s.setIdentity);
   const login = useSessionStore((s) => s.login);
   const showToast = useUiStore((s) => s.showToast);
   const isRu = useSessionStore((s) => s.lang) === 'ru';
+  const [name, setName] = useState('');
 
   const roles = [
     { k: 'vol', title: t.roleVol, desc: t.roleVolDesc },
@@ -21,7 +25,13 @@ export default function Onboarding() {
     { k: 'org', title: t.roleOrg, desc: t.roleOrgDesc },
   ];
 
+  // Имя обязательно: без него login() поднимает device-сессию БЕЗ full_name, и все
+  // @profiled_required эндпоинты (Мои сборы, уведомления, кабинет НКО, чат) отдают 403,
+  // хотя UI считает пользователя вошедшим. setIdentity → boot() донесёт имя в /session.
   const finish = () => {
+    const nm = name.trim();
+    if (!nm) { showToast(isRu ? 'Введите имя, чтобы продолжить' : 'Жалғастыру үшін атыңызды енгізіңіз'); return; }
+    setIdentity(nm, null);
     login();
     navigate('/feed');
     showToast(isRu ? 'Добро пожаловать в erik!' : 'erik-ке қош келдіңіз!');
@@ -58,7 +68,15 @@ export default function Onboarding() {
               );
             })}
           </div>
-          <Button full size="lg" onClick={finish} style={{ marginTop: 20 }}>{t.continueWord}</Button>
+          <div style={{ marginTop: 18 }}>
+            <Field
+              label={isRu ? 'Ваше имя' : 'Атыңыз'}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={isRu ? 'Как вас зовут' : 'Атыңыз кім'}
+            />
+          </div>
+          <Button full size="lg" onClick={finish} disabled={!name.trim()} style={{ marginTop: 20 }}>{t.continueWord}</Button>
         </div>
       </div>
     </div>

@@ -52,6 +52,15 @@ const eventNumericId = (id) => {
   return m ? m[1] : null;
 };
 
+// Числовой id события ТОЛЬКО если лента реально серверная. Пока usePlatformStore.events —
+// та же ссылка, что мок EVENTS (офлайн/сбой загрузки), демо-'e4' численно совпадает с
+// реальным сбором №4, и RSVP ушёл бы на ЧУЖОЙ настоящий сбор. Тот же признак источника,
+// что и feedGatheringId в Event.jsx / useOrganizerStore.
+const serverEventId = (id) => {
+  if (usePlatformStore.getState().events === EVENTS) return null;
+  return eventNumericId(id);
+};
+
 // Точечная правка ответа на событие ленты; val === null убирает запись.
 const withReg = (regs, eventId, val) => {
   const n = { ...regs };
@@ -339,6 +348,10 @@ export const useGatheringStore = create((set, get) => ({
         return { gathering, marks, checkinQueue: remaining, syncing: false };
       });
       if (rejected.size) toast(isRu() ? 'Часть отметок отклонена: участников уже нет в сборе' : 'Кейбір белгілер қабылданбады: қатысушылар жиында жоқ');
+      // staleBase — сигнал бэка, что наш baseRevision отстал (со-координатор изменил ростер).
+      // Перечитываем сбор, чтобы чужие добавления/удаления доехали (на экране отметки поллинга
+      // нет). Очередь после успешного синка пуста, поэтому loadCoord не зациклит flushCheckin.
+      if (res.staleBase && !get().checkinQueue.length) get().loadCoord(String(gid));
       if (get().checkinQueue.length) get().flushCheckin(); // накопилось за время синка
     } catch (_) {
       set({ syncing: false }); // офлайн — очередь ждёт события 'online'
@@ -495,7 +508,7 @@ export const useGatheringStore = create((set, get) => ({
   setImage: (v) => set((s) => ({ gathering: { ...s.gathering, image: v } })),
 
   registerEvent: (eventId, a) => {
-    const numeric = eventNumericId(eventId);
+    const numeric = serverEventId(eventId);
     if (numeric == null) {
       toast(isRu() ? 'Этот сбор недоступен для записи' : 'Бұл жиынға жазылу мүмкін емес');
       return;
@@ -516,7 +529,7 @@ export const useGatheringStore = create((set, get) => ({
   },
 
   unregisterEvent: (eventId) => {
-    const numeric = eventNumericId(eventId);
+    const numeric = serverEventId(eventId);
     if (numeric == null) {
       toast(isRu() ? 'Этот сбор недоступен для записи' : 'Бұл жиынға жазылу мүмкін емес');
       return;
