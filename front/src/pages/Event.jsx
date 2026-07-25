@@ -6,6 +6,7 @@ import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
+import { fromServer, sourceLabel } from '../lib/forecastView';
 import { THEMES, EVENTS, avatarOf, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import Icon from '../components/Icon';
@@ -113,7 +114,21 @@ export default function Event() {
   const cityName = isRu ? city.ru : city.kz;
   const themeLabel = isRu ? theme.ru : theme.kz;
   const formatLabel = ev.format === 'reg' ? (isRu ? 'Регулярное' : 'Тұрақты') : (isRu ? 'Разовое' : 'Бір реттік');
-  const goingText = isRu ? `идут ${ev.going}` : `${ev.going} келеді`;
+
+  // ev.going — сырой счётчик нажавших «приду», это ФАКТ записи, а не явка. Надпись «идут 12»
+  // читалась как предсказание, хотя моделью здесь и не пахнет: лента (serialize_event_card)
+  // прогноз не отдаёт, а у демо-событий и ростера-то нет. Выдумывать прогноз на клиенте нельзя —
+  // поэтому просто говорим правду про записавшихся.
+  const signedText = typeof ev.going === 'number'
+    ? (isRu ? `${ev.going} уже записались` : `${ev.going} адам жазылды`)
+    : (isRu ? 'записались —' : 'жазылғандар —');
+  // Ветка на будущее: если сервер всё же пришлёт forecast в карточке события — показываем
+  // прогноз вместо счётчика и подписываем источник. Пока поля нет, ветка молчит.
+  const evForecast = ev.forecast && ev.forecast.expected != null ? fromServer(ev.forecast) : null;
+  const forecastSrc = evForecast ? sourceLabel(evForecast, t) : null;
+  const goingText = evForecast
+    ? (isRu ? `${t.fcWillCome} ≈ ${Math.round(evForecast.expected)}` : `≈ ${Math.round(evForecast.expected)} ${t.fcWillCome}`)
+    : signedText;
 
   const reg = regs[ev.id];
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
@@ -163,7 +178,8 @@ export default function Event() {
           </div>
           <div style={infoRowStyle}>
             {rowIcon(<><circle cx="12" cy="8" r="3.2" /><path d="M5 20a7 7 0 0 1 14 0" /></>)}
-            {formatLabel} · {goingText}
+            <span>{formatLabel} · {goingText}</span>
+            {forecastSrc && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>· {forecastSrc}</span>}
           </div>
         </div>
 
@@ -176,6 +192,7 @@ export default function Event() {
             );
           })}
           <span style={{ marginLeft: 14, fontSize: 13, color: 'var(--ink-2)' }}>{goingText}</span>
+          {forecastSrc && <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--ink-3)' }}>· {forecastSrc}</span>}
         </div>
 
         {/* Своё событие: вход в дашборд координатора */}

@@ -71,6 +71,16 @@ export const usePlatformStore = create((set, get) => ({
     events: s.events.map((e) => (e.id === eventId ? { ...e, going } : e)),
   })),
 
+  // Свежие роли события (с актуальным taken) после выбора роли волонтёром. Приезжают и в
+  // успешном ответе, и в теле 409 «роль уже разобрали» — во втором случае myRoleId не
+  // трогаем (роль не наша), но счётчики обновляем: список должен показывать правду сразу,
+  // без второго запроса.
+  patchEventRoles: (eventId, roles, myRoleId) => set((s) => ({
+    events: s.events.map((e) => (e.id === eventId
+      ? { ...e, roles, ...(myRoleId === undefined ? {} : { myRoleId }) }
+      : e)),
+  })),
+
   // Загрузка платформы из API (мок-фолбэк: пусто/офлайн — остаёмся на демо-данных).
   loadPlatform: async () => {
     const jobs = [

@@ -54,18 +54,63 @@ def _base_gathering(g):
     }
 
 
-def serialize_participant(p, coordinator=False):
-    """coordinator=True раскрывает телефон и историю (PII)."""
+def serialize_role(role, taken=0):
+    """Роль сбора для клиента. taken считается по ростеру (services/roles.role_counts).
+
+    free=None при capacity=0 — это «без ограничения», и UI не должен рисовать «N из M»
+    там, где M не существует.
+    """
+    return {
+        'id': role.id,
+        'titleRu': role.title_ru,
+        'titleKz': role.title_kz,
+        'capacity': role.capacity or 0,
+        'taken': taken,
+        'free': max(0, role.capacity - taken) if role.capacity else None,
+        'newbie': bool(role.newbie),
+        'preset': role.preset,
+    }
+
+
+def serialize_roles(g):
+    """Все роли сбора одним проходом по ростеру."""
+    from services.roles import role_counts
+    counts = role_counts(g)
+    return [serialize_role(r, counts.get(r.id, 0)) for r in g.roles]
+
+
+def serialize_participant(p, coordinator=False, p_value=None, roles_by_id=None):
+    """coordinator=True раскрывает телефон, историю и вероятность явки (PII).
+
+    p_value — P(придёт) от модели для ЭТОГО человека. Персональная оценка
+    надёжности: наружу (в публичные списки участников) она не уходит никогда.
+
+    roles_by_id — {id: GatheringRole} сбора. Роль резолвим ПО СЛОВАРЮ, а не через
+    p.role: PRAGMA foreign_keys в проекте не включается, ondelete='SET NULL' на SQLite
+    не срабатывает, поэтому осиротевший role_id физически возможен (правка БД руками,
+    гонка с удалением роли). Неизвестный id → участник просто «без роли»; 500 на самом
+    частом запросе приложения недопустим.
+    """
     d = {
         'id': p.id,
         'name': p.name,
         'answer': p.answer,
         'presence': p.presence,
         'isGuest': p.is_guest,
+        'roleId': None,
+        'roleTitleRu': None,
+        'roleTitleKz': None,
     }
+    if p.role_id and roles_by_id:
+        role = roles_by_id.get(p.role_id)
+        if role is not None:
+            d['roleId'] = role.id
+            d['roleTitleRu'] = role.title_ru
+            d['roleTitleKz'] = role.title_kz
     if coordinator:
         d['phone'] = p.phone
         d['history'] = p.history
+        d['p'] = round(p_value, 3) if p_value is not None else None
     return d
 
 
@@ -83,9 +128,14 @@ def serialize_coordinator(c, user=None):
 
 
 def serialize_gathering_owner(g):
-    """Полный вид для координатора: ростер + ctx + counts (без прогноза — он отдельным
-    эндпоинтом, но counts безопасны и нужны для полосы/фильтров)."""
-    from services.forecast import compute_forecast
+    """Полный вид для координатора: ростер + ctx + counts + ПРОГНОЗ.
+
+    Прогноз кладём прямо сюда (а не только в отдельный эндпоинт) намеренно: раньше
+    фронт его не запрашивал и считал число сам в браузере по своей копии формулы —
+    из-за этого серверная модель на экран не попадала в принципе. Теперь источник
+    числа один, и он серверный.
+    """
+    from services.forecast import forecast_with_probs
     d = _base_gathering(g)
     d['ctx'] = g.ctx
     d['revision'] = g.revision
@@ -94,18 +144,32 @@ def serialize_gathering_owner(g):
     # orgId/image редактируются через PATCH — отдаём назад, иначе форма правки их теряет
     d['orgId'] = g.org_id
     d['image'] = g.image_url
-    d['participants'] = [serialize_participant(p, coordinator=True) for p in g.participants]
-    d['counts'] = compute_forecast(g.participants, g.ctx or 1.0)['counts']
+    f, probs = forecast_with_probs(g, include_people=True)
+    probs = probs or {}
+    roles_by_id = {r.id: r for r in g.roles}
+    d['participants'] = [serialize_participant(p, coordinator=True, p_value=probs.get(p.id),
+                                               roles_by_id=roles_by_id)
+                         for p in g.participants]
+    d['counts'] = f['counts']
+    d['forecast'] = f
+    d['roles'] = serialize_roles(g)
     return d
 
 
-def serialize_gathering_public(g, my_answer=None):
+def serialize_gathering_public(g, my_answer=None, mine=None):
     """Публичный вид (/g/:code): БЕЗ прогноза, ростера и телефонов.
-    Только агрегат «сейчас придут N» (= число ответивших 'yes')."""
+    Только агрегат «сейчас придут N» (= число ответивших 'yes').
+
+    Роли отдаём ТОЛЬКО агрегатами (сколько занято из скольких) — это тот же класс
+    информации, что comingCount. Имён по ролям и вероятностей здесь нет и быть не должно.
+    mine — свой Participant, чтобы показать уже выбранную роль.
+    """
     d = _base_gathering(g)
     coming = sum(1 for p in g.participants if p.answer == 'yes')
     d['comingCount'] = coming
     d['myAnswer'] = my_answer
+    d['roles'] = serialize_roles(g)
+    d['myRoleId'] = mine.role_id if mine is not None else None
     return d
 
 
@@ -133,12 +197,21 @@ def _going(g):
 
 
 def serialize_event_card(g, viewer_id=None):
-    """Карточка события ленты (форма фронтовой EVENTS)."""
+    """Карточка события ленты (форма фронтовой EVENTS).
+
+    Роли кладём прямо в карточку, а не отдельным запросом: экран события открывает
+    RegisterSheet, зная только id, и после записи выбирать роль было бы физически не из
+    чего. Список короткий (≤8), а g.roles/g.participants грузятся selectin-ом одним
+    батчем на всю ленту — лишних запросов на карточку не появляется.
+    """
     d = _base_gathering(g)
     d['orgId'] = g.org_id
     d['going'] = _going(g)
     d['image'] = g.image_url
     d['mine'] = viewer_id is not None and g.owner_id == viewer_id
+    d['roles'] = serialize_roles(g)
+    mine = next((p for p in g.participants if viewer_id is not None and p.user_id == viewer_id), None)
+    d['myRoleId'] = mine.role_id if mine is not None else None
     return d
 
 

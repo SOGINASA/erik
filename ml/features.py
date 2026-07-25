@@ -142,6 +142,52 @@ def split_X_y(frame: pd.DataFrame):
 # ─────────────────────────────────────────────────────────────────────────────
 #  Одна строка признаков для инференса (дружелюбный к бэкенду вход)
 # ─────────────────────────────────────────────────────────────────────────────
+def feature_dict_from_history(history: dict, event: dict) -> dict:
+    """Один словарь признаков из агрегатов истории (см. features_from_history).
+
+    Вынесено отдельно, чтобы батч-инференс собирал матрицу N×M одним DataFrame,
+    а не склеивал N однострочных: на ростере в 45 человек это разница между одним
+    вызовом predict_proba и сорока пятью (роут /poll дёргается раз в 10 секунд).
+    """
+    came = int(history.get("came", 0))
+    if "total" in history:
+        total = int(history["total"])
+    else:
+        total = came + int(history.get("missed", 0))
+    total = max(total, came)                      # защита от рассогласования
+
+    interests = history.get("interests", []) or []
+    et = event["event_type"]
+
+    return compute_feature_row(
+        events_total=total,
+        events_came=came,
+        theme_total=int(history.get("theme_total", 0)),
+        theme_came=int(history.get("theme_came", 0)),
+        recent_came_rate=float(history.get(
+            "recent_came_rate",
+            (came / total) if total > 0 else PRIOR_ATTENDANCE,
+        )),
+        days_since_last=float(history.get("days_since_last", 30.0)),
+        interest_match=1 if et in interests else 0,
+        num_interests=len(interests),
+        answer=event.get("answer", "maybe"),
+        event_type=et,
+    )
+
+
+def features_frame(items) -> pd.DataFrame:
+    """Матрица N×M из списка пар (history, event) — для батч-предсказания.
+
+    Порядок строк совпадает с порядком items, поэтому вызывающий сопоставляет
+    вероятности по индексу.
+    """
+    rows = [feature_dict_from_history(h, e) for h, e in items]
+    if not rows:
+        return pd.DataFrame(columns=ALL_FEATURES)
+    return pd.DataFrame(rows)[ALL_FEATURES]
+
+
 def features_from_history(history: dict, event: dict) -> pd.DataFrame:
     """Собрать матрицу 1×N для предсказания по агрегатам, которые есть у бэкенда.
 
@@ -162,29 +208,4 @@ def features_from_history(history: dict, event: dict) -> pd.DataFrame:
 
     Возвращает DataFrame из одной строки со столбцами ALL_FEATURES — сразу в модель.
     """
-    came = int(history.get("came", 0))
-    if "total" in history:
-        total = int(history["total"])
-    else:
-        total = came + int(history.get("missed", 0))
-    total = max(total, came)                      # защита от рассогласования
-
-    interests = history.get("interests", []) or []
-    et = event["event_type"]
-
-    feat = compute_feature_row(
-        events_total=total,
-        events_came=came,
-        theme_total=int(history.get("theme_total", 0)),
-        theme_came=int(history.get("theme_came", 0)),
-        recent_came_rate=float(history.get(
-            "recent_came_rate",
-            (came / total) if total > 0 else PRIOR_ATTENDANCE,
-        )),
-        days_since_last=float(history.get("days_since_last", 30.0)),
-        interest_match=1 if et in interests else 0,
-        num_interests=len(interests),
-        answer=event.get("answer", "maybe"),
-        event_type=et,
-    )
-    return pd.DataFrame([feat])[ALL_FEATURES]
+    return pd.DataFrame([feature_dict_from_history(history, event)])[ALL_FEATURES]

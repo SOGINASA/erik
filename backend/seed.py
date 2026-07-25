@@ -4,10 +4,12 @@
 (Math.round = floor(x+0.5)) — поэтому серверный прогноз на PARK18 равен фронтовому.
 """
 import math
+import random
 from datetime import datetime, timezone, timedelta
 
 from models import (
-    db, User, Theme, City, Gathering, GatheringCoordinator, Participant, ForecastParams, Badge,
+    db, User, Theme, City, Gathering, GatheringCoordinator, GatheringRole, Participant,
+    ForecastParams, Badge, Application,
     Org, CharityRequest, Donation, Follow, AttendanceRecord, Notification, Reminder, BadgeAward,
     Conversation, ConversationMember, Message, Report,
 )
@@ -229,9 +231,14 @@ def seed_demo(reset=False):
         # ⚠️ reset ПОЛНОСТЬЮ очищает доменные таблицы (все сборы/НКО/помощь/уведомления),
         # а не только demo-строки. Аккаунты email/пароль (напр. админ) сохраняются.
         # Это команда пересборки ДЕМО-базы — не запускать на данных, которые нужно сохранить.
+        # Порядок FK-безопасный: дети раньше родителей. Participant ссылается на
+        # GatheringRole, поэтому роли чистим ПОСЛЕ участников и ДО сборов.
+        # Application тут раньше не было вовсе — заявки переживали reset и висели
+        # на удалённых сборах (штаб организатора показывал их на пустоту).
         for M in (Message, ConversationMember, Conversation, Report,
                   Donation, CharityRequest, Follow, Notification, Reminder, BadgeAward,
-                  AttendanceRecord, Participant, GatheringCoordinator, Gathering):
+                  AttendanceRecord, Application, Participant, GatheringRole,
+                  GatheringCoordinator, Gathering):
             M.query.delete()
         Org.query.delete()
         User.query.filter(User.device_id.like('demo-%')).delete()
@@ -286,13 +293,56 @@ def seed_demo(reset=False):
         title_ru='Уборка парка на Набережной', title_kz='Жағалау саябағын тазалау',
         place_ru='Парк на Набережной, вход у фонтана',
         place_kz='Жағалау саябағы, фонтан жанындағы кіреберіс',
-        starts_at=datetime(2026, 7, 18, 10, 0, tzinfo=timezone.utc),
+        # Дата ОТНОСИТЕЛЬНАЯ, а не 18.07.2026: с захардкоженной датой демо-сбор со
+        # временем протухал — оказывался в прошлом, уезжал в «прошедшие», выпадал из
+        # активных (сводка штаба показывала нули) и попадал в бэктест как сбор с
+        # нулевой явкой. Фронтовое демо (data.js:demoDate) считает дату так же.
+        starts_at=(datetime.now(timezone.utc) + timedelta(days=1)).replace(
+            hour=10, minute=0, second=0, microsecond=0, tzinfo=None),
         needed=20, status='open', ctx=0.95, format='one',
         image_url=_theme_image('eco', 'PARK18'),
     )
     db.session.add(gathering)
     db.session.flush()
     db.session.add(GatheringCoordinator(gathering_id=gathering.id, user_id=coord.id, role='owner'))
+
+    # Роли волонтёров: на демо должно быть видно и закрытую роль («Фотограф 1 из 1»),
+    # и живой добор, и группу «без роли» — иначе экран ролей выглядит пустой заглушкой.
+    park_roles = [
+        # Вместимость с запасом: на демо должны быть видны все три состояния роли —
+        # есть места, есть места, разобрана. Забитый под завязку список не даёт
+        # показать сам выбор роли волонтёром.
+        GatheringRole(gathering_id=gathering.id, title_ru='Раздача мешков и перчаток',
+                      title_kz='Қап пен қолғап тарату', capacity=6, newbie=True,
+                      preset='eco:bags', sort=0),
+        GatheringRole(gathering_id=gathering.id, title_ru='Сортировка мусора',
+                      title_kz='Қоқысты сұрыптау', capacity=12, newbie=True,
+                      preset='eco:sort', sort=1),
+        GatheringRole(gathering_id=gathering.id, title_ru='Фотограф',
+                      title_kz='Фотограф', capacity=1, preset='eco:photo', sort=2),
+    ]
+    db.session.add_all(park_roles)
+    db.session.flush()
+    # Детерминированная раздача: каждый третий остаётся «без роли» — так на экране
+    # координатора сразу видно, что роль необязательна, а не «у всех проставлена».
+    role_cycle = [park_roles[0], park_roles[1], None, park_roles[1], None, park_roles[2]]
+    # Заполняем НЕ до потолка: цель по каждой роли ниже вместимости, чтобы на демо
+    # остался живой добор («4 из 6») рядом с разобранной ролью («Фотограф 1 из 1»).
+    role_target = {park_roles[0].id: 4, park_roles[1].id: 8, park_roles[2].id: 1}
+    role_taken = {}
+
+    def _take_role(index, answer):
+        """Роль из цикла, пока не набрана цель. Место занимают только yes/maybe —
+        так же, как считает services/roles.role_counts."""
+        if answer not in ('yes', 'maybe'):
+            return None
+        role = role_cycle[index % len(role_cycle)]
+        if role is None:
+            return None
+        if role_taken.get(role.id, 0) >= role_target.get(role.id, 0):
+            return None
+        role_taken[role.id] = role_taken.get(role.id, 0) + 1
+        return role.id
 
     for i, p in enumerate(build_participants()):
         # лёгкий device-User с историей = основа для обучения trust
@@ -307,6 +357,7 @@ def seed_demo(reset=False):
             gathering_id=gathering.id, user_id=u.id, name=p['name'], phone=p['phone'],
             answer=p['answer'], hist_total_at_rsvp=p['total'], hist_came_at_rsvp=p['came'],
             answered_at=datetime.now(timezone.utc),
+            role_id=_take_role(i, p['answer']),
         ))
 
     db.session.commit()
@@ -317,6 +368,12 @@ def seed_demo(reset=False):
 
     _seed_platform()
     db.session.commit()
+
+    # Прошедшие сборы с реальным журналом явки. Без них /me/org/analytics отдавал
+    # forecastAccuracy=null, hoursTotal=0 и пустой топ волонтёров: проверить точность
+    # прогноза было не на чем, а именно она и есть ответ на вопрос «это модель или
+    # формула». Здесь появляется история, на которой считается бэктест.
+    _seed_history(coord)
 
     # демо-волонтёр (demo-v0) записан на пару событий ленты — чтобы «Мои мероприятия»
     # были не пустыми при входе как «Волонтёр».
@@ -350,6 +407,113 @@ def seed_demo(reset=False):
     print(f"Прогноз: E={f['E']}  ±{f['sigma']}  [{f['lo']}..{f['hi']}]  ctx={gathering.ctx}")
     print(f"Платформа: {Org.query.count()} НКО, {Gathering.query.count()} событий, "
           f"{CharityRequest.query.count()} сборов помощи, {User.query.filter(User.device_id.like('demo-v%')).count()} волонтёров")
+
+
+# ── прошедшие сборы: история явки, на которой считается бэктест точности ──
+
+# Пул волонтёров истории — отдельные от ростера PARK18 (demo-p*), чтобы их
+# захардкоженный trust не пересчитывался финализацией.
+_HIST_NAMES = [
+    'Айдана Серік', 'Ерасыл Қуаныш', 'Полина Ким', 'Нұрсұлтан Абай', 'Дарья Ким',
+    'Мирас Жанат', 'Алина Пак', 'Бекарыс Төлеу', 'Софья Ли', 'Ұлан Серғазы',
+    'Карина Ким', 'Диас Бейбіт', 'Милана Ким', 'Санжар Асыл', 'Аружан Дәулет',
+    'Тимур Ким', 'Аяулым Ерлан', 'Даниял Мұрат', 'Инкар Асқар', 'Артём Ким',
+    'Жанель Бақыт', 'Рустам Ким', 'Ділназ Ерік', 'Алишер Ким', 'Томирис Асан',
+    'Марат Ким', 'Айсұлу Нұрлан', 'Владислав Ким', 'Гүлназ Ерсін', 'Ильяс Ким',
+]
+
+# (код, ru, kz, тема, сколько дней назад, needed)
+_HIST_EVENTS = [
+    ('OLD01', 'Субботник в парке Победы', 'Жеңіс саябағындағы сенбілік', 'eco', 152, 25),
+    ('OLD02', 'Навестить одиноких пожилых', 'Жалғыз қарттарды аралау', 'elderly', 124, 12),
+    ('OLD03', 'День в приюте «Лапа»', '«Лапа» баспанасындағы күн', 'animals', 96, 15),
+    ('OLD04', 'Посадка деревьев в сквере', 'Скверде ағаш отырғызу', 'trees', 68, 30),
+    ('OLD05', 'Репетиторство детям', 'Балаларға репетиторлық', 'edu', 41, 10),
+    ('OLD06', 'Очистка берега озера', 'Көл жағасын тазалау', 'eco', 20, 20),
+    ('OLD07', 'Сбор тёплых вещей', 'Жылы киім жинау', 'homeless', 9, 14),
+]
+
+_HIST_THEMES = ['eco', 'elderly', 'animals', 'trees', 'edu', 'homeless']
+
+
+def _seed_history(coord):
+    """Прошедшие сборы координатора с полным циклом: RSVP → явка → журнал.
+
+    Явка разыгрывается генеративным правилом (латентная надёжность волонтёра +
+    совпадение темы с его интересами + эффект ответа + шум) — тем же по смыслу,
+    что в ml/data_gen.py. Модель этих скрытых параметров не видит: ей достаётся
+    только наблюдаемая история, и бэктест честно меряет, насколько она её угадала.
+
+    Всё детерминировано (фиксированное зерно), чтобы демо воспроизводилось.
+    """
+    from services.forecast import finalize_gathering
+
+    if Gathering.query.filter_by(code='OLD01').first():
+        return
+
+    rnd = random.Random(20260726)
+    now = datetime.now(timezone.utc)
+
+    # ── пул волонтёров с «характером» ──
+    people = []
+    for i, name in enumerate(_HIST_NAMES):
+        # Смесь профилей: часть народа надёжная, часть «плюсует в чат, но не доходит».
+        reliability = rnd.betavariate(1.6, 4.6) if rnd.random() < 0.38 else rnd.betavariate(4.6, 1.6)
+        interests = rnd.sample(_HIST_THEMES, rnd.randint(1, 3))
+        u = User(device_id=f'demo-hv{i}', full_name=name, role='vol', city_id='pet',
+                 user_type='user', is_active=True, interests=interests)
+        db.session.add(u)
+        db.session.flush()
+        people.append({'user': u, 'rel': reliability, 'interests': interests})
+    db.session.commit()
+
+    for code, ru, kz, theme, days_ago, needed in _HIST_EVENTS:
+        starts = now - timedelta(days=days_ago)
+        g = Gathering(
+            code=code, owner_id=coord.id, city_id='pet', theme=theme, org_id=1,
+            title_ru=ru, title_kz=kz,
+            place_ru='Петропавловск', place_kz='Петропавл',
+            starts_at=starts.replace(tzinfo=None) if starts.tzinfo else starts,
+            needed=needed, status='open', ctx=1.0, format='one',
+            image_url=_theme_image(theme, code),
+        )
+        db.session.add(g)
+        db.session.flush()
+        db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=coord.id, role='owner'))
+
+        invited = rnd.sample(people, rnd.randint(18, min(28, len(people))))
+        for person in invited:
+            u = person['user']
+            match = 1 if theme in person['interests'] else 0
+
+            # RSVP: надёжные и «свои по теме» чаще отвечают «приду»
+            bias = 0.9 * person['rel'] + 0.5 * match
+            r = rnd.random()
+            answer = 'yes' if r < 0.30 + 0.35 * bias else ('maybe' if r < 0.85 else 'no')
+
+            # Снапшот истории НА МОМЕНТ RSVP — то, что видел бы прогноз до сбора.
+            hist_total = u.trust_total or 0
+            hist_came = u.trust_came or 0
+
+            # Пришёл или нет — скрытая «правда», модели она недоступна.
+            score = (person['rel'] - 0.5) * 2.2 + 0.45 * match + rnd.gauss(0, 0.28) + {
+                'yes': 0.55, 'maybe': -0.15, 'no': -1.6}[answer]
+            came = score > 0
+
+            db.session.add(Participant(
+                gathering_id=g.id, user_id=u.id, name=u.full_name, phone=None,
+                answer=answer, presence='came' if came else None,
+                hist_total_at_rsvp=hist_total, hist_came_at_rsvp=hist_came,
+                answered_at=starts, checked_in_at=starts if came else None,
+            ))
+        db.session.commit()
+
+        # finalize сам проставит presence остальным, запишет журнал и обучит trust —
+        # ровно тот же путь, которым сбор закрывается в проде.
+        finalize_gathering(g)
+
+    print(f'История: {len(_HIST_EVENTS)} завершённых сборов, '
+          f'{AttendanceRecord.query.count()} записей журнала явки')
 
 
 def _seed_platform():

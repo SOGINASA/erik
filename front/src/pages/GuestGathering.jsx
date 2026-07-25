@@ -3,8 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
+import { usePlatformStore } from '../store/usePlatformStore';
 import { isOffline } from '../lib/optimistic';
-import { counts } from '../lib/forecast';
+import { RoleRow, sortRolesForViewer } from '../sheets/Sheets';
+
 import Icon from '../components/Icon';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import { EmptyState, Skeleton } from '../components/ui/feedback';
@@ -36,9 +38,12 @@ export default function GuestGathering() {
   const loadGuest = useGatheringStore((s) => s.loadGuest);
   const rsvp = useGatheringStore((s) => s.rsvp);
   const showToast = useUiStore((s) => s.showToast);
+  const pickGuestRole = useGatheringStore((s) => s.pickGuestRole);
+  const me = usePlatformStore((s) => s.me);
   const [answer, setAnswer] = useState(null);
   const [closed, setClosed] = useState(false); // сбор завершился между загрузкой и ответом (409)
   const [booting, setBooting] = useState(true); // до первого loadGuest в сторе ещё чужой gathering — не мигаем демо
+  const [roleBusy, setRoleBusy] = useState(false);
 
   useEffect(() => {
     setClosed(false);
@@ -63,6 +68,21 @@ export default function GuestGathering() {
       showToast(isRu ? 'Нет сети — ответ не сохранён' : 'Желі жоқ — жауап сақталмады');
     } else {
       showToast(isRu ? 'Не удалось сохранить ответ' : 'Жауапты сақтау мүмкін болмады');
+    }
+  };
+
+  // Роль выбирается ОТДЕЛЬНЫМ запросом уже после записи: она не должна её задерживать.
+  // Стор идёт через commit(), поэтому офлайн честно откатится и стостится — иначе роль
+  // была бы видна локально, а сервер о ней не знал.
+  const chooseRole = async (roleId) => {
+    if (roleBusy) return;
+    setRoleBusy(true);
+    const r = await pickGuestRole(code, roleId);
+    setRoleBusy(false);
+    // 409 — место заняли, пока человек выбирал. Стор уже перерисовал остатки из тела
+    // ответа, поэтому просто объясняем, что произошло: список рядом уже актуальный.
+    if (!r.ok && r.error && r.error.status === 409) {
+      showToast(isRu ? 'Роль уже заняли — выберите другую' : 'Рөл алынып қойды — басқасын таңдаңыз');
     }
   };
 
@@ -142,15 +162,29 @@ export default function GuestGathering() {
     );
   }
 
-  // Публичный вид отдаёт comingCount; на моке считаем из ростера.
-  const coming = g.comingCount != null ? g.comingCount : counts(g.participants || []).yes;
-  const needLine = isRu
-    ? `Нужно ${g.needed} человек · сейчас придут ${coming}`
-    : `${g.needed} адам керек · қазір ${coming} келеді`;
+  // Публичный вид отдаёт comingCount — это ФАКТ (сколько человек ответили «приду»),
+  // а не прогноз: участнику прогноз не показываем сознательно (самосбывающееся
+  // пророчество). Раньше строка звучала «сейчас придут N» — тем же глаголом, что и
+  // предсказание, и читалась как прогноз. Теперь формулировка про ответы.
+  // Фолбэка по ростеру нет: публичный сериализатор participants не отдаёт вовсе,
+  // и counts() всегда возвращал бы 0 — честнее скрыть строку целиком.
+  const coming = g.comingCount;
+  const needLine = coming == null
+    ? (isRu ? `Нужно ${g.needed} человек` : `${g.needed} адам керек`)
+    : isRu
+      ? `Нужно ${g.needed} человек · уже ответили «приду» ${coming}`
+      : `${g.needed} адам керек · «келемін» деп жауап берді ${coming}`;
 
   const statusMap = { yes: ['var(--yard-soft)', 'var(--yard)', 'var(--yard)'], maybe: ['var(--maybe-soft)', 'var(--maybe)', '#8a5a17'], no: ['#EEF0EC', 'var(--line)', 'var(--ink-2)'] };
   const gsm = statusMap[answer || 'yes'];
   const answerLabel = answer === 'yes' ? t.ansYes : answer === 'maybe' ? t.ansMaybe : t.ansNo;
+
+  // Роли сбора приезжают в публичном виде агрегатами (сколько занято из скольких) —
+  // это тот же класс данных, что comingCount. Имён и прогноза здесь нет и быть не должно.
+  const roles = g.roles || [];
+  const myRoleId = g.myRoleId || null;
+  // Новичку сначала показываем роли «можно без опыта». Гость без профиля — тоже новичок.
+  const orderedRoles = sortRolesForViewer(roles, !me || !me.eventsAttended);
 
   return (
     <Frame>
@@ -173,6 +207,34 @@ export default function GuestGathering() {
 
           {answer === 'maybe' && (
             <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.45, color: 'var(--ink-2)' }}>{t.maybeReassure}</div>
+          )}
+
+          {/* Выбор роли — ИНЛАЙНОМ в блоке успеха, а не модалкой поверх него: человек
+              только что увидел «ты записан», и всплывающее окно погасило бы этот момент.
+              Показываем после 'yes'/'maybe'; при 'no' роль не нужна и место уже свободно. */}
+          {answer !== 'no' && roles.length > 0 && (
+            <div style={{ marginTop: 16, padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
+                {isRu ? 'Чем поможешь?' : 'Немен көмектесесің?'}
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--ink-2)', marginBottom: 12 }}>
+                {isRu
+                  ? 'Ты уже записан. Роль можно выбрать сейчас или потом.'
+                  : 'Сен тіркелдің. Рөлді қазір де, кейін де таңдауға болады.'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {orderedRoles.map((r) => (
+                  <RoleRow
+                    key={r.id}
+                    role={r}
+                    isRu={isRu}
+                    selected={r.id === myRoleId}
+                    disabled={roleBusy || (r.free === 0 && r.id !== myRoleId)}
+                    onClick={() => chooseRole(r.id)}
+                  />
+                ))}
+              </div>
+            </div>
           )}
 
           <div style={{ marginTop: 16, padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>

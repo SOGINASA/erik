@@ -75,8 +75,12 @@ export const api = {
   // сборы (координатор)
   createGathering: (body) => request('/gatherings', { method: 'POST', body }),
   getGathering: (id) => request(`/gatherings/${id}`),
-  forecast: (id) => request(`/gatherings/${id}/forecast`),
+  // Прогноз явки. Источник — обученная модель, формула включается только при её
+  // недоступности (и тогда это видно в поле source). ?source=formula — принудительно
+  // фолбэком, чтобы показать разницу на одних и тех же данных.
+  forecast: (id, source) => request(`/gatherings/${id}/forecast${source ? `?source=${source}` : ''}`),
   mlForecast: (id) => request(`/gatherings/${id}/ml-forecast`),
+  forecastQuality: () => request('/forecast/quality', { auth: false }),
   poll: (id, since) => request(`/gatherings/${id}/poll?since=${since}`),
   patchGathering: (id, body) => request(`/gatherings/${id}`, { method: 'PATCH', body }),
   deleteGathering: (id) => request(`/gatherings/${id}`, { method: 'DELETE' }),
@@ -84,6 +88,15 @@ export const api = {
   share: (id) => request(`/gatherings/${id}/share`),
   myGatherings: () => request('/gatherings/mine'),
   resubmitGathering: (id) => request(`/gatherings/${id}/resubmit`, { method: 'POST' }), // только владелец: отклонённый сбор → на повторную модерацию
+
+  // роли волонтёров на сборе
+  gatheringRoles: (id) => request(`/gatherings/${id}/roles`),
+  // Заменяет НАБОР целиком. force=true нужен, чтобы удалить роль, на которую уже
+  // записались: без него бэк отдаёт 409 со списком conflicts (спрашиваем подтверждение).
+  setGatheringRoles: (id, roles, force = false) =>
+    request(`/gatherings/${id}/roles`, { method: 'PUT', body: { roles, force } }),
+  setParticipantRole: (id, pid, roleId) =>
+    request(`/gatherings/${id}/participants/${pid}/role`, { method: 'PUT', body: { roleId } }),
 
   // ростер (координатор)
   setAnswer: (id, pid, answer) =>
@@ -122,7 +135,10 @@ export const api = {
   getEvents: (qs = '') => request('/events' + qs),
   getEvent: (id) => request(`/events/${id}`),
   eventParticipants: (id, limit = 7) => request(`/events/${id}/participants?limit=${limit}`),
-  setEventReg: (id, answer) => request(`/events/${id}/registration`, { method: 'PUT', body: { answer } }),
+  // extra — как у putRsvp: {roleId} для выбора роли. Второй путь записи на сбор, и он
+  // обязан принимать ровно то же, что гостевой, иначе «роль исчезает при записи из ленты».
+  setEventReg: (id, answer, extra = {}) =>
+    request(`/events/${id}/registration`, { method: 'PUT', body: { answer, ...extra } }),
   deleteEventReg: (id) => request(`/events/${id}/registration`, { method: 'DELETE' }),
   myRegistrations: () => request('/me/registrations'),
   myEvents: () => request('/me/events'),   // события, на которые волонтёр записался («Мои мероприятия»)

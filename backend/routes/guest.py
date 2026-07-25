@@ -10,7 +10,8 @@ from flask_jwt_extended import jwt_required
 
 from models import db, Gathering, Participant, ANSWERS
 from services.identity import current_user
-from utils.serializers import serialize_gathering_public
+from services.roles import sync_participant_role
+from utils.serializers import serialize_gathering_public, serialize_roles
 
 guest_bp = Blueprint('guest', __name__)
 
@@ -36,7 +37,7 @@ def guest_view(code):
         return jsonify({'error': 'Сбор не найден'}), 404
     mine = _my_participant(gathering, current_user())
     return jsonify({'gathering': serialize_gathering_public(
-        gathering, my_answer=mine.answer if mine else None)})
+        gathering, my_answer=mine.answer if mine else None, mine=mine)})
 
 
 @guest_bp.route('/gatherings/by-code/<code>', methods=['GET'])
@@ -56,13 +57,21 @@ def get_rsvp(code):
     if gathering is None:
         return jsonify({'error': 'Сбор не найден'}), 404
     mine = _my_participant(gathering, current_user())
-    return jsonify({'answer': mine.answer if mine else None})
+    # roleId — иначе, вернувшись по ссылке, человек не увидит уже выбранную роль
+    # и ему снова покажут пустой список.
+    return jsonify({'answer': mine.answer if mine else None,
+                    'roleId': mine.role_id if mine else None})
 
 
 @guest_bp.route('/g/<code>/rsvp', methods=['PUT'])
 @jwt_required()
 def put_rsvp(code):
-    """Ответ участника: {answer, name?, phone?}. Привязка к device-User."""
+    """Ответ участника: {answer, name?, phone?, roleId?}. Привязка к device-User.
+
+    roleId опционален и НЕ обязателен для записи: RSVP остаётся одно-тапным, роль фронт
+    досылает вторым PUT уже после успешной записи. Гейт остаётся @jwt_required (device),
+    поднимать до @profiled_required нельзя — гость без имени тоже выбирает роль.
+    """
     user = current_user()
     if user is None:
         return jsonify({'error': 'Пользователь не найден'}), 404
@@ -105,6 +114,18 @@ def put_rsvp(code):
     if user.phone:
         part.phone = user.phone
 
+    # Роль — через общий сервис, тот же вызов, что и в platform.set_registration: два
+    # независимых RSVP-роута уже разъезжались по контракту, дублировать логику нельзя.
+    # Новый участник ещё не во flush'е — добавим его в сессию до подсчёта занятости.
+    db.session.flush()
+    ok, err_ru, err_kz, status = sync_participant_role(gathering, part, data)
+    if not ok:
+        db.session.rollback()
+        # Актуальный список ролей кладём в ТЕЛО ошибки: фронт перерисует остатки без
+        # второго запроса (роль мог занять кто-то, пока человек выбирал).
+        return jsonify({'error': err_ru, 'errorKz': err_kz,
+                        'roles': serialize_roles(_find_open(code))}), status
+
     # уведомляем владельца о (новом) ответе участника
     if answer != prev_answer and user.id != gathering.owner_id:
         from services.notifications import notify_owner_answer
@@ -114,4 +135,5 @@ def put_rsvp(code):
     db.session.commit()
 
     coming = sum(1 for p in gathering.participants if p.answer == 'yes')
-    return jsonify({'answer': answer, 'comingCount': coming})
+    return jsonify({'answer': answer, 'comingCount': coming,
+                    'roleId': part.role_id, 'roles': serialize_roles(gathering)})

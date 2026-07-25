@@ -73,6 +73,12 @@ def update_me():
         user.lang = data['lang']
     if 'skills' in data and isinstance(data['skills'], list):
         user.skills = data['skills']
+    if 'interests' in data and isinstance(data['interests'], list):
+        # Только существующие id тем и не больше четырёх: это вход признака
+        # interest_match модели прогноза, мусор туда пускать нельзя.
+        from models import Theme
+        valid = {t.id for t in Theme.query.all()}
+        user.interests = [str(x) for x in data['interests'] if str(x) in valid][:4]
     db.session.commit()
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 

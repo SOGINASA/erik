@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { buildOrgEvents, buildApplications, buildOrgVolunteers, estimateAttendance, plural, EVENTS } from '../lib/data';
+import { buildOrgEvents, buildApplications, buildOrgVolunteers, plural, EVENTS } from '../lib/data';
+import { fromServer } from '../lib/forecastView';
 import { api } from '../lib/api';
 import { commit } from '../lib/optimistic';
 import { useUiStore } from './useUiStore';
@@ -129,8 +130,15 @@ export const useOrganizerStore = create((set, get) => ({
   // Заявки, ждущие решения организатора.
   pendingCount: () => get().applications.filter((a) => a.status === 'pending').length,
 
-  // Прогноз явки по одному сбору (агрегатная оценка).
-  forecastFor: (e) => estimateAttendance(e.yes, e.maybe),
+  // Прогноз явки по одному сбору — ТОЛЬКО серверный (его считает модель по ростеру
+  // с историей каждого человека). Нет поля — возвращаем null, и карточка честно
+  // рисует «—». Прежняя клиентская формула 0.62·yes + 0.24·maybe удалена: на
+  // типичном раскладе ответов она давала ровно число подтвердивших.
+  //
+  // Приводим к той же форме, что forecastView на экране сбора (fromServer), чтобы
+  // хелперы sourceLabel/verdictColor работали одинаково везде и карточка не зависела
+  // от того, какие именно ключи прислал бэк.
+  forecastFor: (e) => ((e && e.forecast) ? fromServer(e.forecast) : null),
 
   setVolSort: (volSort) => set({ volSort }),
   setReqFilter: (reqFilter) => set({ reqFilter }),

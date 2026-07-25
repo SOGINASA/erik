@@ -60,6 +60,16 @@ def create_app(config_object=None):
         if exc is not None:
             db.session.rollback()
 
+    # Прогрев ML-модели на старте воркера: распаковка joblib занимает ~2-3 с, и без
+    # прогрева её платит первый же координатор, открывший сбор, — в каждом из
+    # воркеров gunicorn. Под флагом, чтобы локальный запуск и тесты не тормозили.
+    if os.environ.get('ERIK_ML_WARMUP') == '1':
+        try:
+            from services.attendance_ml import warmup
+            app.logger.info('[ml] прогрев модели прогноза: %s', warmup())
+        except Exception as exc:                      # noqa: BLE001 — старт важнее ML
+            app.logger.warning('[ml] прогрев не удался: %s', exc)
+
     # Главная страница API
     @app.route('/api')
     def api_info():

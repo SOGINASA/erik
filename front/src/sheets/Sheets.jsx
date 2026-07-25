@@ -12,7 +12,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { counts } from '../lib/forecast';
-import { SKILL_LIST, THEMES, skillLabel } from '../lib/data';
+import { SKILL_LIST, THEMES, skillLabel, rolePresets } from '../lib/data';
 import { useOrganizerStore } from '../store/useOrganizerStore';
 import { RelChip, SkillTags } from '../components/manage/parts';
 import { useGuardedNav, isOrganizerRole } from '../lib/nav';
@@ -40,6 +40,9 @@ export default function Sheets() {
     case 'apply': return <ApplySheet />;
     case 'applicant': return <ApplicantSheet />;
     case 'coordinators': return <CoordinatorsSheet />;
+    case 'roles': return <RolesSheet />;
+    case 'pickRole': return <PickRoleSheet />;
+    case 'confirmRoleDrop': return <ConfirmRoleDropSheet />;
     default: return null;
   }
 }
@@ -244,6 +247,21 @@ function PersonSheet() {
   const p = useUiStore((s) => s.sheetPayload) || {};
   const changeAnswerFor = useGatheringStore((s) => s.changeAnswerFor);
   const removeParticipant = useGatheringStore((s) => s.removeParticipant);
+  const setParticipantRole = useGatheringStore((s) => s.setParticipantRole);
+  const roles = useGatheringStore((s) => s.gathering.roles) || [];
+  // Шторка держит СВОЮ копию участника (payload), поэтому выбранную роль ведём
+  // локально: иначе чип не подсветится до переоткрытия шторки.
+  const [curRole, setCurRole] = useState(p.roleId || null);
+  const [roleBusy, setRoleBusy] = useState(false);
+  const setRole = async (roleId) => {
+    if (roleBusy) return;
+    const prev = curRole;
+    setCurRole(roleId);
+    setRoleBusy(true);
+    const r = await setParticipantRole(p.id, roleId);
+    setRoleBusy(false);
+    if (!r.ok) setCurRole(prev);   // причину показал стор
+  };
   const hist = p.history
     ? p.history.total > 0
       ? isRu ? `был ${p.history.came} из ${p.history.total} раз` : `${p.history.total} реттен ${p.history.came} рет келген`
@@ -268,6 +286,32 @@ function PersonSheet() {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>{['yes', 'maybe', 'no'].map(pBtn)}</div>
+
+      {/* Роль участника: координатор переставляет людей на месте. Вместимость здесь
+          МЯГКАЯ — он видит человека глазами, и «мест нет» ему отвечать поздно. */}
+      {roles.length > 0 && p.answer !== 'no' && (
+        <div style={{ marginBottom: 16 }}>
+          <FieldLabel>{isRu ? 'Роль на сборе' : 'Жиындағы рөлі'}</FieldLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {roles.map((r) => {
+              const on = r.id === curRole;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="erik-btn"
+                  disabled={roleBusy}
+                  onClick={() => setRole(on ? null : r.id)}
+                  style={{ height: 36, padding: '0 14px', borderRadius: 999, border: `1.5px solid ${on ? 'var(--yard)' : 'var(--line)'}`, background: on ? 'var(--yard-soft)' : 'var(--surface)', color: on ? 'var(--yard)' : 'var(--ink-2)', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+                >
+                  {isRu ? r.titleRu : r.titleKz}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8 }}>
         <Button variant="secondary" icon="phone" onClick={() => p.phone ? (window.location.href = `tel:${p.phone}`) : showToast(isRu ? 'Телефон не указан' : 'Телефон көрсетілмеген')} style={{ flex: 1 }}>{t.personCall}</Button>
         <Button variant="ghost" icon="trash" onClick={() => removeParticipant(p.id)} style={{ color: 'var(--danger)' }}>{t.personRemove}</Button>
@@ -435,10 +479,28 @@ function GuestSheet() {
 function RegisterSheet() {
   const t = useT();
   const close = useUiStore((s) => s.closeSheet);
+  const openSheet = useUiStore((s) => s.openSheet);
   const eventId = useUiStore((s) => s.sheetPayload);
   const registerEvent = useGatheringStore((s) => s.registerEvent);
   const cur = useGatheringStore((s) => s.regs)[eventId];
-  const pick = (a) => { registerEvent(eventId, a); close(); };
+  const events = usePlatformStore((s) => s.events);
+  const [busy, setBusy] = useState(false);
+
+  // Запись остаётся одно-тапной: тап по ответу закрывает шторку, как и раньше. Роль
+  // предлагаем ПОСЛЕ, и только когда сервер подтвердил запись — раньше здесь стоял
+  // fire-and-forget (`registerEvent(...); close();`), и шторка ролей открылась бы даже
+  // при офлайне, когда оптимистичная запись уже откатилась.
+  const pick = async (a) => {
+    if (busy) return;
+    setBusy(true);
+    const r = await registerEvent(eventId, a);
+    setBusy(false);
+    close();
+    if (!r || !r.ok || a === 'no') return;   // 'no' роль не спрашивает: человек не придёт
+    const roles = (r.data && r.data.roles) || (events.find((e) => e.id === eventId) || {}).roles || [];
+    if (roles.length) openSheet('pickRole', { eventId, roles });
+  };
+
   return (
     <Sheet open onClose={close} title={t.registerTitle} maxWidth={420}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -815,6 +877,332 @@ function CoordinatorsSheet() {
         </div>
         <Button loading={busy} onClick={add} style={{ height: 48, flex: 'none' }}>{isRu ? 'Добавить' : 'Қосу'}</Button>
       </div>
+    </Sheet>
+  );
+}
+
+const ROLES_MAX = 8;   // = GATHERING_ROLE_MAX на бэке (models.py)
+
+// Строка роли в списке волонтёра: визуал AnswerButton, но со счётчиком мест справа.
+// Отдельный компонент, потому что рисуется в двух местах — на гостевом экране инлайном
+// и в шторке после записи из ленты.
+export function RoleRow({ role, selected, disabled, isRu, onClick }) {
+  const title = isRu ? role.titleRu : role.titleKz;
+  // capacity=0 — безлимит: «N из M» рисовать не из чего, и роль никогда не «занята».
+  const slots = role.capacity
+    ? `${role.taken} ${isRu ? 'из' : '/'} ${role.capacity}`
+    : (isRu ? 'без ограничения' : 'шектеусіз');
+  return (
+    <button
+      type="button"
+      className="erik-btn"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        position: 'relative', width: '100%', minHeight: 56, padding: '10px 46px 10px 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        borderRadius: 'var(--r-m)', textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
+        border: `1.5px solid ${selected ? 'var(--yard)' : 'var(--line)'}`,
+        background: selected ? 'var(--yard-soft)' : 'var(--surface)',
+        color: disabled ? 'var(--ink-3)' : 'var(--ink)',
+        opacity: disabled ? 0.6 : 1, transition: 'all var(--t-fast)',
+      }}
+    >
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 500 }}>{title}</span>
+        {role.newbie && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px', marginTop: 4, borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 11, fontWeight: 500 }}>
+            {isRu ? 'можно без опыта' : 'тәжірибесіз болады'}
+          </span>
+        )}
+      </span>
+      <span style={{ flex: 'none', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+        {disabled && !selected ? (isRu ? 'мест нет' : 'орын жоқ') : slots}
+      </span>
+      {selected && (
+        <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--yard)' }}>
+          <Icon name="check" size={20} stroke={2} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+// Порядок ролей для волонтёра: новичку сначала показываем то, что помечено «можно без
+// опыта». Признак новичка — events_attended === 0 (это поле УЖЕ приезжает в профиле;
+// trust_total клиенту не отдаётся вовсе, брать его нельзя).
+export function sortRolesForViewer(roles, isNewbie) {
+  if (!isNewbie) return roles;
+  return [...roles].sort((a, b) => (b.newbie ? 1 : 0) - (a.newbie ? 1 : 0));
+}
+
+// Выбор роли волонтёром ПОСЛЕ записи из ленты. На гостевом экране (/g/:code) тот же
+// список рисуется инлайном в блоке «ты записан» — открывать модалку поверх только что
+// показанного успеха значит гасить сам момент подтверждения.
+function PickRoleSheet() {
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const payload = useUiStore((s) => s.sheetPayload) || {};
+  const me = usePlatformStore((s) => s.me);
+  const events = usePlatformStore((s) => s.events);
+  const pickEventRole = useGatheringStore((s) => s.pickEventRole);
+  const [busy, setBusy] = useState(false);
+
+  // Роли берём из ленты (они приезжают в карточке события), но если запись только что
+  // прошла — свежий список из ответа сервера точнее: в нём уже учтён наш собственный слот.
+  const ev = events.find((e) => e.id === payload.eventId) || {};
+  const roles = payload.roles || ev.roles || [];
+  const myRoleId = ev.myRoleId || null;
+  const isNewbie = !me || !me.eventsAttended;
+  const ordered = sortRolesForViewer(roles, isNewbie);
+
+  const pick = async (roleId) => {
+    if (busy) return;
+    setBusy(true);
+    const r = await pickEventRole(payload.eventId, roleId);
+    setBusy(false);
+    if (r.ok) { close(); return; }
+    // 409: место заняли, пока человек выбирал. Стор уже перерисовал остатки — шторку
+    // НЕ закрываем, показываем правду и даём выбрать другую роль.
+    if (r.error && r.error.status === 409) {
+      useUiStore.getState().showToast(isRu ? 'Роль уже заняли — выберите другую' : 'Рөл алынып қойды — басқасын таңдаңыз');
+    }
+  };
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Чем поможешь?' : 'Немен көмектесесің?'} maxWidth={420}>
+      <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 16px' }}>
+        {isRu
+          ? 'Ты уже записан. Роль можно выбрать сейчас или потом.'
+          : 'Сен тіркелдің. Рөлді қазір де, кейін де таңдауға болады.'}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {ordered.map((r) => (
+          <RoleRow
+            key={r.id}
+            role={r}
+            isRu={isRu}
+            selected={r.id === myRoleId}
+            disabled={busy || (r.free === 0 && r.id !== myRoleId)}
+            onClick={() => pick(r.id)}
+          />
+        ))}
+      </div>
+      <Button full variant="ghost" style={{ marginTop: 14 }} onClick={close}>
+        {isRu ? 'Пока не знаю — поставьте, куда нужно' : 'Әзірге білмеймін — қажет жерге қойыңыз'}
+      </Button>
+    </Sheet>
+  );
+}
+
+// Подтверждение удаления роли, на которой уже есть люди.
+// ConfirmSheet переиспользовать НЕЛЬЗЯ: она ветвится ровно на payload === 'finish', и любой
+// другой payload уходит в deleteGathering() — «удалить роль» снесло бы весь сбор.
+function ConfirmRoleDropSheet() {
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const openSheet = useUiStore((s) => s.openSheet);
+  const payload = useUiStore((s) => s.sheetPayload) || {};
+  const saveRoles = useGatheringStore((s) => s.saveRoles);
+  const [busy, setBusy] = useState(false);
+
+  const conflicts = payload.conflicts || [];
+  const total = conflicts.reduce((n, c) => n + (c.taken || 0), 0);
+  const names = conflicts.map((c) => `«${isRu ? c.titleRu : c.titleKz}»`).join(', ');
+
+  const confirm = async () => {
+    if (busy) return;
+    setBusy(true);
+    const r = await saveRoles(payload.roles || [], true);
+    setBusy(false);
+    if (r.ok) { close(); return; }
+    openSheet('roles', payload.gatheringId);   // не вышло — возвращаем в редактор набора
+  };
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Удалить роль?' : 'Рөлді жою керек пе?'} maxWidth={420}>
+      <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 20px' }}>
+        {isRu
+          ? `На ${names} уже записались: ${total} чел. Они останутся на сборе, но без роли — и смогут выбрать новую.`
+          : `${names} рөліне ${total} адам жазылған. Олар жиында қалады, бірақ рөлсіз — жаңасын таңдай алады.`}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Button full size="lg" variant="danger" loading={busy} onClick={confirm}>
+          {isRu ? 'Удалить роль' : 'Рөлді жою'}
+        </Button>
+        <Button full variant="ghost" onClick={() => openSheet('roles', payload.gatheringId)}>
+          {isRu ? 'Вернуться к ролям' : 'Рөлдерге оралу'}
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+// Роли волонтёров: координатор набирает их чипами-пресетами и правит вместимость.
+// Два режима по payload: {draft:true} — черновик для ещё не созданного сбора (живёт в
+// сторе, уедет внутри createGathering), иначе id сбора — правки летят в PUT /roles.
+function RolesSheet() {
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const openSheet = useUiStore((s) => s.openSheet);
+  const showToast = useUiStore((s) => s.showToast);
+  const payload = useUiStore((s) => s.sheetPayload);
+  const draft = !!(payload && payload.draft);
+
+  const g = useGatheringStore((s) => s.gathering);
+  const draftRoles = useGatheringStore((s) => s.draftRoles);
+  const setDraftRoles = useGatheringStore((s) => s.setDraftRoles);
+  const saveRoles = useGatheringStore((s) => s.saveRoles);
+
+  // Черновик живёт в сторе (шторка размонтируется при закрытии), боевой набор —
+  // локальная копия серверного: правки применяются одним PUT по кнопке «Сохранить».
+  const [rows, setRows] = useState(() => (draft ? draftRoles : (g.roles || []).map((r) => ({ ...r }))));
+  const [busy, setBusy] = useState(false);
+  const theme = draft ? (payload && payload.theme) : g.theme;
+  const presets = rolePresets(theme);
+
+  const sync = (next) => { setRows(next); if (draft) setDraftRoles(next); };
+  const patch = (i, p) => sync(rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
+  const remove = (i) => sync(rows.filter((_, idx) => idx !== i));
+  const cap = (v) => Math.max(0, Math.min(99, v));
+
+  const addRow = (row) => {
+    if (rows.length >= ROLES_MAX) {
+      showToast(isRu ? `Больше ${ROLES_MAX} ролей на один сбор не нужно` : `Бір жиынға ${ROLES_MAX} рөлден артық қажет емес`);
+      return;
+    }
+    const t = (row.titleRu || '').trim();
+    if (!t) return;
+    // Повторный тап по чипу пресета — не ошибка ввода: молча игнорируем дубль,
+    // иначе бэк вернул бы 400 на действии, которое выглядит безобидным.
+    if (rows.some((r) => (r.titleRu || '').trim().toLowerCase() === t.toLowerCase())) return;
+    sync([...rows, row]);
+  };
+
+  const save = async () => {
+    if (busy) return;
+    if (draft) { close(); return; }          // черновик уедет вместе с созданием сбора
+    setBusy(true);
+    const r = await saveRoles(rows);
+    setBusy(false);
+    if (r.ok) { close(); return; }
+    // 409 с conflicts — роль занята: спрашиваем подтверждение отдельной шторкой.
+    const data = r.error && r.error.data;
+    if (r.error && r.error.status === 409 && data && data.conflicts) {
+      openSheet('confirmRoleDrop', { gatheringId: g.id, roles: rows, conflicts: data.conflicts });
+      return;
+    }
+    // Прочие 409 (вместимость ниже занятого, завершённый сбор) — текст сервера точнее нашего.
+    if (r.error && r.error.status === 409) {
+      showToast((isRu ? data && data.error : data && data.errorKz) || (isRu ? 'Не удалось сохранить роли' : 'Рөлдерді сақтау мүмкін болмады'));
+    }
+  };
+
+  const totalSlots = rows.reduce((n, r) => n + (Number(r.capacity) || 0), 0);
+  const needed = draft ? (payload && payload.needed) : g.needed;
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Роли волонтёров' : 'Еріктілер рөлдері'} maxWidth={440}>
+      <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 16px' }}>
+        {isRu
+          ? 'Роль — подсказка волонтёру, а не пропуск. Кто не выберет — просто придёт помогать.'
+          : 'Рөл — еріктіге нұсқау, рұқсатнама емес. Таңдамаған адам жай көмектесуге келеді.'}
+      </p>
+
+      {/* Пресеты по теме сбора: печатать названия с телефона никто не будет */}
+      {presets.length > 0 && rows.length < ROLES_MAX && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+          {presets
+            .filter((p) => !rows.some((r) => (r.titleRu || '').trim().toLowerCase() === p.ru.toLowerCase()))
+            .map((p) => (
+              <button
+                key={p.preset}
+                type="button"
+                className="erik-btn"
+                onClick={() => addRow({ titleRu: p.ru, titleKz: p.kz, capacity: p.capacity, newbie: p.newbie, preset: p.preset })}
+                style={{ height: 36, padding: '0 14px', borderRadius: 999, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+              >
+                + {isRu ? p.ru : p.kz}
+              </button>
+            ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+        {rows.length === 0 && (
+          <div style={{ fontSize: 14, color: 'var(--ink-3)', padding: '4px 0' }}>
+            {isRu ? 'Ролей пока нет — добавьте из подсказок выше или своим названием.' : 'Әзірге рөл жоқ — жоғарыдағы ұсыныстардан немесе өз атауыңызбен қосыңыз.'}
+          </div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.id || `new-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Field
+                  value={isRu ? (r.titleRu || '') : (r.titleKz || r.titleRu || '')}
+                  onChange={(e) => patch(i, isRu ? { titleRu: e.target.value } : { titleKz: e.target.value })}
+                  placeholder={isRu ? 'Что делает' : 'Не істейді'}
+                />
+              </div>
+              {/* Stepper сам не клампит (controls.jsx) — границы держим здесь */}
+              <Stepper
+                value={r.capacity === 0 ? '∞' : r.capacity}
+                onDec={() => patch(i, { capacity: cap((Number(r.capacity) || 0) - 1) })}
+                onInc={() => patch(i, { capacity: cap((Number(r.capacity) || 0) + 1) })}
+              />
+              <button
+                type="button"
+                className="erik-row-hover"
+                onClick={() => remove(i)}
+                aria-label={isRu ? 'Убрать роль' : 'Рөлді алып тастау'}
+                style={{ width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer', borderRadius: 'var(--r-s)' }}
+              >
+                <Icon name="trash" size={18} stroke={1.7} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                className="erik-btn"
+                onClick={() => patch(i, { newbie: !r.newbie })}
+                style={{ height: 26, padding: '0 10px', borderRadius: 999, border: `1.5px solid ${r.newbie ? 'var(--yard)' : 'var(--line)'}`, background: r.newbie ? 'var(--yard-soft)' : 'var(--surface)', color: r.newbie ? 'var(--yard)' : 'var(--ink-3)', fontSize: 12, fontWeight: 500, cursor: 'pointer', transition: 'all var(--t-fast)' }}
+              >
+                {isRu ? 'Можно без опыта' : 'Тәжірибесіз болады'}
+              </button>
+              {typeof r.taken === 'number' && r.taken > 0 && (
+                <span style={{ fontSize: 12, color: r.capacity && r.taken > r.capacity ? 'var(--warn, #9a5a24)' : 'var(--ink-3)' }}>
+                  {isRu ? `занято ${r.taken}` : `${r.taken} орын алынған`}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Button
+        full
+        variant="secondary"
+        icon="plus"
+        style={{ marginBottom: 14 }}
+        onClick={() => addRow({ titleRu: '', titleKz: '', capacity: 1, newbie: false })}
+        disabled={rows.length >= ROLES_MAX}
+      >
+        {isRu ? 'Своя роль' : 'Өз рөлі'}
+      </Button>
+
+      {/* Справочная строка, НЕ ошибка: needed остаётся авторитетным числом (на нём висят
+          прогноз и полоса явки), роли — необязательная разбивка. */}
+      {rows.length > 0 && typeof needed === 'number' && totalSlots !== needed && (
+        <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.45, marginBottom: 16 }}>
+          {isRu
+            ? `Мест по ролям: ${totalSlots} · нужно рук: ${needed} → остальные запишутся без роли.`
+            : `Рөлдер бойынша орын: ${totalSlots} · қажет: ${needed} → қалғандары рөлсіз жазылады.`}
+        </div>
+      )}
+
+      <Button full size="lg" loading={busy} onClick={save}>
+        {draft ? (isRu ? 'Готово' : 'Дайын') : (isRu ? 'Сохранить' : 'Сақтау')}
+      </Button>
     </Sheet>
   );
 }

@@ -31,7 +31,6 @@ export default function CoordGathering() {
   const desktop = useIsDesktop();
   const g = useGatheringStore((s) => s.gathering);
   const loadCoord = useGatheringStore((s) => s.loadCoord);
-  const loadMlForecast = useGatheringStore((s) => s.loadMlForecast);
   const animateForecast = useGatheringStore((s) => s.animateForecast);
   const startPoll = useGatheringStore((s) => s.startPoll);
   const stopPoll = useGatheringStore((s) => s.stopPoll);
@@ -52,14 +51,13 @@ export default function CoordGathering() {
       // о результате судим по id того, что реально легло (как useOrganizerStore.remindFor).
       setStatus(want == null || numericId(useGatheringStore.getState().gathering.id) === want ? 'ready' : 'error');
       animateForecast(true);
-      loadMlForecast();
     });
     startPoll();
     return () => {
       alive = false;
       stopPoll();
     };
-  }, [id, want, retry, loadCoord, loadMlForecast, animateForecast, startPoll, stopPoll]);
+  }, [id, want, retry, loadCoord, animateForecast, startPoll, stopPoll]);
 
   // Стор стартует с демо-ростера buildGathering(): 45 выдуманных человек с телефонами,
   // код PARK18, дата «сегодня». Пока в сторе не запрошенный сбор, выдавать это за свой
@@ -81,16 +79,27 @@ export default function CoordGathering() {
   };
 
   const openPerson = (p) => openSheet('person', p);
+  // Роль под именем — ровно то, ради чего фича и нужна координатору: не «занято 3 из 5»,
+  // а кто именно раздаёт мешки. Без роли — обычная строка истории, как раньше.
+  const rowSub = (p) => {
+    const role = isRu ? p.roleTitleRu : p.roleTitleKz;
+    return role ? `${role} · ${histText(p)}` : histText(p);
+  };
   const group = (kind, list, label) => (
     <div>
       <div style={{ fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>{label}</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {list.map((p) => (
-          <PersonRow key={p.id} name={p.name} historyText={histText(p)} right={statusChip(kind)} dim={kind === 'no'} onClick={() => openPerson(p)} />
+          <PersonRow key={p.id} name={p.name} historyText={rowSub(p)} right={statusChip(kind)} dim={kind === 'no'} onClick={() => openPerson(p)} />
         ))}
       </div>
     </div>
   );
+
+  // Сводка по ролям над ростером: сколько закрыто и сколько людей вообще без роли.
+  // Клик по роли фильтрует ростер — вторая ось к уже существующему фильтру по ответу.
+  const roles = g.roles || [];
+  const withoutRole = g.participants.filter((p) => !p.roleId && p.answer !== 'no').length;
 
   const coming = g.participants.filter((p) => p.answer === 'yes');
   const maybe = g.participants.filter((p) => p.answer === 'maybe');
@@ -128,6 +137,11 @@ export default function CoordGathering() {
                 <button type="button" className="erik-row-hover" onClick={() => openSheet('coordinators', g.id)} disabled={booting} aria-label={t.coCoords} style={{ width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', borderRadius: 'var(--r-s)' }}>
                   <Icon name="users" size={20} stroke={1.7} />
                 </button>
+                {/* Роли волонтёров: правятся уже на живом сборе (набор при создании —
+                    в форме). Payload = id сбора, шторка берёт список из g.roles. */}
+                <button type="button" className="erik-row-hover" onClick={() => openSheet('roles', g.id)} disabled={booting} aria-label={isRu ? 'Роли волонтёров' : 'Еріктілер рөлдері'} style={{ width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', borderRadius: 'var(--r-s)' }}>
+                  <Icon name="tag" size={20} stroke={1.7} />
+                </button>
                 <button type="button" className="erik-row-hover" onClick={() => openSheet('settings')} disabled={booting} aria-label={t.settingsTitle} style={{ width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', borderRadius: 'var(--r-s)' }}>
                   <Icon name="dots" size={22} stroke={0} />
                 </button>
@@ -160,6 +174,40 @@ export default function CoordGathering() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '16px 18px', borderRadius: 'var(--r-m)', background: 'var(--maybe-soft)', marginBottom: 28, animation: 'erik-rise var(--t-base) var(--ease-out)' }}>
                 <span style={{ fontSize: 14, lineHeight: 1.4, color: '#7a5518' }}>{actionText}</span>
                 <button type="button" className="erik-btn" onClick={() => openSheet('remind')} style={{ flex: 'none', height: 40, padding: '0 16px', border: '1px solid var(--maybe)', background: 'var(--surface)', color: '#8a5a17', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.remind}</button>
+              </div>
+            )}
+
+            {/* Сводка по ролям. Не дублирует прогноз: needed остаётся авторитетной нормой,
+                роли — разбивка задач. «Без роли» показываем честно, это нормальное состояние. */}
+            {!booting && roles.length > 0 && (
+              <div style={{ marginBottom: 24, padding: '14px 16px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+                    {isRu ? 'Роли' : 'Рөлдер'}
+                  </span>
+                  <button type="button" className="erik-btn" onClick={() => openSheet('roles', g.id)} style={{ border: 'none', background: 'transparent', color: 'var(--yard)', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                    {isRu ? 'Изменить' : 'Өзгерту'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {roles.map((r) => {
+                    const full = r.capacity > 0 && r.taken >= r.capacity;
+                    const over = r.capacity > 0 && r.taken > r.capacity;
+                    return (
+                      <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 12px', borderRadius: 999, background: full ? 'var(--yard-soft)' : 'var(--paper)', color: over ? '#9a5a24' : full ? 'var(--yard)' : 'var(--ink-2)', fontSize: 13 }}>
+                        {isRu ? r.titleRu : r.titleKz}
+                        <b style={{ fontFamily: 'var(--fm)', fontWeight: 600 }}>
+                          {r.capacity ? `${r.taken}/${r.capacity}` : r.taken}
+                        </b>
+                      </span>
+                    );
+                  })}
+                  {withoutRole > 0 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', height: 28, padding: '0 12px', borderRadius: 999, background: 'var(--paper)', color: 'var(--ink-3)', fontSize: 13 }}>
+                      {isRu ? `без роли · ${withoutRole}` : `рөлсіз · ${withoutRole}`}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 

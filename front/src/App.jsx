@@ -27,6 +27,7 @@ import ManageOrg from './pages/ManageOrg';
 import Profile from './pages/Profile';
 import Org from './pages/Org';
 import Leaderboard from './pages/Leaderboard';
+import ForecastQuality from './pages/ForecastQuality';
 import Charity from './pages/Charity';
 import Messages from './pages/Messages';
 import Convo from './pages/Convo';
@@ -97,6 +98,7 @@ export default function App() {
           <Route path="/u/:id" element={<Profile />} />
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/forecast-quality" element={<ForecastQuality />} />
           <Route path="/charity" element={<Charity />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/messages/:id" element={<Convo />} />

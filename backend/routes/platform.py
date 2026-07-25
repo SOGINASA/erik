@@ -13,10 +13,11 @@ from models import (
 )
 from services.identity import current_user
 from utils.decorators import profiled_required, rate_limit
+from services.roles import sync_participant_role
 from utils.serializers import (
     serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
-    serialize_conversation,
+    serialize_conversation, serialize_roles,
 )
 
 platform_bp = Blueprint('platform', __name__)
@@ -176,7 +177,7 @@ def event_participants(id):
 def get_registration(id):
     u = current_user()
     p = Participant.query.filter_by(gathering_id=id, user_id=u.id).first() if u else None
-    return jsonify({'answer': p.answer if p else None})
+    return jsonify({'answer': p.answer if p else None, 'roleId': p.role_id if p else None})
 
 
 @platform_bp.route('/events/<int:id>/registration', methods=['PUT'])
@@ -203,13 +204,27 @@ def set_registration(id):
         db.session.add(p)
     p.answer = answer
     p.answered_at = now
+
+    # Роль — тем же сервисом и с тем же контрактом ошибки, что guest.put_rsvp. Это ОДНО
+    # действие в двух роутах: разойдутся — получим «роль исчезает при записи из ленты».
+    db.session.flush()
+    ok, err_ru, err_kz, status = sync_participant_role(g_, p, data)
+    if not ok:
+        db.session.rollback()
+        g_ = db.session.get(Gathering, id)
+        return jsonify({'error': err_ru, 'errorKz': err_kz,
+                        'roles': serialize_roles(g_) if g_ else []}), status
+
     if answer != prev_answer and u.id != g_.owner_id:
         from services.notifications import notify_owner_answer
         notify_owner_answer(g_, u.full_name or 'Участник', answer)
     g_.bump()
     db.session.commit()
     going = g_.going_cache if g_.going_cache is not None else sum(1 for x in g_.participants if x.answer == 'yes')
-    return jsonify({'answer': answer, 'going': going})
+    # roles — в успешном ответе: экран события знает только id, и после записи выбирать
+    # роль было бы не из чего (карточка ленты их тоже несёт, но здесь они свежее).
+    return jsonify({'answer': answer, 'going': going,
+                    'roleId': p.role_id, 'roles': serialize_roles(g_)})
 
 
 @platform_bp.route('/events/<int:id>/registration', methods=['DELETE'])
@@ -249,6 +264,7 @@ def my_events():
         card = serialize_event_card(gathering, g.user.id)
         card['myAnswer'] = p.answer
         card['myPresence'] = p.presence
+        card['myRoleId'] = p.role_id     # чип «Твоя роль» в «Моих мероприятиях»
         out.append(card)
     out.sort(key=lambda e: e.get('startsAt') or '')   # ближайшие сверху
     return jsonify({'events': out})
@@ -647,3 +663,73 @@ def conversations_unread():
         if last and last.sender_id != g.user.id and (m.last_read_message_id or 0) < last.id:
             count += 1
     return jsonify({'count': count})
+
+
+# ── качество модели прогноза явки ──
+@platform_bp.route('/forecast/quality', methods=['GET'])
+def forecast_quality():
+    """Паспорт модели прогноза: метрики, сравнение с формульными базлайнами,
+    важность признаков.
+
+    Публично и намеренно: это ответ на вопрос «а прогноз не просто повторяет число
+    подтвердивших?». Все числа — из ml/artifacts/*.json, то есть из того, что
+    печатают `python evaluate.py` и `python baseline.py`, и воспроизводятся одной
+    командой. Ничего персонального здесь нет.
+    """
+    from services import attendance_ml
+
+    q = attendance_ml.quality()
+    if not q:
+        return jsonify({'available': False, **attendance_ml.unavailable_payload()})
+
+    metrics = q.get('metrics') or {}
+    baselines = (q.get('baselines') or {}).get('results') or {}
+    meta = (q.get('baselines') or {}).get('meta') or {}
+    importance = (q.get('featureImportance') or {}).get('ranked') or []
+
+    def _row(key, label_ru, label_kz):
+        m = baselines.get(key) or {}
+        return {
+            'key': key, 'labelRu': label_ru, 'labelKz': label_kz,
+            'rocAuc': m.get('roc_auc'), 'prAuc': m.get('pr_auc'),
+            'brier': m.get('brier'), 'f1': m.get('f1_at_0.5'),
+            'expectedSum': m.get('expected_sum'),
+            'absExpectedError': m.get('abs_expected_error'),
+        }
+
+    return jsonify({
+        'available': attendance_ml.is_available(),
+        'model': attendance_ml.model_info() or {
+            'name': metrics.get('model_name'), 'calibrated': True,
+            'rocAuc': metrics.get('roc_auc'), 'brier': metrics.get('brier'),
+            'nTest': metrics.get('n_test'),
+        },
+        'metrics': {
+            'rocAuc': metrics.get('roc_auc'), 'prAuc': metrics.get('pr_auc'),
+            'brier': metrics.get('brier'), 'logLoss': metrics.get('log_loss'),
+            'accuracy': metrics.get('accuracy'), 'f1': metrics.get('f1_pos'),
+            'nTest': metrics.get('n_test'), 'threshold': metrics.get('threshold'),
+            'confusionMatrix': metrics.get('confusion_matrix'),
+        },
+        'testSet': {
+            'nTest': meta.get('n_test') or metrics.get('n_test'),
+            'actualCame': meta.get('actual_came'),
+            'split': 'GroupShuffleSplit по волонтёрам (история одного человека не попадает разом в train и test)',
+            'data': 'synthetic',
+        },
+        # Порядок строк = порядок аргумента: наивный счётчик, формула, модель.
+        'comparison': [
+            _row('answer_only', 'Счётчик «по ответу»', '«Жауап бойынша» санауыш'),
+            _row('formula', 'Формула base·trust·ctx', 'base·trust·ctx формуласы'),
+            _row('model', 'ML-модель (калибр.)', 'ML-модель (калибр.)'),
+        ],
+        'lift': {
+            'vsAnswerOnly': (q.get('baselines') or {}).get('lift_roc_auc_vs_answer_only'),
+            'vsFormula': (q.get('baselines') or {}).get('lift_roc_auc_vs_formula'),
+        },
+        'featureImportance': [
+            {'feature': r.get('feature'), 'importance': r.get('importance_mean'),
+             'std': r.get('importance_std')}
+            for r in importance
+        ],
+    })

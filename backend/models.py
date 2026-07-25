@@ -29,6 +29,14 @@ USER_ROLES = ('vol', 'coord', 'org')
 NOTIF_TYPES = ('answer', 'reminder', 'badge', 'event', 'system')
 REMIND_AUDIENCES = ('maybe', 'all')
 
+# Роли волонтёров на сборе («кто раздаёт мешки, кто фотографирует»).
+# Слово «роль» в базе уже занято трижды — User.role (vol|coord|org), GatheringCoordinator.role
+# (owner|cocoord), Conversation.role — и лежит в claim'е JWT. Поэтому наружу участник отдаёт
+# roleId/roleTitleRu и НИКОГДА голое 'role': иначе в одном payload встретятся два разных смысла.
+GATHERING_ROLE_MAX = 8      # больше 8 ролей на дворовом сборе — уже не координация, а расписание смен
+ROLE_TITLE_MAX = 60         # как label_ru у Theme/City
+ROLE_CAPACITY_MAX = 99      # 0 = без ограничения (роль никогда не «занята»)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Личность (identity): User — универсальный актор.
@@ -64,6 +72,11 @@ class User(db.Model):
     city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
     lang = db.Column(db.String(2), default='ru')
     skills = db.Column(db.JSON, nullable=True)             # ['Организация', ...]
+    # Темы, которые волонтёру интересны — id из таблицы themes ('eco', 'edu', …).
+    # Отдельно от skills намеренно: skills это навыки для заявок организатору, а
+    # сюда смотрит признак interest_match модели прогноза (второй по важности).
+    # Подстановка навыков вместо тем делала признак тождественно нулевым.
+    interests = db.Column(db.JSON, nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
     last_seen_at = db.Column(db.DateTime)
 
@@ -104,6 +117,7 @@ class User(db.Model):
             'city_id': self.city_id,
             'lang': self.lang,
             'skills': self.skills or [],
+            'interests': self.interests or [],
             'hours_total': self.hours_total or 0,
             'events_attended': self.events_attended or 0,
             'reliability': self.reliability or 0,
@@ -190,6 +204,9 @@ class Gathering(db.Model):
                                    cascade='all, delete-orphan', lazy='selectin')
     coordinators = db.relationship('GatheringCoordinator', back_populates='gathering',
                                    cascade='all, delete-orphan')
+    roles = db.relationship('GatheringRole', back_populates='gathering',
+                            cascade='all, delete-orphan', lazy='selectin',
+                            order_by='GatheringRole.sort')
 
     def bump(self):
         self.revision = (self.revision or 0) + 1
@@ -205,6 +222,41 @@ class GatheringCoordinator(db.Model):
     __table_args__ = (db.UniqueConstraint('gathering_id', 'user_id', name='uq_gcoord'),)
 
 
+class GatheringRole(db.Model):
+    """Роль-слот на КОНКРЕТНОМ сборе: «Раздача еды — 5 мест».
+
+    Отдельная таблица, а не строковая колонка у участника, по трём причинам: роль
+    переименовывают («Фото» → «Фото и видео») — при строке пришлось бы делать UPDATE по
+    тексту; у роли есть собственная вместимость и порядок; и занятость надо честно считать
+    по ростеру («занято 3 из 5»), а не хранить рядом второй счётчик, который разъедется с
+    ростером при первом же remove_participant (ровно как going_cache у демо-событий).
+
+    Продуктовый смысл шире, чем «поле»: флаг newbie отвечает на страх новичка «а что я там
+    буду делать, я же ничего не умею» — в списке волонтёра такие роли идут первыми, пока у
+    человека нет ни одного посещённого сбора.
+    """
+    __tablename__ = 'gathering_roles'
+    id = db.Column(db.Integer, primary_key=True)
+    gathering_id = db.Column(db.Integer, db.ForeignKey('gatherings.id', ondelete='CASCADE'),
+                             index=True, nullable=False)
+
+    title_ru = db.Column(db.String(ROLE_TITLE_MAX), nullable=False)
+    # Форма ролей одноязычная — KZ зеркалим из RU, как title_kz/place_kz у самого сбора.
+    title_kz = db.Column(db.String(ROLE_TITLE_MAX), nullable=False)
+    capacity = db.Column(db.Integer, default=1)           # 0 = без ограничения, роль никогда не «занята»
+    newbie = db.Column(db.Boolean, default=False)         # «можно без опыта»
+    preset = db.Column(db.String(24), nullable=True)      # 'eco:photo' из ROLE_PRESETS (lib/data.js); None у своей роли
+    sort = db.Column(db.Integer, default=0)               # порядок в списке; пишется индексом входного массива
+    created_at = db.Column(db.DateTime, default=_now)
+
+    gathering = db.relationship('Gathering', back_populates='roles')
+
+    __table_args__ = (
+        # Два «Фотографа» в одном списке — это не фича, а двойной тап по чипу пресета.
+        db.UniqueConstraint('gathering_id', 'title_ru', name='uq_grole_title'),
+    )
+
+
 class Participant(db.Model):
     __tablename__ = 'participants'
     id = db.Column(db.Integer, primary_key=True)
@@ -218,6 +270,15 @@ class Participant(db.Model):
     presence = db.Column(db.String(6), nullable=True)     # came | missed
     is_guest = db.Column(db.Boolean, default=False)
     client_mark_id = db.Column(db.String(64), nullable=True, index=True)  # идемпотентность офлайн-синка
+
+    # Роль на этом сборе. Nullable обязателен: walk-in гости, офлайн-очередь и все записи,
+    # сделанные до появления фичи, роли не имеют — «без роли» это легальная строка ростера,
+    # а не ошибка. Связь-relationship намеренно НЕ заводим: PRAGMA foreign_keys в проекте
+    # нигде не включается, поэтому ondelete='SET NULL' на SQLite не срабатывает и осиротевший
+    # role_id физически возможен — part.role падал бы AttributeError на каждом запросе
+    # ростера. Роль резолвится по словарю из gathering.roles (см. utils/serializers.py).
+    role_id = db.Column(db.Integer, db.ForeignKey('gathering_roles.id', ondelete='SET NULL'),
+                        nullable=True, index=True)
 
     # snapshot истории на момент RSVP (для воспроизводимости и гостей без user)
     hist_total_at_rsvp = db.Column(db.Integer, default=0)
