@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Erik</string>
+    <string name="base_url">https://erik-hazel.vercel.app</string>
+    <string name="no_connection">Нет подключения к интернету</string>
+    <string name="retry">Повторить</string>
+</resources>
