@@ -20,6 +20,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -42,32 +43,41 @@ TEST_SIZE = 0.2
 # ─────────────────────────────────────────────────────────────────────────────
 #  Пайплайн: предобработка + модель
 # ─────────────────────────────────────────────────────────────────────────────
-def build_pipeline(model_name: str) -> Pipeline:
+def build_pipeline(model_name: str, calibrate: bool = True) -> Pipeline:
     """Собрать sklearn-пайплайн под выбранный классификатор.
 
     Категориальные признаки → one-hot. Числовые → масштабирование только там,
     где это важно (логрегрессия); деревьям масштаб не нужен.
+
+    calibrate=True оборачивает классификатор в изотоническую калибровку
+    (CalibratedClassifierCV на отложенных фолдах). Это ОБУЧАЕМЫЙ монотонный
+    преобразователь скоров в честные вероятности P(придёт): благодаря ему
+    сумма p_i по участникам = ожидаемая явка сбора, а не «сырой» оптимистичный
+    скор бустинга. Заменяет прежнюю ad-hoc степень p**γ в мосте бэкенда.
     """
     onehot = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 
     if model_name == "logreg":
         numeric = StandardScaler()
-        clf = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
+        base_clf = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
     elif model_name == "forest":
         numeric = "passthrough"
-        clf = RandomForestClassifier(
+        base_clf = RandomForestClassifier(
             n_estimators=400, max_depth=None, min_samples_leaf=5,
             n_jobs=-1, class_weight="balanced", random_state=RANDOM_SEED,
         )
     elif model_name == "gboost":
         numeric = "passthrough"
-        clf = HistGradientBoostingClassifier(
+        base_clf = HistGradientBoostingClassifier(
             max_iter=400, learning_rate=0.06, max_leaf_nodes=31,
             l2_regularization=1.0, early_stopping=True, validation_fraction=0.1,
             random_state=RANDOM_SEED,
         )
     else:
         raise ValueError(f"Неизвестная модель: {model_name!r} (logreg | forest | gboost)")
+
+    # Изотоническая калибровка (без параметрических допущений о форме) на 3 фолдах.
+    clf = CalibratedClassifierCV(base_clf, method="isotonic", cv=3) if calibrate else base_clf
 
     pre = ColumnTransformer(
         transformers=[
@@ -96,8 +106,11 @@ def main():
     ap = argparse.ArgumentParser(description="Обучить модель прогноза явки.")
     ap.add_argument("--model", choices=["gboost", "forest", "logreg"], default="gboost")
     ap.add_argument("--regenerate", action="store_true", help="перегенерировать данные")
+    ap.add_argument("--no-calibrate", action="store_true",
+                    help="не калибровать вероятности (сырые скоры классификатора)")
     ap.add_argument("--seed", type=int, default=RANDOM_SEED)
     args = ap.parse_args()
+    calibrate = not args.no_calibrate
 
     # 1) данные → 2) причинная матрица признаков
     events = load_or_make_events(args.regenerate)
@@ -118,14 +131,14 @@ def main():
           f"(волонтёры не пересекаются)")
 
     # 4) обучение
-    pipe = build_pipeline(args.model)
+    pipe = build_pipeline(args.model, calibrate=calibrate)
 
     # честная кросс-валидация на train (тоже с группировкой по волонтёрам)
     cv_groups = train_df["volunteer_id"].values
-    cv_splitter = GroupShuffleSplit(n_splits=5, test_size=0.2, random_state=args.seed)
+    cv_splitter = GroupShuffleSplit(n_splits=3, test_size=0.2, random_state=args.seed)
     cv_f1 = cross_val_score(pipe, X_train, y_train, groups=cv_groups,
                             cv=cv_splitter, scoring="f1")
-    print(f"\nМодель: {args.model}")
+    print(f"\nМодель: {args.model}  (калибровка: {'да, isotonic' if calibrate else 'нет'})")
     print(f"CV F1 на train: {cv_f1.mean():.3f} ± {cv_f1.std():.3f}")
 
     pipe.fit(X_train, y_train)
@@ -142,6 +155,7 @@ def main():
     bundle = {
         "pipeline": pipe,
         "model_name": args.model,
+        "calibrated": calibrate,
         "numeric_features": NUMERIC_FEATURES,
         "categorical_features": CATEGORICAL_FEATURES,
         "target": TARGET,

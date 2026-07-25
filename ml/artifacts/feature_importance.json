@@ -1,0 +1,76 @@
+{
+  "scoring": "roc_auc",
+  "n_repeats": 8,
+  "ranked": [
+    {
+      "feature": "answer",
+      "importance_mean": 0.13412151552374715,
+      "importance_std": 0.004785157807557969
+    },
+    {
+      "feature": "interest_match",
+      "importance_mean": 0.052440003175708336,
+      "importance_std": 0.004769995621124473
+    },
+    {
+      "feature": "attendance_rate",
+      "importance_mean": 0.014928270325538687,
+      "importance_std": 0.0019307234408310098
+    },
+    {
+      "feature": "reliability",
+      "importance_mean": 0.010239667881953657,
+      "importance_std": 0.0022910969770967354
+    },
+    {
+      "feature": "days_since_last",
+      "importance_mean": 0.003967308817000123,
+      "importance_std": 0.00042555010807813966
+    },
+    {
+      "feature": "theme_attendance_rate",
+      "importance_mean": 0.002491438666242893,
+      "importance_std": 0.0009373504457770232
+    },
+    {
+      "feature": "events_missed",
+      "importance_mean": 0.0019065986320646322,
+      "importance_std": 0.0004887319724586111
+    },
+    {
+      "feature": "theme_total",
+      "importance_mean": 0.000452882148026329,
+      "importance_std": 0.0005925960559775474
+    },
+    {
+      "feature": "recent_came_rate",
+      "importance_mean": 0.0003020821177111832,
+      "importance_std": 0.0002965918851877432
+    },
+    {
+      "feature": "num_interests",
+      "importance_mean": 0.0001254710745631632,
+      "importance_std": 0.00011955407249829245
+    },
+    {
+      "feature": "events_came",
+      "importance_mean": -0.00010001636478988718,
+      "importance_std": 0.0002226359116754633
+    },
+    {
+      "feature": "theme_came",
+      "importance_mean": -0.0001292227361927717,
+      "importance_std": 0.00017624184632151333
+    },
+    {
+      "feature": "events_total",
+      "importance_mean": -0.0003543538724860157,
+      "importance_std": 0.00021752412543661883
+    },
+    {
+      "feature": "event_type",
+      "importance_mean": -0.0003646866612205951,
+      "importance_std": 0.0004154378486952927
+    }
+  ]
+}
