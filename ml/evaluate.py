@@ -21,6 +21,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, average_precision_score, log_loss, brier_score_loss,
@@ -28,10 +29,14 @@ from sklearn.metrics import (
 )
 
 from config import (
-    MODEL_PATH, METRICS_PATH, CONFUSION_PLOT_PATH, ROC_PLOT_PATH, TARGET,
+    MODEL_PATH, METRICS_PATH, CONFUSION_PLOT_PATH, ROC_PLOT_PATH, ARTIFACTS_DIR,
+    TARGET, ALL_FEATURES, RANDOM_SEED,
 )
 from features import split_X_y
 from train import TEST_SET_PATH
+
+IMPORTANCE_PATH = ARTIFACTS_DIR / "feature_importance.json"
+IMPORTANCE_PLOT_PATH = ARTIFACTS_DIR / "feature_importance.png"
 
 
 def best_threshold_by_macro_f1(y_true, proba):
@@ -156,11 +161,60 @@ def _save_plots(y_true, proba, pred):
     print(f"Графики: {CONFUSION_PLOT_PATH.name}, {ROC_PLOT_PATH.name} → {CONFUSION_PLOT_PATH.parent}")
 
 
+def feature_importance(pipe, X_test, y_test, seed=RANDOM_SEED):
+    """Permutation importance: насколько падает ROC-AUC, если перемешать признак.
+
+    Прямой ответ на «модель просто смотрит на ответ»: показывает, что вклад несут
+    и надёжность (attendance_rate/reliability), и свежесть (recent_came_rate), и
+    история по теме (theme_attendance_rate) — а не только answer.
+    """
+    r = permutation_importance(
+        pipe, X_test, y_test, scoring="roc_auc",
+        n_repeats=8, random_state=seed, n_jobs=-1,
+    )
+    ranked = sorted(
+        ({"feature": f,
+          "importance_mean": float(r.importances_mean[i]),
+          "importance_std": float(r.importances_std[i])}
+         for i, f in enumerate(ALL_FEATURES)),
+        key=lambda d: d["importance_mean"], reverse=True,
+    )
+    print("\n  ─ важность признаков (падение ROC-AUC при перемешивании) ─")
+    for d in ranked:
+        bar = "█" * max(0, int(d["importance_mean"] * 400))
+        print(f"    {d['feature']:<22}{d['importance_mean']:+.4f}  {bar}")
+
+    with open(IMPORTANCE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"scoring": "roc_auc", "n_repeats": 8, "ranked": ranked},
+                  f, ensure_ascii=False, indent=2)
+    print(f"  Важность признаков → {IMPORTANCE_PATH.name}")
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        top = [d for d in ranked if d["importance_mean"] > 0][::-1]
+        fig, ax = plt.subplots(figsize=(6.2, 4.6))
+        ax.barh([d["feature"] for d in top], [d["importance_mean"] for d in top],
+                color="#2F6F4F")
+        ax.set_xlabel("Падение ROC-AUC при перемешивании")
+        ax.set_title("Важность признаков (permutation)")
+        fig.tight_layout()
+        fig.savefig(IMPORTANCE_PLOT_PATH, dpi=120)
+        plt.close(fig)
+        print(f"  График важности → {IMPORTANCE_PLOT_PATH.name}")
+    except Exception:
+        pass
+    return ranked
+
+
 def main():
     ap = argparse.ArgumentParser(description="Полные метрики модели прогноза явки.")
     ap.add_argument("--threshold", type=float, default=None,
                     help="порог отсечения (по умолчанию — оптимальный по F1)")
     ap.add_argument("--no-plots", action="store_true", help="не строить графики")
+    ap.add_argument("--no-importance", action="store_true",
+                    help="не считать permutation importance (быстрее)")
     args = ap.parse_args()
 
     if not MODEL_PATH.exists():
@@ -199,6 +253,9 @@ def main():
 
     if not args.no_plots:
         _save_plots(y_true, proba, pred)
+
+    if not args.no_importance:
+        feature_importance(pipe, X_test, y_test)
 
 
 if __name__ == "__main__":
