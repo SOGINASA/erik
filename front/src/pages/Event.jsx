@@ -35,22 +35,61 @@ export default function Event() {
   const showToast = useUiStore((s) => s.showToast);
   const name = useSessionStore((s) => s.name);   // есть профиль? гость (без имени) → просим войти
   const [participants, setParticipants] = useState([]);
+  const [fetched, setFetched] = useState(null);
+  const [evState, setEvState] = useState('idle'); // idle | loading | ready | error
 
-  const ev = events.find((e) => e.id === id) || events[0];
-  const theme = THEMES[ev.theme] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
-  const org = orgs.find((o) => o.id === ev.orgId) || {};
-  const city = cities.find((c) => c.id === ev.cityId) || { ru: '', kz: '' };
+  // id из URL бывает 'e7' (лента) или '7' (из «Мои мероприятия»/прямая ссылка) — приводим к числу.
+  const numMatch = /^e?(\d+)$/.exec(String(id || ''));
+  const numericId = numMatch ? numMatch[1] : null;
+  const fromFeed = events.find((e) => e.id === id) || (numericId != null ? events.find((e) => e.id === 'e' + numericId) : undefined);
+
+  // Событие, которого нет в загруженной ленте (прошедшее/по прямой/расшаренной ссылке/из
+  // «Мои мероприятия»), грузим по id. Раньше при промахе показывался events[0] — ЧУЖОЕ
+  // событие, и RSVP/жалоба били по нему; при пустой ленте страница падала.
+  useEffect(() => {
+    if (fromFeed) { setEvState('ready'); return undefined; }
+    if (numericId == null) { setEvState('error'); return undefined; }
+    let alive = true;
+    setEvState('loading');
+    api.getEvent(numericId).then(
+      (r) => { if (alive) { setFetched({ ...r.event, id: 'e' + r.event.id, orgId: r.event.orgId != null ? 'o' + r.event.orgId : null }); setEvState('ready'); } },
+      () => { if (alive) setEvState('error'); },
+    );
+    return () => { alive = false; };
+  }, [id, fromFeed, numericId]);
+
+  const ev = fromFeed || fetched;
+  const evId = ev ? ev.id : null;
 
   // Реальные участники события (стопка аватаров) — по id события, а не из демо-сбора.
   useEffect(() => {
-    const gid = feedGatheringId(ev.id, events);
-    if (gid === null) { setParticipants([]); return; }   // демо-событие: чужой ростер не тянем
+    if (!evId) { setParticipants([]); return undefined; }
+    const gid = feedGatheringId(evId, events);
+    if (gid === null) { setParticipants([]); return undefined; }   // демо-событие: чужой ростер не тянем
     let alive = true;
     api.eventParticipants(gid)
       .then((r) => { if (alive) setParticipants(r.participants || []); })
       .catch(() => { if (alive) setParticipants([]); });
     return () => { alive = false; };
-  }, [ev.id, events]);
+  }, [evId, events]);
+
+  // Событие ещё грузится или не найдено — честный экран вместо чужого events[0]/краша.
+  if (!ev) {
+    return (
+      <Container style={{ paddingTop: 20, paddingBottom: 48 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <BackButton onClick={() => navigate('/feed')} label={isRu ? 'Назад' : 'Артқа'} />
+          <div style={{ padding: '48px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
+            {evState === 'error' ? (isRu ? 'Событие не найдено' : 'Іс-шара табылмады') : (isRu ? 'Загрузка…' : 'Жүктелуде…')}
+          </div>
+        </div>
+      </Container>
+    );
+  }
+
+  const theme = THEMES[ev.theme] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
+  const org = orgs.find((o) => o.id === ev.orgId) || {};
+  const city = cities.find((c) => c.id === ev.cityId) || { ru: '', kz: '' };
 
   // Действия, требующие личности (RSVP/заявка/жалоба) — гостя (без имени) ведём в вход.
   const report = () => {

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { api } from '../lib/api';
 import { THEMES } from '../lib/data';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import { FieldLabel } from '../components/ui/controls';
@@ -61,32 +62,32 @@ export default function Register() {
   const valid = [
     !!form.role,
     !!form.name.trim() && (form.role !== 'org' || !!form.orgName.trim()),
-    form.password.length >= 6 && form.password === form.confirm,   // min 6 — как на бэке
+    // Email/логин ОБЯЗАТЕЛЕН: без него finish() шёл беспарольным device-путём и молча терял
+    // пароль, город и телефон, показывая при этом «Аккаунт создан».
+    !!form.email.trim() && form.password.length >= 6 && form.password === form.confirm,   // min 6 — как на бэке
     !!form.city,
   ][step];
 
   const next = () => { if (step < 4 && valid) { setDir('next'); setStep(step + 1); } };
   const back = () => { if (step > 0) { setDir('prev'); setStep(step - 1); } };
 
-  // Если задан email/логин — создаём реальный аккаунт (email/пароль).
-  // Иначе (и при ошибке — например, занятый email) поднимаем device-личность.
+  // Email обязателен (см. valid[2]) — всегда создаём реальный аккаунт: registerAccount сам
+  // доносит role/phone/cityId в профиль через PATCH /me. При ошибке бэка (занятый email,
+  // офлайн/демо) не притворяемся успехом: поднимаем device-личность, НО тоже сохраняем
+  // профиль (город/телефон/роль) и говорим честно, что аккаунт с паролем создать не вышло.
   const finish = async () => {
     setIdentity(displayName, form.phone.trim() || null);
     setRole(form.role);
-    const identifier = form.email.trim();
     try {
-      if (identifier) {
-        await registerAccount({
-          identifier, password: form.password, full_name: displayName,
-          role: form.role, phone: form.phone.trim() || null, cityId: form.city,
-        });
-      } else {
-        await login();
-      }
+      await registerAccount({
+        identifier: form.email.trim(), password: form.password, full_name: displayName,
+        role: form.role, phone: form.phone.trim() || null, cityId: form.city,
+      });
       showToast('Аккаунт создан. Добро пожаловать в erik!');
     } catch (err) {
-      await login(); // запасной вариант — не блокируем демо
-      showToast((err && err.data && err.data.error) || 'Вход выполнен');
+      await login(); // запасной вариант (демо/офлайн/занятый email) — не блокируем вход
+      try { await api.updateMe({ role: form.role, phone: form.phone.trim() || undefined, cityId: form.city }); } catch (_) { /* офлайн — профиль долетит позже */ }
+      showToast((err && err.data && err.data.error) || 'Вы вошли (аккаунт с паролем создать не удалось)');
     }
     navigate(form.role === 'vol' ? '/feed' : '/manage');
   };

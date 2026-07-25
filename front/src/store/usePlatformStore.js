@@ -43,6 +43,7 @@ export const usePlatformStore = create((set, get) => ({
   // Уведомления и диалоги — профильные: гостю их не грузим и НЕ показываем мок.
   // Реальные приходят из API (loadNotifications/loadConversations) после входа.
   notifs: [],
+  serverUnread: 0,   // авторитетный полный счётчик непрочитанного с бэка (res.unread); список отдаёт только первую страницу
   convos: [],
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
@@ -172,40 +173,72 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
-  approveOrg: (orgId) => {
+  // Оптимистично + честно: при ошибке ответа откатываем и тостим (как approveEvent).
+  // Раньше запрос шёл fire-and-forget с .catch(()=>{}) — сбой (протухший токен, гонка,
+  // 500) молча проглатывался, админ видел успех, а в БД ничего не менялось.
+  approveOrg: async (orgId) => {
     const org = get().orgs.find((o) => o.id === orgId);
+    const prev = org ? { ...org } : null;
     set((s) => ({ orgs: s.orgs.map((o) => (o.id === orgId ? { ...o, verified: true } : o)) }));
     toast(isRu() ? 'Организация одобрена' : 'Ұйым мақұлданды');
-    if (org && org.sid != null) api.approveOrg(org.sid).catch(() => {}); // демо-НКО в API не уходит
+    if (org && org.sid != null) {
+      try { await api.approveOrg(org.sid); } catch (_) {
+        if (prev) set((s) => ({ orgs: s.orgs.map((o) => (o.id === orgId ? prev : o)) }));
+        toast(isRu() ? 'Не удалось одобрить — попробуйте снова' : 'Мақұлдау мүмкін болмады — қайталаңыз');
+      }
+    }
   },
 
-  rejectOrg: (orgId) => {
+  rejectOrg: async (orgId) => {
     const org = get().orgs.find((o) => o.id === orgId); // sid берём ДО удаления из списка
     set((s) => ({ orgs: s.orgs.filter((o) => o.id !== orgId) }));
     toast(isRu() ? 'Отклонено' : 'Қабылданбады');
-    if (org && org.sid != null) api.rejectOrg(org.sid).catch(() => {});
+    if (org && org.sid != null) {
+      try { await api.rejectOrg(org.sid); } catch (_) {
+        set((s) => ({ orgs: [org, ...s.orgs.filter((o) => o.id !== org.id)] }));
+        toast(isRu() ? 'Не удалось отклонить — попробуйте снова' : 'Қабылдамау мүмкін болмады — қайталаңыз');
+      }
+    }
   },
 
-  reviewReport: (reportId) => {
+  reviewReport: async (reportId) => {
     const rep = get().reports.find((r) => r.id === reportId);
+    const prevStatus = rep ? rep.status : null;
     set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'reviewing' } : r)) }));
     toast(isRu() ? 'Отправлено на проверку' : 'Тексеруге жіберілді');
-    if (rep && rep.sid != null) api.reviewReport(rep.sid).catch(() => {});
+    if (rep && rep.sid != null) {
+      try { await api.reviewReport(rep.sid); } catch (_) {
+        set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: prevStatus } : r)) }));
+        toast(isRu() ? 'Не удалось — попробуйте снова' : 'Қате — қайталаңыз');
+      }
+    }
   },
 
-  resolveReport: (reportId) => {
+  resolveReport: async (reportId) => {
     const rep = get().reports.find((r) => r.id === reportId);
+    const prevStatus = rep ? rep.status : null;
     set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: 'resolved' } : r)) }));
     toast(isRu() ? 'Жалоба закрыта' : 'Шағым жабылды');
-    if (rep && rep.sid != null) api.resolveReport(rep.sid).catch(() => {});
+    if (rep && rep.sid != null) {
+      try { await api.resolveReport(rep.sid); } catch (_) {
+        set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status: prevStatus } : r)) }));
+        toast(isRu() ? 'Не удалось — попробуйте снова' : 'Қате — қайталаңыз');
+      }
+    }
   },
 
   // Закрыть благотворительную кампанию (админ). Модель без статуса → отмечаем достигнутой.
-  closeCharity: (charityId) => {
+  closeCharity: async (charityId) => {
     const item = get().charity.find((c) => c.id === charityId);
+    const prev = item ? { ...item } : null;
     set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? { ...c, raised: c.goal, closed: true } : c)) }));
     toast(isRu() ? 'Кампания закрыта' : 'Науқан жабылды');
-    if (item && item.sid != null) api.closeCharity(item.sid).catch(() => {}); // демо-сбор в API не уходит
+    if (item && item.sid != null) {
+      try { await api.closeCharity(item.sid); } catch (_) {
+        if (prev) set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? prev : c)) }));
+        toast(isRu() ? 'Не удалось закрыть — попробуйте снова' : 'Жабу мүмкін болмады — қайталаңыз');
+      }
+    }
   },
 
   // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
@@ -216,7 +249,10 @@ export const usePlatformStore = create((set, get) => ({
         id: n.id, type: n.type, ru: n.ru, kz: n.kz, read: n.read, time: rel(n.created_at),
       }));
       // Успех (даже пусто) — берём серверные; мок остаётся только при ошибке/офлайне.
-      set({ notifs: list, notifRead: {} });
+      // serverUnread — ПОЛНЫЙ счётчик непрочитанного (res.unread), т.к. список отдаёт лишь
+      // первую страницу (30): бейдж по одной странице недосчитывал при большом объёме.
+      const serverUnread = typeof res.unread === 'number' ? res.unread : list.filter((n) => !n.read).length;
+      set({ notifs: list, notifRead: {}, serverUnread });
     } catch (_) {
       /* офлайн/ошибка — оставляем демо-уведомления */
     }
@@ -226,7 +262,7 @@ export const usePlatformStore = create((set, get) => ({
     set((s) => {
       const r = { ...s.notifRead };
       s.notifs.forEach((n) => (r[n.id] = true));
-      return { notifRead: r };
+      return { notifRead: r, serverUnread: 0 };   // прочитали всё — полный счётчик обнуляем
     });
     api.readAllNotifications().catch(() => {});
   },
@@ -234,13 +270,16 @@ export const usePlatformStore = create((set, get) => ({
   // Отметить одно уведомление прочитанным (клик по карточке).
   markRead: (id) => {
     if (get().notifRead[id]) return;
-    set((s) => ({ notifRead: { ...s.notifRead, [id]: true } }));
+    const notif = get().notifs.find((n) => n.id === id);
+    const wasUnread = notif && !notif.read;   // уменьшаем полный счётчик только для реально непрочитанного
+    set((s) => ({ notifRead: { ...s.notifRead, [id]: true }, serverUnread: wasUnread ? Math.max(0, s.serverUnread - 1) : s.serverUnread }));
     api.readNotification(id).catch(() => {}); // уведомления только серверные (id: n.id) — id вербатим
   },
 
   unreadCount: () => {
     const s = get();
-    return s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length;
+    const local = s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length;
+    return Math.max(s.serverUnread || 0, local);   // серверный total авторитетнее одной загруженной страницы
   },
 
   loadConversations: async () => {
@@ -256,7 +295,10 @@ export const usePlatformStore = create((set, get) => ({
   loadMyEvents: async () => {
     try {
       const res = await api.myEvents();
-      if (Array.isArray(res.events)) set({ myEvents: res.events });
+      // mapEvent клеит префикс 'e'+id — как лента (loadPlatform/loadEvents). Без него id
+      // оставался числовым, и переход из «Мои мероприятия» на /e/<число> не совпадал с
+      // 'e'+id ленты → Event.jsx показывал ЧУЖОЕ (первое) событие.
+      if (Array.isArray(res.events)) set({ myEvents: res.events.map(mapEvent) });
     } catch (_) {
       /* не залогинен/офлайн — оставляем пусто */
     }
@@ -306,18 +348,29 @@ export const usePlatformStore = create((set, get) => ({
     return null;
   },
 
-  donate: () => {
+  // Пожертвование: для денег donateAmt — сумма в ₸, для вещей — количество единиц
+  // (DonateSheet выставляет donateAmt под тип сбора). Не глотаем ошибку и не тостим
+  // «Спасибо» заранее: двигаем прогресс и благодарим ТОЛЬКО по ответу сервера (raised
+  // берём авторитетно с бэка), при отказе — честный тост.
+  donate: async () => {
     const { donateId, donateAmt } = get();
     const item = get().charity.find((c) => c.id === donateId);
-    set((s) => ({
-      charity: s.charity.map((c) =>
-        c.id === donateId
-          ? { ...c, raised: Math.min(c.goal, c.raised + (c.kind === 'money' ? donateAmt : 1)) }
-          : c
-      ),
-    }));
-    toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
-    const body = item && item.kind === 'money' ? { amount: donateAmt } : { quantity: 1 };
-    if (item && item.sid != null) api.donateCharity(item.sid, body).catch(() => {}); // демо-сбор в API не уходит
+    if (!item) return;
+    const qty = Math.max(1, donateAmt || 1);
+    const body = item.kind === 'money' ? { amount: qty } : { quantity: qty };
+    // Демо-сбор (без sid) в сеть не шлём — двигаем локально и благодарим.
+    if (item.sid == null) {
+      set((s) => ({ charity: s.charity.map((c) => (c.id === donateId ? { ...c, raised: Math.min(c.goal || Infinity, (c.raised || 0) + qty) } : c)) }));
+      toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
+      return;
+    }
+    try {
+      const res = await api.donateCharity(item.sid, body);
+      const raised = res && typeof res.raised === 'number' ? res.raised : null;
+      set((s) => ({ charity: s.charity.map((c) => (c.id === donateId ? { ...c, raised: raised != null ? raised : (c.raised || 0) + qty } : c)) }));
+      toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
+    } catch (_) {
+      toast(isRu() ? 'Не удалось отправить пожертвование' : 'Қайырымдылықты жіберу мүмкін болмады');
+    }
   },
 }));

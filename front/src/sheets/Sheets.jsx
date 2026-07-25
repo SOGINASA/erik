@@ -193,7 +193,7 @@ function MoreSheet() {
         <div style={{ height: 1, background: 'var(--line)', margin: '8px 0' }} />
         {loggedIn
           ? item('external', t.logout, () => { logout(); close(); navigate('/'); showToast(isRu ? 'Вы вышли из аккаунта' : 'Аккаунттан шықтыңыз'); }, true)
-          : item('users', t.loginWord, () => { close(); navigate('/onboarding'); })}
+          : item('users', t.loginWord, () => { close(); navigate('/login'); })}
       </div>
     </Sheet>
   );
@@ -465,13 +465,16 @@ function NewCharitySheet() {
   const [cityId, setCityId] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const goalNum = Number(goal) || 0;
   const submit = async () => {
-    if (!title.trim() || busy) return;
+    // Цель обязана быть > 0: при goal=0 donate даёт raised=min(0,…)=0 (сбор нерабочий),
+    // а прогресс = raised/goal = NaN. Бэк тоже отбивает goal<=0 (400).
+    if (!title.trim() || goalNum <= 0 || busy) return;
     setBusy(true);
     const res = await createCharity({
       titleRu: title.trim(),
       kind,
-      goal: Number(goal) || 0,
+      goal: goalNum,
       unit: kind === 'items' ? (unit.trim() || (isRu ? 'шт' : 'дана')) : '₸',
       cityId: cityId || undefined,
     });
@@ -508,7 +511,7 @@ function NewCharitySheet() {
           </select>
         </div>
       </div>
-      <Button full size="lg" style={{ marginTop: 20 }} loading={busy} disabled={!title.trim()} onClick={submit}>{isRu ? 'Создать сбор помощи' : 'Көмек жинағын құру'}</Button>
+      <Button full size="lg" style={{ marginTop: 20 }} loading={busy} disabled={!title.trim() || goalNum <= 0} onClick={submit}>{isRu ? 'Создать сбор помощи' : 'Көмек жинағын құру'}</Button>
     </Sheet>
   );
 }
@@ -524,16 +527,40 @@ function DonateSheet() {
   const charity = usePlatformStore((s) => s.charity);
   const item = charity.find((c) => c.id === donateId);
   const title = item ? (isRu ? item.titleRu : item.titleKz) : '';
+  const isItems = !!item && item.kind === 'items';
+  const unit = (item && item.unit) || (isRu ? 'шт' : 'дана');
   const amts = [1000, 2000, 5000];
+
+  // Тип сбора определяет ввод: деньги — суммы в ₸, вещи — количество единиц. donateAmt один
+  // на оба типа, поэтому при открытии выставляем осмысленный дефолт под тип (иначе для сбора
+  // вещей показывались бы денежные кнопки, а уходил бы всегда quantity:1).
+  useEffect(() => {
+    if (!item) return;
+    setDonateAmt(item.kind === 'money' ? 2000 : 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [donateId, item && item.kind]);
+
   return (
     <Sheet open onClose={close} title={t.helpTitle} maxWidth={420}>
       <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 16 }}>{title}</div>
-      <FieldLabel>{t.donateAmount}</FieldLabel>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {amts.map((a) => (
-          <button key={a} type="button" className="erik-btn" onClick={() => setDonateAmt(a)} style={{ flex: 1, height: 44, borderRadius: 'var(--r-m)', border: `1px solid ${donateAmt === a ? 'var(--yard)' : 'var(--line)'}`, background: donateAmt === a ? 'var(--yard-soft)' : 'var(--surface)', color: 'var(--ink)', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--fm)' }}>{a.toLocaleString('ru-RU')} ₸</button>
-        ))}
-      </div>
+      {isItems ? (
+        <>
+          <FieldLabel>{isRu ? 'Сколько принесёте' : 'Қанша әкелесіз'}</FieldLabel>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <Stepper value={donateAmt} onDec={() => setDonateAmt(Math.max(1, (donateAmt || 1) - 1))} onInc={() => setDonateAmt((donateAmt || 1) + 1)} />
+            <span style={{ fontSize: 14, color: 'var(--ink-3)' }}>{unit}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <FieldLabel>{t.donateAmount}</FieldLabel>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            {amts.map((a) => (
+              <button key={a} type="button" className="erik-btn" onClick={() => setDonateAmt(a)} style={{ flex: 1, height: 44, borderRadius: 'var(--r-m)', border: `1px solid ${donateAmt === a ? 'var(--yard)' : 'var(--line)'}`, background: donateAmt === a ? 'var(--yard-soft)' : 'var(--surface)', color: 'var(--ink)', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--fm)' }}>{a.toLocaleString('ru-RU')} ₸</button>
+            ))}
+          </div>
+        </>
+      )}
       <Button full size="lg" onClick={() => { donate(); close(); }}>{t.help}</Button>
     </Sheet>
   );

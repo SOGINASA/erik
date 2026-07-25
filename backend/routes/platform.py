@@ -424,6 +424,10 @@ def create_charity_request():
         goal = max(0, int(data.get('goal', 0) or 0))
     except (TypeError, ValueError):
         goal = 0
+    # Цель обязана быть > 0: иначе donate делает raised=min(0,…)=0 (пожертвования
+    # никогда не растут), а прогресс на фронте = raised/goal = 0/0 = NaN.
+    if goal <= 0:
+        return jsonify({'error': 'Укажите цель больше нуля'}), 400
     org = Org.query.filter_by(owner_id=g.user.id).first()
     c = CharityRequest(
         title_ru=title,

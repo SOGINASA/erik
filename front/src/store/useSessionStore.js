@@ -163,10 +163,14 @@ export const useSessionStore = create(
         return res;
       },
 
-      // Выход → чистое гостевое состояние (deviceId сохраняем как якорь устройства).
+      // Выход → чистое гостевое состояние. deviceId ПЕРЕВЫПУСКАЕМ: со старым boot() на
+      // следующем запуске (POST /session по сохранённому deviceId) заново резолвил бы ту же
+      // серверную строку User (имя+токен) и грузил бы её приватные уведомления/диалоги —
+      // «выход» откатывался после перезагрузки, а на общем устройстве утекали чужие данные.
       logout: () => {
-        setAuth({ token: null, refreshToken: null });
-        set({ loggedIn: false, token: null, userType: null, refreshToken: null,
+        const fresh = newDeviceId();
+        setAuth({ deviceId: fresh, token: null, refreshToken: null });
+        set({ deviceId: fresh, loggedIn: false, token: null, userType: null, refreshToken: null,
               name: null, role: null, phone: null, roleDirty: false });
       },
     }),

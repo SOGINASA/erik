@@ -110,11 +110,11 @@ export function routeAccess(route, { loggedIn, role, isAdmin, resolved }) {
     if (isAdmin) return 'ok';
     return resolved.admin ? 'admin' : 'pending';
   }
-  // Кабинет НКО отдельно от штаба организатора: пускаем только роль 'org' (не coord).
-  if (ORG_ROUTES.has(route)) {
-    if (!resolved.role) return 'pending';
-    return role === 'org' ? 'ok' : 'role';
-  }
+  // Кабинет НКО (/manage/org) — только вход, без гейта по роли: бэк create_org сам
+  // повышает любого профилированного пользователя до 'org' (самообслуживание), а пустой
+  // кабинет показывает форму создания НКО. Роль-гейт тут был тупиком для vol/coord,
+  // хотевших завести НКО. (Login-гейт уже применён выше через GATED_ROUTES.)
+  if (ORG_ROUTES.has(route)) return 'ok';
   if (!ORGANIZER_ROUTES.has(route)) return 'ok';
   if (!resolved.role) return 'pending';
   return isOrganizerRole(role) ? 'ok' : 'role';
@@ -193,7 +193,9 @@ export function useGuardedNav() {
   };
 }
 
-// Число непрочитанных уведомлений.
+// Число непрочитанных уведомлений. Серверный полный счётчик (serverUnread) авторитетнее
+// подсчёта по одной загруженной странице (список отдаёт лишь первые 30) — берём максимум,
+// чтобы бейдж не занижался при большом объёме и работал на демо (serverUnread=0).
 export function useUnread() {
-  return usePlatformStore((s) => s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length);
+  return usePlatformStore((s) => Math.max(s.serverUnread || 0, s.notifs.filter((n) => !n.read && !s.notifRead[n.id]).length));
 }

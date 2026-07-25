@@ -17,7 +17,9 @@ export default function Convo() {
   const sendMsg = usePlatformStore((s) => s.sendMsg);
   const desktop = useIsDesktop();
 
-  const convo = convos.find((c) => c.id === id) || convos[0] || null;
+  // Только точное совпадение по cid: раньше стоял `|| convos[0]`, и по неизвестному/чужому
+  // cid открывался ПЕРВЫЙ диалог, а отправка/прочтение уходили не тому собеседнику.
+  const convo = convos.find((c) => c.id === id) || null;
   const convoSid = convo && convo.sid; // серверный id диалога ВЕРБАТИМ (mapConvo); у демо его нет
   const send = () => { if (convo) sendMsg(convo.id); };
 

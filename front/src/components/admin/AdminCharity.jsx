@@ -22,7 +22,7 @@ export default function AdminCharity() {
   // сводные метрики
   const raisedMoney = charity.filter((c) => c.kind === 'money').reduce((a, c) => a + c.raised, 0);
   const avgProgress = Math.round(
-    charity.reduce((a, c) => a + Math.round((c.raised / c.goal) * 100), 0) / (charity.length || 1),
+    charity.reduce((a, c) => a + (c.goal > 0 ? Math.round((c.raised / c.goal) * 100) : 0), 0) / (charity.length || 1),
   );
 
   return (
@@ -41,9 +41,9 @@ export default function AdminCharity() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {charity.map((c) => {
             const money = c.kind === 'money';
-            const pct = Math.min(100, Math.round((c.raised / c.goal) * 100));
+            const pct = c.goal > 0 ? Math.min(100, Math.round((c.raised / c.goal) * 100)) : 0;
             const unit = money ? '₸' : c.unit; // для денег — тенге, иначе своя единица
-            const closed = c.closed || c.raised >= c.goal; // кампания закрыта/цель достигнута
+            const closed = c.closed || (c.goal > 0 && c.raised >= c.goal); // цель 0 не считаем достигнутой
             const ring = closed ? 'var(--ink-3)' : money ? 'var(--yard)' : '#3d5566';
             return (
               <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
