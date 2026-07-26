@@ -13,6 +13,18 @@ export FLASK_APP=app.py
 echo "[entrypoint] db-sync: приводим схему к head..."
 flask db-sync
 
+# Демо-данные при ПЕРВОМ старте. Файл БД в git не едет (.gitignore), том на свежем
+# сервере пустой — и без этого шага деплой поднимает приложение с нулём событий и
+# нулём личностей: лента пустая, кнопки быстрого входа ведут в никуда, профильные
+# эндпоинты отвечают 403/404. --if-empty смотрит на число пользователей, поэтому на
+# живой базе шаг ничего не делает и повторные старты безопасны.
+# ERIK_SEED_DEMO=0 — выключить (если база наполняется не сидом).
+if [ "${ERIK_SEED_DEMO:-1}" = "1" ]; then
+  flask seed-demo --if-empty
+else
+  echo "[entrypoint] автосид отключён (ERIK_SEED_DEMO=0)"
+fi
+
 echo "[entrypoint] Starting gunicorn..."
 exec gunicorn --preload -w 4 --threads 10 -b 0.0.0.0:6752 --timeout 120 \
   --access-logfile - --error-logfile - --log-level info --capture-output \

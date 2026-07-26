@@ -38,6 +38,13 @@ def session():
         phone=data.get('phone'),
         user_agent=request.headers.get('User-Agent'),
     )
+    if user is None:
+        # Запросили демо-личность, которой в базе нет (DEMO_DEVICE_PREFIX): сид не
+        # запускался. Пускать сюда пустышку значит выдать «координатора» без роли и
+        # без имени — лучше честный отказ с готовым рецептом.
+        return jsonify({'error': 'Демо-личность не найдена — запустите flask seed-demo',
+                        'errorKz': 'Демо-тұлға табылмады — flask seed-demo іске қосыңыз'}), 404
+
     access, refresh = make_tokens(user)
     return jsonify({
         'token': access,

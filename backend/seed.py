@@ -188,6 +188,29 @@ def _js_round(x):
     return math.floor(x + 0.5)   # Math.round для положительных
 
 
+def _demo_user(device_id, **fields):
+    """Демо-личность по device_id: создать или ДОЗАПОЛНИТЬ существующую.
+
+    Слепой INSERT ронял весь сид на UNIQUE(device_id) — и хватало одного клика по
+    кнопке быстрого входа на незасеянной базе: POST /session заводил demo-v0 пустой
+    строкой (без имени, role='vol'), после чего `flask seed-demo` падал, и база
+    чинилась только через --reset. Пустышку надо не обходить, а дозаполнять: это ТА
+    ЖЕ личность, сид просто возвращает ей настоящие имя, роль и статистику.
+
+    Побочный эффект намеренный: сид становится идемпотентным и его можно гонять
+    повторно — это условие автосида при деплое (entrypoint.sh).
+    """
+    u = User.query.filter_by(device_id=device_id).first()
+    if u is None:
+        u = User(device_id=device_id, **fields)
+        db.session.add(u)
+    else:
+        for key, value in fields.items():
+            setattr(u, key, value)
+    db.session.flush()
+    return u
+
+
 def build_participants():
     """Порт data.js buildParticipants() — идентичная последовательность rnd()."""
     s = 20260718 & 0xFFFFFFFF
@@ -277,25 +300,25 @@ def seed_demo(reset=False):
 
     # демо-АДМИН как отдельная device-личность: кнопка «Войти как администратор» ведёт
     # СЮДА. demo-coord теперь обычный координатор (без доступа к модерации).
-    if not User.query.filter_by(device_id='demo-admin').first():
-        db.session.add(User(device_id='demo-admin', full_name='Администратор erik',
-                            role=ADMIN_ROLE, city_id='ast', user_type='admin', is_active=True))
-        db.session.commit()
+    # Через _demo_user, а не «создать, если нет»: пустышку от клика по кнопке быстрого
+    # входа надо ДОЗАПОЛНИТЬ. Пропуская существующую строку, сид оставлял бы админа
+    # без имени и без user_type='admin' — то есть админку он бы так и не увидел.
+    _demo_user('demo-admin', full_name='Администратор erik',
+               role=ADMIN_ROLE, city_id='ast', user_type='admin', is_active=True)
+    db.session.commit()
 
     if Gathering.query.filter_by(code='PARK18').first():
         print('PARK18 уже есть — пропускаю (используй --reset для пересоздания)')
         return
 
     # координатор-владелец (ME) со статами профиля
-    coord = User.query.filter_by(device_id='demo-coord').first()
-    if coord is None:
-        # Обычный координатор (НЕ админ): модерация вынесена в отдельного demo-admin.
-        coord = User(device_id='demo-coord', full_name='Асхат Жумабеков', role='coord',
-                     city_id='pet', user_type='user', is_active=True,
-                     hours_total=47, events_attended=12, reliability=91, rank=34,
-                     skills=['Организация', 'Первая помощь', 'Водитель кат. B', 'Фото'])
-        db.session.add(coord)
-        db.session.flush()
+    # Обычный координатор (НЕ админ): модерация вынесена в отдельного demo-admin.
+    # Дозаполняем, а не «создаём если нет»: иначе пустышка от кнопки «Координатор»
+    # так и оставалась бы без имени и с role='vol' — ровно симптом «у координатора нет роли».
+    coord = _demo_user('demo-coord', full_name='Асхат Жумабеков', role='coord',
+                       city_id='pet', user_type='user', is_active=True,
+                       hours_total=47, events_attended=12, reliability=91, rank=34,
+                       skills=['Организация', 'Первая помощь', 'Водитель кат. B', 'Фото'])
 
     gathering = Gathering(
         code='PARK18', owner_id=coord.id, city_id='pet', theme='eco',
@@ -355,13 +378,11 @@ def seed_demo(reset=False):
 
     for i, p in enumerate(build_participants()):
         # лёгкий device-User с историей = основа для обучения trust
-        u = User(device_id=f'demo-p{i}', full_name=p['name'], phone=p['phone'], role='vol',
-                 user_type='user', is_active=True,
-                 trust_total=p['total'], trust_came=p['came'],
-                 reliability=round(100 * p['came'] / p['total']) if p['total'] else 0,
-                 events_attended=p['came'])
-        db.session.add(u)
-        db.session.flush()
+        u = _demo_user(f'demo-p{i}', full_name=p['name'], phone=p['phone'], role='vol',
+                       user_type='user', is_active=True,
+                       trust_total=p['total'], trust_came=p['came'],
+                       reliability=round(100 * p['came'] / p['total']) if p['total'] else 0,
+                       events_attended=p['came'])
         db.session.add(Participant(
             gathering_id=gathering.id, user_id=u.id, name=p['name'], phone=p['phone'],
             answer=p['answer'], hist_total_at_rsvp=p['total'], hist_came_at_rsvp=p['came'],
@@ -477,10 +498,8 @@ def _seed_history(coord):
         # Смесь профилей: часть народа надёжная, часть «плюсует в чат, но не доходит».
         reliability = rnd.betavariate(1.6, 4.6) if rnd.random() < 0.38 else rnd.betavariate(4.6, 1.6)
         interests = rnd.sample(_HIST_THEMES, rnd.randint(1, 3))
-        u = User(device_id=f'demo-hv{i}', full_name=name, role='vol', city_id='pet',
-                 user_type='user', is_active=True, interests=interests)
-        db.session.add(u)
-        db.session.flush()
+        u = _demo_user(f'demo-hv{i}', full_name=name, role='vol', city_id='pet',
+                       user_type='user', is_active=True, interests=interests)
         people.append({'user': u, 'rel': reliability, 'interests': interests})
     db.session.commit()
 
@@ -537,10 +556,8 @@ def _seed_platform():
     """НКО, события ленты e2–e8, благотворительность, волонтёры-лидеры."""
     # НКО + их владельцы
     for oid, name, cat, city, verified, aboutRu, aboutKz in ORGS:
-        owner = User(device_id=f'demo-org{oid}', full_name=name, role='org',
-                     city_id=city, user_type='user', is_active=True)
-        db.session.add(owner)
-        db.session.flush()
+        owner = _demo_user(f'demo-org{oid}', full_name=name, role='org',
+                           city_id=city, user_type='user', is_active=True)
         db.session.add(Org(id=oid, name=name, cat=cat, city_id=city, verified=verified,
                            about_ru=aboutRu, about_kz=aboutKz, owner_id=owner.id))
     db.session.flush()
@@ -583,11 +600,10 @@ def _seed_platform():
 
     # волонтёры-лидеры
     for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):
-        db.session.add(User(device_id=f'demo-v{i}', full_name=name, role='vol',
-                            city_id=city, user_type='user', is_active=True,
-                            hours_total=hours, events_attended=events, reliability=rel,
-                            rank=i + 1))
-    db.session.flush()
+        _demo_user(f'demo-v{i}', full_name=name, role='vol',
+                   city_id=city, user_type='user', is_active=True,
+                   hours_total=hours, events_attended=events, reliability=rel,
+                   rank=i + 1)
 
     # диалоги demo-coord с НКО/координаторами
     coord = User.query.filter_by(device_id='demo-coord').first()

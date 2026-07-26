@@ -188,9 +188,25 @@ def db_sync():
 @app.cli.command('seed-demo')
 @click.option('--reset', is_flag=True, default=False,
               help='Полностью очистить доменные таблицы и пересоздать демо (аккаунты сохраняются)')
-def seed_demo_cmd(reset):
-    """Засеять детерминированную демо-синтетику (сбор PARK18 и участники)."""
+@click.option('--if-empty', is_flag=True, default=False,
+              help='Ничего не делать, если в базе уже есть пользователи (автосид при деплое)')
+def seed_demo_cmd(reset, if_empty):
+    """Засеять детерминированную демо-синтетику (сбор PARK18 и участники).
+
+    --if-empty для entrypoint: файл БД в git не едет (.gitignore), поэтому свежий
+    деплой поднимает ПУСТУЮ базу — платформа без событий, а кнопки быстрого входа
+    ведут в никуда. Флаг делает шаг безопасным для повторных стартов: на живой базе
+    он просто ничего не трогает.
+    """
     from seed import seed_demo
+
+    if if_empty:
+        n = User.query.count()
+        if n:
+            click.echo(f'seed-demo: в базе уже {n} пользователей, пропускаю')
+            return
+        click.echo('seed-demo: база пустая, засеваю демо-данные')
+
     seed_demo(reset=reset)
     print('Готово.')
 
