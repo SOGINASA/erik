@@ -98,6 +98,24 @@ def test_co_participants_visible_to_a_registered_volunteer(client, gathering, us
     assert all('phone' not in x for x in rows)
 
 
+def test_nameless_device_user_sees_the_list(client, gathering, user1, user2):
+    """Регрессия: эндпоинт стоял под @profiled_required и требовал заполненное имя.
+
+    Записаться на сбор можно device-сессией БЕЗ имени (PUT /events/<id>/registration —
+    голый @jwt_required(), весь продукт про RSVP в один тап). Получалось, что человек
+    уже в ростере, а список тех, с кем он идёт, отвечал ему 403 «Заполните имя».
+    Пускать сюда должно ЧЛЕНСТВО, а не наличие имени.
+    """
+    user1.full_name = None
+    db.session.commit()
+    _join(gathering, user1, name='Гость')
+    _join(gathering, user2)
+
+    r = client.get(f'/api/events/{gathering.id}/co-participants', headers=_headers(user1))
+    assert r.status_code == 200
+    assert {x['name'] for x in r.get_json()['participants']} == {'Гость', 'User Two'}
+
+
 def test_co_participants_hidden_from_outsiders(client, gathering, user1):
     """Кто с кем ходит — не публичная информация: без записи на сбор списка нет."""
     r = client.get(f'/api/events/{gathering.id}/co-participants', headers=_headers(user1))

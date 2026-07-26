@@ -178,9 +178,16 @@ COMING_ANSWERS = ('yes', 'maybe')
 
 
 @platform_bp.route('/events/<int:id>/co-participants', methods=['GET'])
-@profiled_required
+@jwt_required()
 def event_co_participants(id):
     """Кто ещё идёт на ЭТОТ сбор — волонтёру, который сам на него записан.
+
+    @jwt_required(), а НЕ @profiled_required — намеренно, и это стоило одного бага.
+    Записаться на сбор можно device-сессией без имени (set_registration выше тоже под
+    голым @jwt_required(): весь продукт построен на RSVP в один тап без регистрации).
+    Требовать имя здесь значило бы отдавать 403 «Заполните имя» человеку, который уже
+    в ростере, — эндпоинт был строже того, что выдаёт саму принадлежность к сбору.
+    Пускает сюда ЧЛЕНСТВО, а имя к нему отношения не имеет.
 
     Отдельный роут, а не расширение /participants: тот отдаёт публичную стопку аватаров
     (имя — и всё), а здесь нужен userId, чтобы строка вела в профиль (/u/:id). Публичным
@@ -196,13 +203,17 @@ def event_co_participants(id):
     Walk-in гостей (user_id NULL) отдаём с userId=None: на сборе они реально будут, но
     аккаунта у них нет — фронт просто не рисует ссылку (та же идиома, что в ростере).
     """
-    g_ = _visible_gathering(id, g.user)
+    u = current_user()
+    if u is None or not u.is_active:
+        return jsonify({'error': 'Пользователь не найден'}), 404
+
+    g_ = _visible_gathering(id, u)
     if g_ is None:
         return jsonify({'error': 'Событие не найдено'}), 404
 
-    me = next((p for p in g_.participants if p.user_id == g.user.id), None)
-    leads = g_.owner_id == g.user.id or db.session.query(GatheringCoordinator.id).filter_by(
-        gathering_id=g_.id, user_id=g.user.id).first() is not None
+    me = next((p for p in g_.participants if p.user_id == u.id), None)
+    leads = g_.owner_id == u.id or db.session.query(GatheringCoordinator.id).filter_by(
+        gathering_id=g_.id, user_id=u.id).first() is not None
     if not leads and (me is None or me.answer not in COMING_ANSWERS):
         return jsonify({'error': 'Список участников виден только записавшимся на сбор',
                         'errorKz': 'Қатысушылар тізімін тек жазылғандар көреді'}), 403

@@ -43,6 +43,7 @@ export default function Event() {
   // ответа («грузится», «не смогли загрузить», «кроме вас никого»), и молчать во всех
   // трёх значит показывать пустое место там, где человек ждёт список.
   const [teamState, setTeamState] = useState('idle'); // idle|loading|ready|error|demo
+  const [teamError, setTeamError] = useState(null);   // текст причины от сервера, если он её дал
   const [fetched, setFetched] = useState(null);
   const [evState, setEvState] = useState('idle'); // idle | loading | ready | error
 
@@ -99,11 +100,20 @@ export default function Event() {
     let alive = true;
     setTeamState('loading');
     api.eventCoParticipants(gid).then(
-      (r) => { if (alive) { setTeam(r.participants || []); setTeamState('ready'); } },
-      () => { if (alive) { setTeam([]); setTeamState('error'); } },
+      (r) => { if (alive) { setTeam(r.participants || []); setTeamState('ready'); setTeamError(null); } },
+      (err) => {
+        if (!alive) return;
+        setTeam([]);
+        setTeamState('error');
+        // Текст сервера показываем как есть: у 403 их два разных («не записаны» /
+        // «пользователь не найден»), и общее «не удалось загрузить» скрыло бы ровно ту
+        // причину, по которой список не открывается. KZ-текст бэк отдаёт рядом.
+        const d = err && err.data;
+        setTeamError(d ? (isRu ? d.error : (d.errorKz || d.error)) : null);
+      },
     );
     return () => { alive = false; };
-  }, [evId, events, inTeam]);
+  }, [evId, events, inTeam, isRu]);
 
   // Событие ещё грузится или не найдено — честный экран вместо чужого events[0]/краша.
   if (!ev) {
@@ -277,9 +287,9 @@ export default function Event() {
         {inTeam && teamState !== 'ready' && (
           <div style={{ marginTop: 26, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px dashed var(--line)', fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.45 }}>
             {teamState === 'loading' && (isRu ? 'Загружаем, кто идёт…' : 'Кім баратынын жүктеп жатырмыз…')}
-            {teamState === 'error' && (isRu
+            {teamState === 'error' && (teamError || (isRu
               ? 'Не удалось загрузить список участников — проверьте связь и обновите страницу.'
-              : 'Қатысушылар тізімі жүктелмеді — байланысты тексеріп, бетті жаңартыңыз.')}
+              : 'Қатысушылар тізімі жүктелмеді — байланысты тексеріп, бетті жаңартыңыз.'))}
             {teamState === 'demo' && (isRu
               ? 'Это демо-событие — списка участников у него нет.'
               : 'Бұл демо-іс-шара — қатысушылар тізімі жоқ.')}
