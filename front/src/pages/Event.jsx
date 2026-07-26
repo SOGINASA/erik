@@ -39,6 +39,10 @@ export default function Event() {
   const name = useSessionStore((s) => s.name);   // есть профиль? гость (без имени) → просим войти
   const [participants, setParticipants] = useState([]);
   const [team, setTeam] = useState([]);           // кто ещё идёт (только для записавшихся)
+  // Состояние списка держим ОТДЕЛЬНО от самого списка: пустой массив — это три разных
+  // ответа («грузится», «не смогли загрузить», «кроме вас никого»), и молчать во всех
+  // трёх значит показывать пустое место там, где человек ждёт список.
+  const [teamState, setTeamState] = useState('idle'); // idle|loading|ready|error|demo
   const [fetched, setFetched] = useState(null);
   const [evState, setEvState] = useState('idle'); // idle | loading | ready | error
 
@@ -86,13 +90,18 @@ export default function Event() {
   // Кто ещё идёт: имена + userId, чтобы строка вела в профиль. Запрашиваем ТОЛЬКО когда
   // право на список уже есть — иначе каждый заход гостя на событие стучался бы в 403.
   useEffect(() => {
-    if (!evId || !inTeam) { setTeam([]); return undefined; }
+    if (!evId || !inTeam) { setTeam([]); setTeamState('idle'); return undefined; }
     const gid = feedGatheringId(evId, events);
-    if (gid === null) { setTeam([]); return undefined; }   // демо-событие: ростера нет
+    // Лента не доехала с сервера (офлайн/бэкенд молчит) — она осталась мок-массивом, и
+    // числовой id демо-события совпал бы с ЧУЖИМ реальным сбором. В API не идём, но и не
+    // молчим: это состояние экрана, а не «список пуст».
+    if (gid === null) { setTeam([]); setTeamState('demo'); return undefined; }
     let alive = true;
-    api.eventCoParticipants(gid)
-      .then((r) => { if (alive) setTeam(r.participants || []); })
-      .catch(() => { if (alive) setTeam([]); });
+    setTeamState('loading');
+    api.eventCoParticipants(gid).then(
+      (r) => { if (alive) { setTeam(r.participants || []); setTeamState('ready'); } },
+      () => { if (alive) { setTeam([]); setTeamState('error'); } },
+    );
     return () => { alive = false; };
   }, [evId, events, inTeam]);
 
@@ -255,11 +264,38 @@ export default function Event() {
             профиль: волонтёр приходит к незнакомым людям, и возможность заранее посмотреть,
             с кем он проведёт день, — половина решения «идти или нет». У walk-in гостей
             аккаунта нет (userId === null) — такая строка просто некликабельная. */}
-        {inTeam && team.length > 0 && (
+        {/* Не записан — говорим, что список ЕСТЬ и как его открыть. Раньше здесь была
+            пустота, неотличимая от «фича не работает». */}
+        {!inTeam && (
+          <div style={{ marginTop: 26, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px dashed var(--line)', fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.45 }}>
+            {isRu
+              ? 'Ответьте «Приду», чтобы увидеть, кто ещё идёт, и открыть их профили.'
+              : 'Кім баратынын көру үшін «Келемін» деп жауап беріңіз.'}
+          </div>
+        )}
+
+        {inTeam && teamState !== 'ready' && (
+          <div style={{ marginTop: 26, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px dashed var(--line)', fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.45 }}>
+            {teamState === 'loading' && (isRu ? 'Загружаем, кто идёт…' : 'Кім баратынын жүктеп жатырмыз…')}
+            {teamState === 'error' && (isRu
+              ? 'Не удалось загрузить список участников — проверьте связь и обновите страницу.'
+              : 'Қатысушылар тізімі жүктелмеді — байланысты тексеріп, бетті жаңартыңыз.')}
+            {teamState === 'demo' && (isRu
+              ? 'Это демо-событие — списка участников у него нет.'
+              : 'Бұл демо-іс-шара — қатысушылар тізімі жоқ.')}
+          </div>
+        )}
+
+        {inTeam && teamState === 'ready' && (
           <div style={{ marginTop: 26 }}>
             <div style={{ fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 6 }}>
               {isRu ? `Кто идёт · ${team.length}` : `Кім барады · ${team.length}`}
             </div>
+            {team.length === 0 && (
+              <div style={{ fontSize: 14, color: 'var(--ink-3)', padding: '8px 4px' }}>
+                {isRu ? 'Пока записались только вы — будьте первым.' : 'Әзірге тек сіз жазылдыңыз.'}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {team.map((p) => {
                 const href = profileHref(p.userId);
