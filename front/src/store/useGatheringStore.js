@@ -308,6 +308,8 @@ export const useGatheringStore = create((set, get) => ({
 
   // Список своих сборов для экрана «Мои сборы». Пусто/офлайн — экран падает на демо.
   loadMine: async () => {
+    // /gatherings/mine под @profiled_required — см. loadMyEvents.
+    if (!useSessionStore.getState().hasProfile()) return;
     try {
       const res = await api.myGatherings();
       if (Array.isArray(res.gatherings)) set({ myGatherings: res.gatherings });

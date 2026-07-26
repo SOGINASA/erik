@@ -303,6 +303,8 @@ export const usePlatformStore = create((set, get) => ({
 
   // События, на которые волонтёр записался («Мои мероприятия»). Пусто/офлайн — пустой экран.
   loadMyEvents: async () => {
+    // /me/events под @profiled_required: без имени это гарантированные 403/404.
+    if (!useSessionStore.getState().hasProfile()) return;
     try {
       const res = await api.myEvents();
       // mapEvent клеит префикс 'e'+id — как лента (loadPlatform/loadEvents). Без него id

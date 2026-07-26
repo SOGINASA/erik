@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
+import { useSessionStore, useSessionReady } from '../store/useSessionStore';
 import { useIsDesktop } from '../lib/nav';
 import { Container } from '../components/Container';
 import Button from '../components/ui/Button';
@@ -19,14 +20,21 @@ export default function MyGatherings() {
 
   // Первая загрузка своих сборов. Пока loadMine не вернулся — держим loading:
   // выдумывать демо-сбор новому организатору нельзя, показываем скелетон.
+  // Ждём готовности сессии (см. MyEvents): loggedIn персистится, и без этого
+  // страница успевала дёрнуть /gatherings/mine мёртвым токеном до ответа boot().
+  const ready = useSessionReady();
+  const booted = useSessionStore((s) => s.booted);
   useEffect(() => {
+    // booted отличает ожидание от тупика: пока boot() не ответил — скелетон
+    // (мигать «сборов нет» и тут же их показывать хуже), после — пустое состояние.
+    if (!ready) { if (booted) setLoading(false); return undefined; }
     let alive = true;
     (async () => {
       await loadMine();
       if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-  }, [loadMine]);
+  }, [ready, booted, loadMine]);
 
   // Активные сверху, завершённые снизу.
   const sorted = [...mine].sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0));

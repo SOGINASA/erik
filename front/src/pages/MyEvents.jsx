@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { useSessionReady } from '../store/useSessionStore';
 import { Container } from '../components/Container';
 import { EmptyState } from '../components/ui/feedback';
 import Button from '../components/ui/Button';
@@ -21,7 +22,12 @@ export default function MyEvents() {
   const myEvents = usePlatformStore((s) => s.myEvents);
   const loadMyEvents = usePlatformStore((s) => s.loadMyEvents);
 
-  useEffect(() => { loadMyEvents(); }, [loadMyEvents]);
+  // Ждём готовности сессии: loggedIn персистится, поэтому страница монтируется
+  // ещё до ответа boot() и безусловный вызов улетал бы старым/безымянным токеном
+  // в 403/404. Зависимость от ready делает загрузку самовосстанавливающейся —
+  // как только boot() донесёт имя, эффект выполнится сам.
+  const ready = useSessionReady();
+  useEffect(() => { if (ready) loadMyEvents(); }, [ready, loadMyEvents]);
 
   const upcoming = myEvents.filter((e) => e.status !== 'done');
   const past = myEvents.filter((e) => e.status === 'done');
