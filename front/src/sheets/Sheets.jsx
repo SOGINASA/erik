@@ -43,6 +43,7 @@ export default function Sheets() {
     case 'roles': return <RolesSheet />;
     case 'pickRole': return <PickRoleSheet />;
     case 'confirmRoleDrop': return <ConfirmRoleDropSheet />;
+    case 'roleRequest': return <RoleRequestSheet />;
     default: return null;
   }
 }
@@ -97,6 +98,45 @@ function EditProfileSheet() {
         <Field label={isRu ? 'Навыки (через запятую)' : 'Дағдылар (үтір арқылы)'} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder={isRu ? 'Организация, Первая помощь' : 'Ұйымдастыру, Алғашқы көмек'} />
       </div>
       <Button full size="lg" style={{ marginTop: 20 }} loading={busy} onClick={save}>{t.save}</Button>
+    </Sheet>
+  );
+}
+
+// Заявка на роль организатора — путь vol → coord после того, как создание сбора
+// перестало повышать роль молча. Решает админ (AdminModeration), поэтому шторка ничего
+// локально не выдаёт: она только отправляет заявку и показывает, что дальше ждать.
+function RoleRequestSheet() {
+  const isRu = useLang() === 'ru';
+  const close = useUiStore((s) => s.closeSheet);
+  const submit = usePlatformStore((s) => s.submitRoleRequest);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    if (busy) return;
+    setBusy(true);
+    const r = await submit(message);
+    setBusy(false);
+    if (r.ok) close();   // причину провала показал стор, шторку держим — текст цел
+  };
+
+  return (
+    <Sheet open onClose={close} title={isRu ? 'Стать организатором' : 'Ұйымдастырушы болу'} maxWidth={440}>
+      <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 16px' }}>
+        {isRu
+          ? 'Организатор создаёт сборы, ведёт ростер и отвечает за явку. Заявку рассматривает администратор — решение придёт уведомлением.'
+          : 'Ұйымдастырушы жиын құрады, тізімді жүргізеді және қатысуға жауап береді. Өтінімді әкімші қарайды — шешім хабарландырумен келеді.'}
+      </p>
+      <Textarea
+        label={isRu ? 'Что хотите организовывать?' : 'Нені ұйымдастырғыңыз келеді?'}
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder={isRu ? 'Например: субботники в своём районе раз в месяц' : 'Мысалы: ай сайын өз ауданымда сенбілік'}
+        maxLength={1000}
+      />
+      <Button full size="lg" style={{ marginTop: 20 }} loading={busy} onClick={send}>
+        {isRu ? 'Отправить заявку' : 'Өтінім жіберу'}
+      </Button>
     </Sheet>
   );
 }
@@ -184,8 +224,9 @@ function MoreSheet() {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {isOrganizer && item('calendar', t.manageEyebrow, () => goClose('/manage', 'manage'))}
         {/* «Мои сборы» — роут 'me': он в GATED_ROUTES (нужен вход), но НЕ в ORGANIZER_ROUTES.
-            Пряча его за ролью, меню было строже гейта: волонтёр без сборов не видел
-            экрана, который его же и зовёт создать первый. Гостя развернёт goClose. */}
+            Пряча его за ролью, меню было бы строже гейта. Волонтёру экран пуст (сборы он
+            не ведёт), но объясняет разницу и ведёт в «Мои мероприятия». Гостя развернёт
+            goClose. Тот же пункт и в десктопном сайдбаре — см. Shell.jsx. */}
         {item('list', t.myGatherings, () => goClose('/me', 'me'))}
         {/* Свои RSVP — любому вошедшему, без фильтра по роли (см. Shell.jsx, тот же пункт):
             координатор и НКО записываются на чужие сборы наравне с волонтёром. */}

@@ -50,6 +50,11 @@ PRESENCES = ('came', 'missed')
 GATHERING_STATUSES = ('pending', 'open', 'done', 'deleted', 'rejected')
 GATHERING_FORMATS = ('one', 'reg')
 USER_ROLES = ('vol', 'coord', 'org')
+# Кто ВЕДЁТ сборы. Волонтёр сюда не входит намеренно: он на сборы записывается, а не
+# создаёт их (routes/gatherings.py:create_gathering). Раньше границы не было вовсе —
+# первый же созданный сбор молча повышал vol → coord, то есть выбранная в онбординге
+# роль ничего не значила. Зеркалит ORGANIZER_ROLES на фронте (front/src/lib/nav.js).
+ORGANIZER_ROLES = ('coord', 'org')
 NOTIF_TYPES = ('answer', 'reminder', 'badge', 'event', 'system')
 REMIND_AUDIENCES = ('maybe', 'all')
 
@@ -326,6 +331,43 @@ class Participant(db.Model):
         if self.user_id and self.user is not None:
             return {'total': self.user.trust_total or 0, 'came': self.user.trust_came or 0}
         return {'total': self.hist_total_at_rsvp or 0, 'came': self.hist_came_at_rsvp or 0}
+
+
+ROLE_REQUEST_STATUSES = ('pending', 'approved', 'declined')
+
+
+class RoleRequest(db.Model):
+    """Заявка волонтёра на роль организатора — единственный путь vol → coord.
+
+    Появилась вместе с запретом волонтёру создавать сборы: раньше роль повышалась
+    молча при создании первого сбора, теперь повышает АДМИН, осознанно и с историей.
+
+    Отдельная таблица, а не поле у User, ровно по трём причинам: заявку можно отклонить
+    и подать заново (нужна история, а не последнее состояние); у решения есть автор и
+    время (decided_by/decided_at — как resolved_by у Report); и очередь модерации должна
+    уметь показать заявки, которые уже разобрали.
+
+    Уникальности по user_id НЕТ намеренно: отклонённая заявка остаётся в истории, а
+    человек подаёт новую. «Не больше одной незакрытой» держит роут (platform.py):
+    частичный уникальный индекс по status на SQLite непереносим.
+    """
+    __tablename__ = 'role_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
+    # Куда просится: 'coord' | 'org' (подмножество USER_ROLES — ORGANIZER_ROLES).
+    # Храним запрошенную роль, а не подразумеваем 'coord': апрув должен выдать ровно то,
+    # что человек просил и что админ видел в очереди.
+    requested_role = db.Column(db.String(8), default='coord', nullable=False)
+    message = db.Column(db.Text, nullable=True)             # «зачем» — от заявителя
+    status = db.Column(db.String(10), default='pending')    # pending | approved | declined
+    reject_reason = db.Column(db.String(400), nullable=True)
+    decided_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    decided_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=_now)
+
+    user = db.relationship('User', foreign_keys=[user_id])
+
+    __table_args__ = (db.Index('ix_role_request_status', 'status', 'created_at'),)
 
 
 class AttendanceRecord(db.Model):

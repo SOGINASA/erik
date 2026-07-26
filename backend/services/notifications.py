@@ -75,6 +75,38 @@ def notify_event_moderated(gathering, approved):
                             f'«{title_kz}» жиыны модерациядан өтпеді')
 
 
+_ROLE_RU = {'coord': 'координатора', 'org': 'НКО'}
+_ROLE_KZ = {'coord': 'үйлестіруші', 'org': 'ҮЕҰ'}
+
+
+def notify_role_request_decision(req, approved, reason=None):
+    """Уведомить заявителя о решении по заявке на роль организатора (тип 'system').
+
+    Отказ без причины — тупик: человек не знает, что исправить, и подаёт то же самое
+    заново. Поэтому причина, если админ её указал, идёт прямо в текст (как у reject_event).
+    """
+    if req is None or req.user_id is None:
+        return
+    role_ru = _ROLE_RU.get(req.requested_role, 'организатора')
+    role_kz = _ROLE_KZ.get(req.requested_role, 'ұйымдастырушы')
+    if approved:
+        create_notification(
+            req.user_id, 'system',
+            f'Заявка одобрена: теперь вы в роли {role_ru} и можете создавать сборы',
+            f'Өтінім мақұлданды: енді сіз {role_kz} рөліндесіз, жиын құра аласыз')
+        return
+    if reason:
+        create_notification(
+            req.user_id, 'system',
+            f'Заявка на роль {role_ru} отклонена. Причина: {reason}'[:300],
+            f'{role_kz} рөліне өтінім қабылданбады. Себебі: {reason}'[:300])
+    else:
+        create_notification(
+            req.user_id, 'system',
+            f'Заявка на роль {role_ru} отклонена',
+            f'{role_kz} рөліне өтінім қабылданбады')
+
+
 def notify_followers_new_event(gathering):
     """Уведомить подписчиков НКО о новом событии (тип 'event'). Возвращает число адресатов."""
     from models import Follow

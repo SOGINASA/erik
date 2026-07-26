@@ -8,7 +8,9 @@ import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
 import { fromServer, sourceLabel } from '../lib/forecastView';
 import { THEMES, EVENTS, avatarOf, initialOf } from '../lib/data';
+import { profileHref } from '../lib/nav';
 import { Container, BackButton } from '../components/Container';
+import PersonRow from '../components/PersonRow';
 import Icon from '../components/Icon';
 
 // Лента держит демо и серверные события под одним видом id ('e'+число) — по самому id
@@ -36,6 +38,7 @@ export default function Event() {
   const showToast = useUiStore((s) => s.showToast);
   const name = useSessionStore((s) => s.name);   // есть профиль? гость (без имени) → просим войти
   const [participants, setParticipants] = useState([]);
+  const [team, setTeam] = useState([]);           // кто ещё идёт (только для записавшихся)
   const [fetched, setFetched] = useState(null);
   const [evState, setEvState] = useState('idle'); // idle | loading | ready | error
 
@@ -73,6 +76,25 @@ export default function Event() {
       .catch(() => { if (alive) setParticipants([]); });
     return () => { alive = false; };
   }, [evId, events]);
+
+  // Ответ волонтёра на ЭТО событие — им же решается, показывать ли список «кто идёт»:
+  // бэк отдаёт его только записавшимся (platform.py:event_co_participants → 403).
+  // 'no' не считается: человек сказал, что не придёт, и в команде его нет.
+  const myAnswer = evId ? regs[evId] : null;
+  const inTeam = myAnswer === 'yes' || myAnswer === 'maybe';
+
+  // Кто ещё идёт: имена + userId, чтобы строка вела в профиль. Запрашиваем ТОЛЬКО когда
+  // право на список уже есть — иначе каждый заход гостя на событие стучался бы в 403.
+  useEffect(() => {
+    if (!evId || !inTeam) { setTeam([]); return undefined; }
+    const gid = feedGatheringId(evId, events);
+    if (gid === null) { setTeam([]); return undefined; }   // демо-событие: ростера нет
+    let alive = true;
+    api.eventCoParticipants(gid)
+      .then((r) => { if (alive) setTeam(r.participants || []); })
+      .catch(() => { if (alive) setTeam([]); });
+    return () => { alive = false; };
+  }, [evId, events, inTeam]);
 
   // Событие ещё грузится или не найдено — честный экран вместо чужого events[0]/краша.
   if (!ev) {
@@ -130,7 +152,7 @@ export default function Event() {
     ? (isRu ? `${t.fcWillCome} ≈ ${Math.round(evForecast.expected)}` : `≈ ${Math.round(evForecast.expected)} ${t.fcWillCome}`)
     : signedText;
 
-  const reg = regs[ev.id];
+  const reg = myAnswer;   // тот же ответ, что решает показ команды (см. inTeam выше)
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 
   const openRegister = () => (name ? openSheet('register', ev.id) : openSheet('auth'));
@@ -226,6 +248,42 @@ export default function Event() {
           >
             {t.register}
           </button>
+        )}
+
+        {/* Кто ещё идёт. Виден только записавшимся — это же правило и на бэке
+            (platform.py:event_co_participants), меню тут не мягче гейта. Строка ведёт в
+            профиль: волонтёр приходит к незнакомым людям, и возможность заранее посмотреть,
+            с кем он проведёт день, — половина решения «идти или нет». У walk-in гостей
+            аккаунта нет (userId === null) — такая строка просто некликабельная. */}
+        {inTeam && team.length > 0 && (
+          <div style={{ marginTop: 26 }}>
+            <div style={{ fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 6 }}>
+              {isRu ? `Кто идёт · ${team.length}` : `Кім барады · ${team.length}`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {team.map((p) => {
+                const href = profileHref(p.userId);
+                const roleTitle = isRu ? p.roleTitleRu : p.roleTitleKz;
+                const sub = [
+                  p.isMe ? (isRu ? 'это вы' : 'бұл сіз') : null,
+                  roleTitle || null,
+                  p.answer === 'maybe' ? (isRu ? 'возможно придёт' : 'мүмкін келеді') : null,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <PersonRow
+                    key={p.id}
+                    name={p.name}
+                    historyText={sub || null}
+                    dim={p.answer === 'maybe'}
+                    onClick={href ? () => navigate(href) : undefined}
+                    right={href
+                      ? <Icon name="chevronRight" size={16} stroke={1.7} />
+                      : <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{isRu ? 'без профиля' : 'профильсіз'}</span>}
+                  />
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Заявка организатору: навыки + сообщение (для чужих событий) */}

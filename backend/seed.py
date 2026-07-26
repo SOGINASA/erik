@@ -605,6 +605,17 @@ def _seed_platform():
                    hours_total=hours, events_attended=events, reliability=rel,
                    rank=i + 1)
 
+    # Заявка на роль организатора — чтобы очередь модерации в демо не была пустой:
+    # это единственный путь vol → coord, и его надо видеть в работе, а не на словах.
+    from models import RoleRequest
+    applicant = User.query.filter_by(device_id='demo-v0').first()
+    if applicant is not None and RoleRequest.query.filter_by(user_id=applicant.id).first() is None:
+        db.session.add(RoleRequest(
+            user_id=applicant.id, requested_role='coord', status='pending',
+            message='Хочу проводить субботники в своём районе — уже собирала соседей в чате.',
+            created_at=datetime.now(timezone.utc) - timedelta(hours=5),
+        ))
+
     # диалоги demo-coord с НКО/координаторами
     coord = User.query.filter_by(device_id='demo-coord').first()
     if coord is not None:

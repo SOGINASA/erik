@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
-from models import db, User, Org, Report, Gathering, CharityRequest, Follow, USER_ROLES
+from models import (db, User, Org, Report, Gathering, CharityRequest, Follow,
+                    RoleRequest, USER_ROLES, ORGANIZER_ROLES)
 from utils.decorators import admin_required
-from utils.serializers import serialize_org
+from utils.serializers import serialize_org, serialize_role_request
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -105,6 +106,8 @@ def moderation_stats():
     pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
     verified_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(True)).scalar() or 0
     open_reports = db.session.query(db.func.count(Report.id)).filter(Report.status != 'resolved').scalar() or 0
+    pending_role_requests = db.session.query(db.func.count(RoleRequest.id)).filter(
+        RoleRequest.status == 'pending').scalar() or 0
 
     users_total = db.session.query(db.func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
     volunteers = db.session.query(db.func.count(User.id)).filter(
@@ -139,6 +142,7 @@ def moderation_stats():
     return jsonify({
         'pendingOrgs': pending_orgs,
         'openReports': open_reports,
+        'pendingRoleRequests': pending_role_requests,
         'verifiedOrgs': verified_orgs,
         'orgs': pending_orgs + verified_orgs,
         'users': users_total,
@@ -396,6 +400,86 @@ def reject_org(oid):
     db.session.delete(org)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ── Заявки на роль организатора ──
+# Волонтёр не создаёт сборы (routes/gatherings.py:create_gathering), и повышения «само
+# собой» больше нет — роль выдаёт админ здесь. Очередь живёт рядом с верификацией НКО и
+# модерацией сборов: это тот же жанр решения, и разбирают её в одном экране.
+@admin_bp.route('/role-requests', methods=['GET'])
+@admin_required
+def admin_role_requests():
+    """?status=pending (по умолчанию) | approved | declined | all."""
+    status = (request.args.get('status') or 'pending').strip()
+    q = RoleRequest.query
+    if status in ('pending', 'approved', 'declined'):
+        q = q.filter(RoleRequest.status == status)
+    rows = q.order_by(RoleRequest.created_at.desc(), RoleRequest.id.desc()).all()
+    return jsonify({'requests': [serialize_role_request(r) for r in rows]})
+
+
+def _decide_role_request(rid):
+    """Общая часть approve/reject: заявка + заявитель, либо (None, error_response)."""
+    row = db.session.get(RoleRequest, rid)
+    if row is None:
+        return None, None, (jsonify({'error': 'Заявка не найдена'}), 404)
+    if row.status != 'pending':
+        # Повторное решение молча перезаписало бы автора и время, а роль уже выдана —
+        # это не идемпотентность, а потеря истории. Плюс защита от двойного клика.
+        return None, None, (jsonify({'error': 'Заявка уже рассмотрена',
+                                     'errorKz': 'Өтінім қаралып қойған'}), 409)
+    user = db.session.get(User, row.user_id)
+    if user is None or not user.is_active:
+        return None, None, (jsonify({'error': 'Заявитель не найден'}), 404)
+    return row, user, None
+
+
+def _admin_id():
+    from flask_jwt_extended import get_jwt_identity
+    try:
+        return int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return None
+
+
+@admin_bp.route('/role-requests/<int:rid>/approve', methods=['POST'])
+@admin_required
+def approve_role_request(rid):
+    """Одобрить: выдать запрошенную роль. Это единственное место, где vol → coord."""
+    from services.notifications import notify_role_request_decision
+
+    row, user, err = _decide_role_request(rid)
+    if err is not None:
+        return err
+    # Роль берём из ЗАЯВКИ, а не из тела запроса: админ решает по тому, что видит в
+    # очереди, и подменить выдаваемую роль запросом из браузера не должен.
+    if row.requested_role in ORGANIZER_ROLES:
+        user.role = row.requested_role
+    row.status = 'approved'
+    row.decided_by = _admin_id()
+    row.decided_at = datetime.now(timezone.utc)
+    notify_role_request_decision(row, approved=True)
+    db.session.commit()
+    return jsonify({'request': serialize_role_request(row, user)})
+
+
+@admin_bp.route('/role-requests/<int:rid>/reject', methods=['POST'])
+@admin_required
+def reject_role_request(rid):
+    """Отклонить с причиной (необязательной). Роль не меняется, заявку можно подать заново."""
+    from services.notifications import notify_role_request_decision
+
+    row, user, err = _decide_role_request(rid)
+    if err is not None:
+        return err
+    reason = ((request.get_json(silent=True) or {}).get('reason') or '').strip()[:400]
+    row.status = 'declined'
+    row.reject_reason = reason or None
+    row.decided_by = _admin_id()
+    row.decided_at = datetime.now(timezone.utc)
+    notify_role_request_decision(row, approved=False, reason=reason or None)
+    db.session.commit()
+    return jsonify({'request': serialize_role_request(row, user)})
 
 
 @admin_bp.route('/reports', methods=['GET'])

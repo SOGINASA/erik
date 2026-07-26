@@ -48,6 +48,7 @@ export const usePlatformStore = create((set, get) => ({
   charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
   pendingEvents: [],   // сборы, ожидающие модерации админом (для AdminModeration)
+  roleRequests: [],    // заявки на роль организатора, ожидающие решения админа
   myEvents: [],        // события, на которые волонтёр записался (для «Мои мероприятия»)
 
   followed: {},
@@ -208,6 +209,83 @@ export const usePlatformStore = create((set, get) => ({
         set((s) => ({ orgs: [org, ...s.orgs.filter((o) => o.id !== org.id)] }));
         toast(isRu() ? 'Не удалось отклонить — попробуйте снова' : 'Қабылдамау мүмкін болмады — қайталаңыз');
       }
+    }
+  },
+
+  // --- своя заявка на роль организатора (волонтёр) ---
+  // undefined = ещё не спрашивали, null = заявок не было. Разводим их намеренно: до
+  // ответа сервера нельзя ни звать подавать заявку, ни говорить «на рассмотрении».
+  myRoleRequest: undefined,
+
+  loadMyRoleRequest: async () => {
+    try {
+      const res = await api.myRoleRequest();
+      const req = res.request || null;
+      set({ myRoleRequest: req });
+      // Одобренная заявка означает, что роль на сервере УЖЕ поменялась, а в сессии лежит
+      // персистнутая 'vol' — без синхронизации человек увидел бы «подайте заявку» с
+      // выданной ролью, и создание сбора чинилось бы только перезагрузкой. Тянем роль
+      // тем же способом, что useRefetchedRole (lib/nav.js): GET /me + setState, а не
+      // setRole — роль пришла ОТ бэка, и roleDirty здесь был бы враньём.
+      if (req && req.status === 'approved' && useSessionStore.getState().role !== req.role) {
+        try {
+          const me = await api.me();
+          if (me && me.user && me.user.role) useSessionStore.setState({ role: me.user.role });
+        } catch (_) { /* офлайн — роль догонит на следующем boot() */ }
+      }
+    } catch (_) {
+      set({ myRoleRequest: null });   // офлайн — показываем кнопку, отправка честно упадёт
+    }
+  },
+
+  // Подать заявку. Ошибку НЕ глотаем: «заявка отправлена» при неушедшем запросе значит,
+  // что человек будет ждать решения, которого никто не увидит.
+  submitRoleRequest: async (message) => {
+    try {
+      const res = await api.createRoleRequest({ message: (message || '').trim() || undefined });
+      set({ myRoleRequest: res.request || null });
+      toast(isRu() ? 'Заявка отправлена администратору' : 'Өтінім әкімшіге жіберілді');
+      return { ok: true };
+    } catch (err) {
+      toast(isRu() ? 'Не удалось отправить заявку' : 'Өтінімді жіберу мүмкін болмады');
+      return { ok: false, error: err };
+    }
+  },
+
+  // Заявки на роль организатора (admin). Единственное место, где выдаётся роль coord,
+  // поэтому решение НЕ глотаем: молчаливый сбой оставил бы человека волонтёром при том,
+  // что админ видел «одобрено» и заявка исчезла из очереди.
+  loadRoleRequests: async () => {
+    try {
+      const res = await api.adminRoleRequests('pending');
+      if (Array.isArray(res.requests)) set({ roleRequests: res.requests });
+    } catch (_) {
+      /* не админ/офлайн */
+    }
+  },
+
+  // action: 'approve' | 'reject'. Одна функция на оба: разница только в вызове и тосте,
+  // а оптимистичное удаление из очереди с откатом у них одинаковое.
+  decideRoleRequest: async (id, action, reason = '') => {
+    const req = get().roleRequests.find((r) => r.id === id);
+    const idx = get().roleRequests.findIndex((r) => r.id === id);
+    set((s) => ({ roleRequests: s.roleRequests.filter((r) => r.id !== id) }));
+    const ok = action === 'approve';
+    toast(ok
+      ? (isRu() ? 'Роль организатора выдана' : 'Ұйымдастырушы рөлі берілді')
+      : (isRu() ? 'Заявка отклонена' : 'Өтінім қабылданбады'));
+    try {
+      await (ok ? api.approveRoleRequest(id) : api.rejectRoleRequest(id, reason));
+    } catch (_) {
+      // Возвращаем НА ТО ЖЕ МЕСТО: очередь отсортирована по времени подачи, и строка,
+      // всплывшая наверх, читается как новая заявка.
+      if (req) set((s) => {
+        if (s.roleRequests.some((r) => r.id === id)) return {};
+        const l = s.roleRequests.slice();
+        l.splice(Math.min(Math.max(idx, 0), l.length), 0, req);
+        return { roleRequests: l };
+      });
+      toast(isRu() ? 'Не удалось — попробуйте снова' : 'Қате — қайталаңыз');
     }
   },
 

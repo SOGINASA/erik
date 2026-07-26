@@ -143,10 +143,12 @@ function Sidebar({ route }) {
           <NavBtn icon="calendar" label={t.mgNav} active={route === 'manage' || route === 'manageRequests' || route === 'manageVolunteers'} onClick={() => go('/manage', 'manage')} />
         )}
         {/* «Мои сборы» — любому вошедшему (роут 'me' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES),
-            как в мобильном MoreSheet. Раньше пункт был только у организаторов, и волонтёр на
-            десктопе не имел ни одной точки входа к созданию сбора (пустой /me ведёт на /new →
-            бэк повышает vol→coord). !isAdmin НЕ ставим сознательно: у админа role='vol'
-            (seed.py, ADMIN_ROLE), и под этим условием он потерял бы «Мои сборы» вообще. */}
+            как в мобильном MoreSheet. Волонтёр своих сборов не ведёт и увидит там пустой
+            экран, но экран честный: он объясняет разницу и ведёт в «Мои мероприятия»
+            (MyGatherings.jsx). Прятать пункт по роли значило бы сделать меню строже гейта —
+            а роль меняется без перезагрузки, и пункт пропадал бы у свежего организатора.
+            !isAdmin НЕ ставим сознательно: у админа role='vol' (seed.py, ADMIN_ROLE),
+            и под этим условием он потерял бы «Мои сборы» вообще. */}
         {loggedIn && (
           <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
         )}

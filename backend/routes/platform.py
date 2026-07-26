@@ -7,8 +7,8 @@ from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required
 
 from models import (
-    db, User, Theme, City, Badge, Gathering, Participant,
-    Org, CharityRequest, Donation, Follow, ANSWERS,
+    db, User, Theme, City, Badge, Gathering, GatheringCoordinator, Participant,
+    Org, CharityRequest, Donation, Follow, ANSWERS, ORGANIZER_ROLES, RoleRequest,
     Conversation, ConversationMember, Message, Report,
 )
 from services.identity import current_user
@@ -17,7 +17,7 @@ from services.roles import sync_participant_role
 from utils.serializers import (
     serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
-    serialize_conversation, serialize_roles,
+    serialize_conversation, serialize_roles, serialize_role_request,
 )
 
 platform_bp = Blueprint('platform', __name__)
@@ -172,6 +172,65 @@ def event_participants(id):
     return jsonify({'participants': [{'id': p.id, 'name': p.name} for p in yes]})
 
 
+# Ответы, при которых человек считается участником сбора. 'no' — это выход: он сказал,
+# что не придёт, и ни в списке «кто идёт», ни в праве этот список смотреть его быть не должно.
+COMING_ANSWERS = ('yes', 'maybe')
+
+
+@platform_bp.route('/events/<int:id>/co-participants', methods=['GET'])
+@profiled_required
+def event_co_participants(id):
+    """Кто ещё идёт на ЭТОТ сбор — волонтёру, который сам на него записан.
+
+    Отдельный роут, а не расширение /participants: тот отдаёт публичную стопку аватаров
+    (имя — и всё), а здесь нужен userId, чтобы строка вела в профиль (/u/:id). Публичным
+    такой список делать нельзя: «кто с кем куда ходит» — это социальный граф, и раздавать
+    его любому, кто знает номер сбора, значит раздавать связи людей всем подряд. Поэтому
+    вход по ЧЛЕНСТВУ: список виден тому, кто сам в ростере, и тем, кто сбор ведёт
+    (владелец/со-координатор — у них и так есть полный ростер с телефонами).
+
+    PII здесь нет намеренно: телефон остаётся привилегией координатора
+    (serialize_participant(coordinator=True)), наружу уходит ровно то, что и так открыто
+    в публичном профиле /users/<id>.
+
+    Walk-in гостей (user_id NULL) отдаём с userId=None: на сборе они реально будут, но
+    аккаунта у них нет — фронт просто не рисует ссылку (та же идиома, что в ростере).
+    """
+    g_ = _visible_gathering(id, g.user)
+    if g_ is None:
+        return jsonify({'error': 'Событие не найдено'}), 404
+
+    me = next((p for p in g_.participants if p.user_id == g.user.id), None)
+    leads = g_.owner_id == g.user.id or db.session.query(GatheringCoordinator.id).filter_by(
+        gathering_id=g_.id, user_id=g.user.id).first() is not None
+    if not leads and (me is None or me.answer not in COMING_ANSWERS):
+        return jsonify({'error': 'Список участников виден только записавшимся на сбор',
+                        'errorKz': 'Қатысушылар тізімін тек жазылғандар көреді'}), 403
+
+    roles_by_id = {r.id: r for r in g_.roles}
+    out = []
+    for p in g_.participants:
+        if p.answer not in COMING_ANSWERS:
+            continue
+        # Роль резолвим ПО СЛОВАРЮ, а не через p.role: осиротевший role_id физически
+        # возможен (см. models.Participant.role_id) и не должен ронять список.
+        role = roles_by_id.get(p.role_id) if p.role_id else None
+        out.append({
+            'id': p.id,
+            'userId': p.user_id,
+            'name': p.name,
+            'answer': p.answer,
+            'isMe': me is not None and p.id == me.id,
+            'roleId': role.id if role is not None else None,
+            'roleTitleRu': role.title_ru if role is not None else None,
+            'roleTitleKz': role.title_kz if role is not None else None,
+        })
+    # Сначала «приду», потом «возможно»; внутри — по имени. Список читают глазами,
+    # а порядок вставки в ростер («кто раньше ответил») для этого ничего не значит.
+    out.sort(key=lambda x: (0 if x['answer'] == 'yes' else 1, (x['name'] or '').lower()))
+    return jsonify({'participants': out})
+
+
 @platform_bp.route('/events/<int:id>/registration', methods=['GET'])
 @jwt_required()
 def get_registration(id):
@@ -268,6 +327,49 @@ def my_events():
         out.append(card)
     out.sort(key=lambda e: e.get('startsAt') or '')   # ближайшие сверху
     return jsonify({'events': out})
+
+
+# ── заявка на роль организатора ──
+@platform_bp.route('/me/role-request', methods=['GET'])
+@profiled_required
+def my_role_request():
+    """Своя ПОСЛЕДНЯЯ заявка (или null). Одним полем экран решает, что показать:
+    кнопку «Стать организатором», «на рассмотрении» или причину отказа."""
+    row = (RoleRequest.query.filter_by(user_id=g.user.id)
+           .order_by(RoleRequest.created_at.desc(), RoleRequest.id.desc()).first())
+    return jsonify({'request': serialize_role_request(row, g.user) if row else None})
+
+
+@platform_bp.route('/me/role-request', methods=['POST'])
+@rate_limit(5, 3600, by_user=True)
+@profiled_required
+def create_role_request():
+    """Подать заявку на роль организатора: {role?: 'coord'|'org', message?}.
+
+    Единственный путь vol → coord после того, как создание сбора перестало повышать роль
+    молча. Решает АДМИН (routes/admin.py), поэтому здесь заявка только создаётся —
+    никаких изменений User.role.
+
+    Повторная подача при незакрытой заявке — не ошибка, а второй тап по кнопке: отдаём
+    ту же строку (идиома add_coordinator/create_conversation), иначе очередь админа
+    забилась бы дублями одного человека.
+    """
+    if g.user.role in ORGANIZER_ROLES:
+        return jsonify({'error': 'Вы уже организатор',
+                        'errorKz': 'Сіз әлдеқашан ұйымдастырушысыз'}), 409
+
+    data = request.get_json(silent=True) or {}
+    role = data.get('role') if data.get('role') in ORGANIZER_ROLES else 'coord'
+
+    pending = RoleRequest.query.filter_by(user_id=g.user.id, status='pending').first()
+    if pending is not None:
+        return jsonify({'request': serialize_role_request(pending, g.user)}), 200
+
+    row = RoleRequest(user_id=g.user.id, requested_role=role, status='pending',
+                      message=(data.get('message') or '').strip()[:1000] or None)
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({'request': serialize_role_request(row, g.user)}), 201
 
 
 # ── НКО ──

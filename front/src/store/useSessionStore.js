@@ -90,8 +90,8 @@ export const useSessionStore = create(
             name: name || undefined,
             // Роль шлём только сразу после выбора в онбординге: POST /session затирает
             // серверную роль присланной (identity.py:_fill_existing), а серверная бывает
-            // свежее — бэк сам повышает vol→coord на первом сборе. Слать персистнутую
-            // роль на каждый F5 значило бы откатывать это повышение.
+            // свежее — заведение НКО повышает до 'org' (platform.py:create_org). Слать
+            // персистнутую роль на каждый F5 значило бы откатывать такое повышение.
             role: roleDirty && role ? role : undefined,
           });
           setAuth({ token: res.token, refreshToken: res.refreshToken || null });

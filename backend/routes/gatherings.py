@@ -10,7 +10,7 @@ from flask_jwt_extended import jwt_required
 
 from models import (
     db, User, Gathering, GatheringCoordinator, Participant, Theme, City, Org,
-    ANSWERS, PRESENCES,
+    ANSWERS, PRESENCES, ORGANIZER_ROLES,
 )
 from services.codes import generate_code
 from services.roles import apply_roles, create_roles, find_role, release_role
@@ -100,11 +100,24 @@ def create_gathering():
     + необязательные {theme, cityId, orgId, imageUrl, titleKz, placeKz}.
 
     Device-уровень (имя даётся ЗДЕСЬ, при первом сборе) — поэтому НЕ @profiled_required,
-    иначе новичок без имени не смог бы создать первый сбор.
+    иначе новый организатор без имени не смог бы создать первый сбор.
     """
     user = current_user()
     if user is None or not user.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
+
+    # Создавать сборы может только организатор (coord|org). Границы здесь не было вовсе:
+    # роут молча повышал vol → coord на первом же сборе, и роль «волонтёр», выбранная в
+    # онбординге, ничего не значила — любой записавшийся мог завести своё мероприятие.
+    # Это разные продукты: волонтёр ХОДИТ на сборы, координатор/НКО их проводит, отвечает
+    # за явку и видит ростер с телефонами. Проверяем ДО всех правок (имя, роли, сбор),
+    # чтобы отказ не оставил после себя половину изменений.
+    # Гейт именно серверный: фронт прячет кнопку (front/src/lib/nav.js: ORGANIZER_ROUTES),
+    # но прямой POST мимо интерфейса он не остановит.
+    if user.role not in ORGANIZER_ROLES:
+        return jsonify({'error': 'Создавать сборы могут только организаторы',
+                        'errorKz': 'Жиындарды тек ұйымдастырушылар құра алады'}), 403
+
     data = request.get_json(silent=True) or {}
 
     what = (data.get('what') or data.get('title') or '').strip()
@@ -124,8 +137,6 @@ def create_gathering():
     name = (data.get('name') or '').strip()
     if name and not (user.full_name or '').strip():
         user.full_name = name
-    if user.role == 'vol':
-        user.role = 'coord'
 
     starts_at = _parse_starts_at(data.get('date'), data.get('time'))
     gathering = Gathering(
@@ -154,7 +165,10 @@ def create_gathering():
         'id': gathering.id,
         'code': gathering.code,
         'shareUrl': share_url,
-        'role': user.role,   # мог повыситься vol → coord выше; фронту иначе неоткуда узнать до boot()
+        # Роль автором сбора больше не меняется (повышение vol → coord убрано вместе с
+        # самой возможностью волонтёра создать сбор). Поле оставлено: фронт кладёт его
+        # в сессию, и после смены роли в другом месте это дешёвая синхронизация.
+        'role': user.role,
         'gathering': serialize_gathering_owner(gathering),
     }), 201
 

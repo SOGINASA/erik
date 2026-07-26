@@ -15,6 +15,15 @@ def _headers(user):
 
 
 @pytest.fixture
+def organizer(user1):
+    """user1 как организатор. Создание сбора — привилегия роли coord|org
+    (routes/gatherings.py:create_gathering), а фабрика юзеров даёт дефолтную 'vol'."""
+    user1.role = 'coord'
+    db.session.commit()
+    return user1
+
+
+@pytest.fixture
 def gathering(user1):
     """Открытый сбор user1 (owner) — на нём и живут роли."""
     g = Gathering(code='ROLE01', owner_id=user1.id, title_ru='Уборка', title_kz='Тазалау',
@@ -40,7 +49,7 @@ def roles(gathering):
 
 # ── создание ──
 
-def test_create_gathering_with_roles(client, user1):
+def test_create_gathering_with_roles(client, user1, organizer):
     r = client.post('/api/gatherings', headers=_headers(user1), json={
         'what': 'Субботник', 'where': 'Парк', 'date': '2026-08-01', 'time': '10:00',
         'roles': [{'titleRu': 'Фотограф', 'capacity': 1},
@@ -55,7 +64,7 @@ def test_create_gathering_with_roles(client, user1):
     assert roles[0]['taken'] == 0 and roles[0]['free'] == 1
 
 
-def test_create_drops_junk_rows(client, user1):
+def test_create_drops_junk_rows(client, user1, organizer):
     """Кривые строки отбрасываем молча — создание сбора важнее набора ролей."""
     r = client.post('/api/gatherings', headers=_headers(user1), json={
         'what': 'Субботник', 'where': 'Парк', 'date': '2026-08-01', 'time': '10:00',
@@ -67,7 +76,7 @@ def test_create_drops_junk_rows(client, user1):
 
 # ── вместимость ──
 
-def test_capacity_negative_is_clamped(client, user1):
+def test_capacity_negative_is_clamped(client, user1, organizer):
     """capacity=-1 клампится в 0 («без ограничения»), а не делает роль вечно занятой.
 
     Без серверного клампа проверка `capacity and taken >= capacity` при -1 истинна всегда,

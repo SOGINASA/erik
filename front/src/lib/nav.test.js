@@ -71,14 +71,23 @@ describe('«Мои мероприятия» — свои RSVP доступны �
   });
 });
 
-describe('«Мои сборы» и создание сбора открыты волонтёру', () => {
-  test('/me — любому вошедшему: это точка входа к первому сбору', () => {
-    ROLES.forEach((r) => expect(routeAccess('me', as(r))).toBe('ok'));
+describe('создание сбора — привилегия организатора', () => {
+  // Регрессия наоборот: раньше /new был открыт волонтёру, потому что бэк повышал
+  // vol → coord на первом сборе. Повышения больше нет (роль выбирают осознанно), и
+  // открытый роут был бы формой, гарантированно упирающейся в 403 от сервера.
+  test('/new — только coord/org', () => {
+    expect(routeAccess('new', as('coord'))).toBe('ok');
+    expect(routeAccess('new', as('org'))).toBe('ok');
+    expect(routeAccess('new', as('vol'))).toBe('role');
+    expect(ORGANIZER_ROUTES.has('new')).toBe(true);
   });
 
-  test('/new не гейтится ролью — бэк сам повышает vol → coord', () => {
-    expect(routeAccess('new', as('vol'))).toBe('ok');
-    expect(ORGANIZER_ROUTES.has('new')).toBe(false);
+  test('админство роль не заменяет: /new гейтится ролью и у админа', () => {
+    expect(routeAccess('new', as('vol', { admin: true }))).toBe('role');
+  });
+
+  test('/me остаётся открытым: там видно свои сборы, а не создание', () => {
+    ROLES.forEach((r) => expect(routeAccess('me', as(r))).toBe('ok'));
   });
 
   test('кабинет НКО открыт и не-НКО: create_org повышает до org сам', () => {

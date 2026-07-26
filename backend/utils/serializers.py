@@ -413,6 +413,37 @@ def serialize_application(app):
     }
 
 
+def serialize_role_request(r, user=None):
+    """Заявка на роль организатора — для очереди админа и для самого заявителя.
+
+    Кладём агрегаты заявителя (город, часы, сборы, надёжность): админ решает не по
+    формуле, а по человеку, и уходить за этим вторым запросом в /users/<id> на каждую
+    строку очереди он не станет. Телефона здесь нет — заявка не даёт на него права.
+    """
+    from models import db, City, User
+    if user is None:
+        user = r.user if r.user is not None else (
+            db.session.get(User, r.user_id) if r.user_id else None)
+    city = db.session.get(City, user.city_id) if (user and user.city_id) else None
+    ago_ru, ago_kz = _ago_labels(r.created_at)
+    return {
+        'id': r.id,
+        'userId': r.user_id,
+        'name': (user.full_name if user else None) or 'Без имени',
+        'city': city.name_ru if city else None,
+        'currentRole': user.role if user else None,
+        'role': r.requested_role,
+        'message': r.message or '',
+        'status': r.status,
+        'rejectReason': r.reject_reason,
+        'hours': (user.hours_total or 0) if user else 0,
+        'events': (user.events_attended or 0) if user else 0,
+        'reliability': (user.reliability or 0) if user else 0,
+        'createdAt': _iso(r.created_at),
+        'agoRu': ago_ru, 'agoKz': ago_kz,
+    }
+
+
 def serialize_org_volunteer(u, last_g=None):
     """Волонтёр из базы организатора (форма buildOrgVolunteers) — агрегаты из User."""
     from models import db, City

@@ -135,12 +135,20 @@ export const api = {
   getEvents: (qs = '') => request('/events' + qs),
   getEvent: (id) => request(`/events/${id}`),
   eventParticipants: (id, limit = 7) => request(`/events/${id}/participants?limit=${limit}`),
+  // Кто ещё идёт на сбор — с userId, чтобы строка вела в профиль. Отдельно от
+  // eventParticipants (та публичная и отдаёт только имена): бэк пускает сюда лишь тех,
+  // кто сам записан на сбор либо его ведёт, остальным 403.
+  eventCoParticipants: (id) => request(`/events/${id}/co-participants`),
   // extra — как у putRsvp: {roleId} для выбора роли. Второй путь записи на сбор, и он
   // обязан принимать ровно то же, что гостевой, иначе «роль исчезает при записи из ленты».
   setEventReg: (id, answer, extra = {}) =>
     request(`/events/${id}/registration`, { method: 'PUT', body: { answer, ...extra } }),
   deleteEventReg: (id) => request(`/events/${id}/registration`, { method: 'DELETE' }),
   myRegistrations: () => request('/me/registrations'),
+  // Заявка на роль организатора — путь vol → coord через админа (создание сбора роль
+  // больше не повышает). GET отдаёт последнюю заявку или null.
+  myRoleRequest: () => request('/me/role-request'),
+  createRoleRequest: (body = {}) => request('/me/role-request', { method: 'POST', body }), // {role?, message?}
   myEvents: () => request('/me/events'),   // события, на которые волонтёр записался («Мои мероприятия»)
   getOrgs: () => request('/orgs'),
   createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
@@ -193,6 +201,11 @@ export const api = {
   adminUsers: (page = 1, search = '', role = 'all') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}`),
   updateUser: (id, patch) => request(`/admin/users/${id}`, { method: 'PATCH', body: patch }),
   adminStats: () => request('/admin/stats'),
+  // Очередь заявок на роль организатора. approve выдаёт роль из САМОЙ заявки —
+  // тело запроса роль не выбирает (см. backend/routes/admin.py).
+  adminRoleRequests: (status = 'pending') => request(`/admin/role-requests?status=${status}`),
+  approveRoleRequest: (id) => request(`/admin/role-requests/${id}/approve`, { method: 'POST' }),
+  rejectRoleRequest: (id, reason = '') => request(`/admin/role-requests/${id}/reject`, { method: 'POST', body: { reason } }),
   adminOrgs: (status = 'all') => request(`/admin/orgs?status=${status}`),
   resolveReport: (id) => request(`/admin/reports/${id}/resolve`, { method: 'POST' }),
   adminEvents: (qs = '') => request('/admin/events' + qs),
