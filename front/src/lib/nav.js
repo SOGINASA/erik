@@ -64,6 +64,15 @@ export function routeName(pathname) {
   return 'notfound';
 }
 
+// Ссылка на публичный профиль пользователя — или null, если открывать нечего.
+// Проверка на целое число не формальность: сторы стартуют с демо-данных, где id
+// строковые ('v1', 'ov1'), и такая строка увела бы на /u/v1 → «Профиль не найден».
+// Гости сборов и заявки без аккаунта приходят с userId === null — тоже null.
+export function profileHref(id) {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? `/u/${n}` : null;
+}
+
 // Десктоп = ширина ≥ 900px.
 export function useIsDesktop() {
   const get = () => (typeof window !== 'undefined' ? window.innerWidth >= 900 : true);

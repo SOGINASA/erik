@@ -4,7 +4,7 @@ import { useT, useLang } from '../i18n';
 import { useOrganizerStore, orgNotice } from '../store/useOrganizerStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useSessionStore } from '../store/useSessionStore';
-import { useIsDesktop } from '../lib/nav';
+import { useIsDesktop, profileHref } from '../lib/nav';
 import { plural } from '../lib/data';
 import { Container } from '../components/Container';
 import Icon from '../components/Icon';
@@ -96,19 +96,37 @@ export default function ManageVolunteers() {
             <EmptyState icon="users" title={t.mgVolEmpty} sub={t.mgVolEmptySub} />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start' }}>
-              {sorted.map((v) => (
+              {sorted.map((v) => {
+                // Карточка ведёт в профиль волонтёра — история участий и достижения там,
+                // здесь только агрегаты. На демо-базе (id 'ov1') ссылки нет.
+                const href = profileHref(v.id);
+                const info = (
+                  <>
+                    <Avatar name={v.name} size={46} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                        <span style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 16, color: 'var(--ink)' }}>{v.name}</span>
+                        <RelChip value={v.reliability} label={t.mgReliability} />
+                      </div>
+                      <div style={{ fontFamily: 'var(--fm)', fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>
+                        {v.hours} {isRu ? 'ч' : 'сағ'} · {v.events} {isRu ? plural(v.events, ['сбор', 'сбора', 'сборов']) : 'жиын'} · {v.city}
+                      </div>
+                      <SkillTags ids={v.skills} max={desktop ? 4 : 2} />
+                    </div>
+                  </>
+                );
+                return (
                 <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
-                  <Avatar name={v.name} size={46} />
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 16, color: 'var(--ink)' }}>{v.name}</span>
-                      <RelChip value={v.reliability} label={t.mgReliability} />
-                    </div>
-                    <div style={{ fontFamily: 'var(--fm)', fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>
-                      {v.hours} {isRu ? 'ч' : 'сағ'} · {v.events} {isRu ? plural(v.events, ['сбор', 'сбора', 'сборов']) : 'жиын'} · {v.city}
-                    </div>
-                    <SkillTags ids={v.skills} max={desktop ? 4 : 2} />
-                  </div>
+                  {href ? (
+                    <button
+                      type="button"
+                      className="erik-row-hover"
+                      onClick={() => navigate(href)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, margin: '-8px 0 -8px -8px', padding: 8, border: 'none', borderRadius: 'var(--r-m)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      {info}
+                    </button>
+                  ) : info}
                   <button
                     type="button"
                     className="erik-btn erik-btn-secondary"
@@ -119,7 +137,8 @@ export default function ManageVolunteers() {
                     <Icon name="message" size={18} stroke={1.7} />{desktop && t.mgWrite}
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

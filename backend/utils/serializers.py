@@ -110,6 +110,9 @@ def serialize_participant(p, coordinator=False, p_value=None, roles_by_id=None):
     if coordinator:
         d['phone'] = p.phone
         d['history'] = p.history
+        # id пользователя — чтобы координатор мог открыть профиль участника из ростера.
+        # У walk-in гостей аккаунта нет: None, и фронт просто не рисует ссылку.
+        d['userId'] = p.user_id
         d['p'] = round(p_value, 3) if p_value is not None else None
     return d
 
@@ -262,7 +265,11 @@ def serialize_user_public(u):
     for r in recs:
         gath = db.session.get(Gathering, r.gathering_id)
         dru, _dkz, _t = date_labels(gath.starts_at) if (gath and gath.starts_at) else (None, None, None)
-        history.append({'t': gath.title_ru if gath else '—', 'd': dru or '', 'came': r.presence == 'came'})
+        # id сбора отдаём, чтобы строка истории вела на его страницу (/e/:id). Сбор мог
+        # быть удалён — тогда id None, и фронт оставляет строку некликабельной.
+        history.append({'id': gath.id if gath else None,
+                        't': gath.title_ru if gath else '—',
+                        'd': dru or '', 'came': r.presence == 'came'})
     return {
         'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
         'cityId': u.city_id,
@@ -390,6 +397,9 @@ def serialize_application(app):
     return {
         'id': app.id,
         'eventId': app.gathering_id,
+        # id автора заявки (не id самой заявки) — для перехода в его профиль. Заявка
+        # могла прийти без аккаунта (гостевая форма) — тогда None.
+        'userId': app.applicant_id,
         'name': app.name,
         'phone': app.phone,
         'city': city.name_ru if city else None,

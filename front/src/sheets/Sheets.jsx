@@ -15,7 +15,7 @@ import { counts } from '../lib/forecast';
 import { SKILL_LIST, THEMES, skillLabel, rolePresets } from '../lib/data';
 import { useOrganizerStore } from '../store/useOrganizerStore';
 import { RelChip, SkillTags } from '../components/manage/parts';
-import { useGuardedNav, isOrganizerRole } from '../lib/nav';
+import { useGuardedNav, isOrganizerRole, profileHref } from '../lib/nav';
 import { copyToClipboard } from '../lib/share';
 import { api } from '../lib/api';
 import { commit } from '../lib/optimistic';
@@ -188,7 +188,7 @@ function MoreSheet() {
             экрана, который его же и зовёт создать первый. Гостя развернёт goClose. */}
         {item('list', t.myGatherings, () => goClose('/me', 'me'))}
         {loggedIn && role === 'vol' && !isAdmin && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
-        {item('users', t.navProfile, () => goClose('/u/me', 'profile'))}
+        {item('user', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}
         {item('bell', t.navNotif, () => goClose('/notifications', 'notifications'))}
@@ -244,6 +244,7 @@ function PersonSheet() {
   const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
   const showToast = useUiStore((s) => s.showToast);
+  const navigate = useNavigate();
   const p = useUiStore((s) => s.sheetPayload) || {};
   const changeAnswerFor = useGatheringStore((s) => s.changeAnswerFor);
   const removeParticipant = useGatheringStore((s) => s.removeParticipant);
@@ -276,15 +277,37 @@ function PersonSheet() {
       <button key={kind} type="button" className="erik-btn" onClick={() => changeAnswerFor(p.id, kind)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 48, borderRadius: 'var(--r-s)', cursor: 'pointer', fontWeight: 500, fontSize: 14, flex: 1, background: sel ? soft : 'var(--surface)', border: `1.5px solid ${sel ? full : 'var(--line)'}`, color: 'var(--ink)' }}>{label}</button>
     );
   };
+  // Профиль участника: координатор ставит людей на роли и решает, ждать ли человека, —
+  // «был 3 из 4» без остальной истории для этого мало. userId приходит только с ростером
+  // координатора (serialize_participant), у walk-in гостей его нет — тогда шапка обычная.
+  const profile = profileHref(p.userId);
+  const head = (
+    <>
+      <Avatar name={p.name} size={52} fontScale={0.4} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontFamily: 'var(--fm)', fontSize: 14, color: 'var(--ink-2)' }}>{p.phone || '—'}</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{hist}</div>
+      </div>
+    </>
+  );
+
   return (
     <Sheet open onClose={close} title={p.name || ''}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <Avatar name={p.name} size={52} fontScale={0.4} />
-        <div>
-          <div style={{ fontFamily: 'var(--fm)', fontSize: 14, color: 'var(--ink-2)' }}>{p.phone || '—'}</div>
-          <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{hist}</div>
-        </div>
-      </div>
+      {profile ? (
+        <button
+          type="button"
+          className="erik-row-hover"
+          onClick={() => { close(); navigate(profile); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 14, width: 'calc(100% + 16px)', marginLeft: -8, marginBottom: 16, padding: '8px', border: 'none', borderRadius: 'var(--r-m)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {head}
+          <span style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 2, fontSize: 13, color: 'var(--yard)' }}>
+            {t.navProfile}<Icon name="chevronRight" size={16} />
+          </span>
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>{head}</div>
+      )}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>{['yes', 'maybe', 'no'].map(pBtn)}</div>
 
       {/* Роль участника: координатор переставляет людей на месте. Вместимость здесь
@@ -700,6 +723,7 @@ function ApplicantSheet() {
   const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
   const showToast = useUiStore((s) => s.showToast);
+  const navigate = useNavigate();
   const a = useUiStore((s) => s.sheetPayload) || {};
   const events = useOrganizerStore((s) => s.events);
   const accept = useOrganizerStore((s) => s.acceptApplication);
@@ -726,15 +750,34 @@ function ApplicantSheet() {
   const msg = isRu ? a.messageRu : a.messageKz;
   const pending = a.status === 'pending';
 
+  // Заявку одобряют, глядя на человека: из шапки открываем его профиль (навыки, часы,
+  // вся история участий). Заявка без аккаунта приходит с userId === null — ссылки нет.
+  const profile = profileHref(a.userId);
+  const head = (
+    <>
+      <Avatar name={a.name} size={52} fontScale={0.4} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontFamily: 'var(--fm)', fontSize: 14, color: 'var(--ink-2)' }}>{a.phone || '—'}</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{a.city} · {hist}</div>
+      </div>
+    </>
+  );
+
   return (
     <Sheet open onClose={close} title={a.name || ''}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <Avatar name={a.name} size={52} fontScale={0.4} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--fm)', fontSize: 14, color: 'var(--ink-2)' }}>{a.phone || '—'}</div>
-          <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{a.city} · {hist}</div>
-        </div>
-        <span style={{ marginLeft: 'auto' }}><RelChip value={a.reliability} label={t.mgReliability} /></span>
+        {profile ? (
+          <button
+            type="button"
+            className="erik-row-hover"
+            onClick={() => { close(); navigate(profile); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, marginLeft: -8, padding: '8px', border: 'none', borderRadius: 'var(--r-m)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+          >
+            {head}
+            <Icon name="chevronRight" size={16} stroke={1.7} />
+          </button>
+        ) : head}
+        <span style={{ flex: 'none' }}><RelChip value={a.reliability} label={t.mgReliability} /></span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--ink-2)', marginBottom: 16 }}>

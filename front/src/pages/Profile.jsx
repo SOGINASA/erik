@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useUiStore } from '../store/useUiStore';
@@ -14,6 +14,7 @@ export default function Profile() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const { id } = useParams();
+  const navigate = useNavigate();
   const me = usePlatformStore((s) => s.me);
   const badges = usePlatformStore((s) => s.badges);
   const openSheet = useUiStore((s) => s.openSheet);
@@ -112,15 +113,34 @@ export default function Profile() {
           <EmptyState icon="calendar" title={isRu ? 'Пока нет участий' : 'Әзірге қатысу жоқ'} sub={isRu ? 'Запишитесь на сбор — он появится здесь.' : 'Жиынға тіркеліңіз — ол осында пайда болады.'} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {history.map((h, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 4px', borderBottom: '1px solid var(--line)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{h.t}</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{h.d}</div>
-                </div>
-                <span style={{ flex: 'none', height: 22, padding: '0 9px', display: 'flex', alignItems: 'center', borderRadius: 999, fontSize: 11, background: h.came ? 'var(--yard-soft)' : '#EEF0EC', color: h.came ? 'var(--yard)' : 'var(--ink-2)' }}>{h.came ? (isRu ? 'пришёл' : 'келді') : (isRu ? 'пропустил' : 'келмеді')}</span>
-              </div>
-            ))}
+            {history.map((h, i) => {
+              // Прошлый сбор открывается со своей страницы — история перестаёт быть
+              // тупиком. У удалённых сборов id нет (и у демо-истории тоже): строка
+              // остаётся обычной, вести её некуда.
+              const rowInner = (
+                <>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{h.t}</div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{h.d}</div>
+                  </div>
+                  <span style={{ flex: 'none', height: 22, padding: '0 9px', display: 'flex', alignItems: 'center', borderRadius: 999, fontSize: 11, background: h.came ? 'var(--yard-soft)' : '#EEF0EC', color: h.came ? 'var(--yard)' : 'var(--ink-2)' }}>{h.came ? (isRu ? 'пришёл' : 'келді') : (isRu ? 'пропустил' : 'келмеді')}</span>
+                </>
+              );
+              const base = { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 4px', borderBottom: '1px solid var(--line)' };
+              return h.id ? (
+                <button
+                  key={i}
+                  type="button"
+                  className="erik-row-hover"
+                  onClick={() => navigate(`/e/${h.id}`)}
+                  style={{ ...base, width: '100%', border: 'none', borderBottom: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  {rowInner}
+                </button>
+              ) : (
+                <div key={i} style={base}>{rowInner}</div>
+              );
+            })}
           </div>
         )}
 

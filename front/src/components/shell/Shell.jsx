@@ -145,6 +145,13 @@ function Sidebar({ route }) {
         {role === 'org' && (
           <NavBtn icon="users" label={t.myOrgNav} active={route === 'manageOrg'} onClick={() => go('/manage/org', 'manageOrg')} />
         )}
+        {/* Профиль обычным пунктом навигации, как в мобильном MoreSheet. Единственным
+            входом на десктопе был аватар в подвале — между «На главную» и «Выйти» он
+            читается как блок аккаунта, а не как «мой профиль», и его не находили.
+            Аватар остаётся: он ведёт туда же, дублирование тут дешевле пропажи. */}
+        {loggedIn && (
+          <NavBtn icon="user" label={t.navProfile} active={route === 'profile'} onClick={() => go('/u/me', 'profile')} />
+        )}
         <NavBtn icon="message" label={t.navMessages} active={route === 'messages' || route === 'convo'} onClick={() => go('/messages', 'messages')} />
         <NavBtn icon="bell" label={t.navNotif} active={route === 'notifications'} onClick={() => go('/notifications', 'notifications')} badge={unread} />
         <NavBtn icon="trophy" label={t.navLeader} active={route === 'leaderboard'} onClick={() => go('/leaderboard', 'leaderboard')} />
