@@ -26,8 +26,6 @@ const plural = (n, forms) => {
 
 // Отображаемое имя: полное имя → ник → email.
 const nameOf = (u) => u.full_name || u.nickname || u.email || '—';
-// Ключ роли для фильтра/подсчёта: админ — отдельно, иначе поле role.
-const roleKey = (u) => (u.user_type === 'admin' ? 'admin' : u.role);
 
 const HEAD = [
   { label: 'Пользователь' },
@@ -49,21 +47,26 @@ export default function AdminUsers() {
 
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({});
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Загрузка с сервера. Поиск/пагинация — на бэкенде; ввод дебаунсим ~300мс.
+  // Загрузка с сервера. Поиск, ФИЛЬТР ПО РОЛИ и пагинация — на бэкенде; ввод дебаунсим ~300мс.
+  // Роль ушла на сервер вместе со счётчиками: список пагинируется по 20 из ~90, и фильтровать
+  // на клиенте значило фильтровать одну страницу — единственный координатор лежит на пятой,
+  // поэтому чип показывал 0, а фильтр по нему — «Никого не нашли».
   useEffect(() => {
     let cancelled = false;
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await api.adminUsers(page, query.trim());
+        const res = await api.adminUsers(page, query.trim(), role);
         if (cancelled) return;
         setUsers(Array.isArray(res?.users) ? res.users : []);
         setTotal(res?.total ?? 0);
         setPages(res?.pages ?? 1);
+        if (res?.counts) setCounts(res.counts);
       } catch (_) {
         // при ошибке остаёмся на прежнем списке — не падаем
       } finally {
@@ -74,32 +77,32 @@ export default function AdminUsers() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, page]);
+  }, [query, page, role]);
 
-  // Ввод поиска → сбрасываем на первую страницу (api.adminUsers(1, query)).
+  // Ввод поиска → сбрасываем на первую страницу (api.adminUsers(1, query, role)).
   const onSearch = (e) => {
     setQuery(e.target.value);
     setPage(1);
   };
 
-  // Счётчики чипов — по реальным данным загруженной страницы.
-  const counts = { vol: 0, coord: 0, org: 0 };
-  users.forEach((u) => {
-    const k = roleKey(u);
-    if (counts[k] != null) counts[k] += 1;
-  });
+  // Смена роли тоже сбрасывает страницу: на «Координаторах» пятой страницы не существует.
+  const onRole = (value) => {
+    setRole(value);
+    setPage(1);
+  };
 
+  // Счётчики чипов приходят с сервера по всей выборке поиска (не по текущей странице).
   const chips = [
-    { value: 'all', label: 'Все', count: users.length },
-    { value: 'vol', label: 'Волонтёры', count: counts.vol },
-    { value: 'coord', label: 'Координаторы', count: counts.coord },
-    { value: 'org', label: 'НКО', count: counts.org },
+    { value: 'all', label: 'Все', count: counts.all ?? total },
+    { value: 'vol', label: 'Волонтёры', count: counts.vol ?? 0 },
+    { value: 'coord', label: 'Координаторы', count: counts.coord ?? 0 },
+    { value: 'org', label: 'НКО', count: counts.org ?? 0 },
+    { value: 'admin', label: 'Админы', count: counts.admin ?? 0 },
   ];
 
-  // Фильтр по роли — мгновенный, поверх серверных данных.
-  const filtered = role === 'all' ? users : users.filter((u) => roleKey(u) === role);
-  // Счётчик: всего с сервера (по текущему поиску), либо число видимых при фильтре роли.
-  const shown = role === 'all' ? total : filtered.length;
+  // Список уже отфильтрован сервером; total — размер выборки с учётом роли.
+  const filtered = users;
+  const shown = total;
 
   // Блокировка/разблокировка — оптимистично, с откатом при ошибке.
   const setActive = async (u, active) => {
@@ -119,7 +122,7 @@ export default function AdminUsers() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <AdminSearch value={query} onChange={onSearch} placeholder="Поиск по имени или email" />
         <div style={{ flex: 1, minWidth: 160 }}>
-          <FilterChips options={chips} value={role} onChange={setRole} />
+          <FilterChips options={chips} value={role} onChange={onRole} />
         </div>
         <span style={{ flex: 'none', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           {shown} {plural(shown, ['пользователь', 'пользователя', 'пользователей'])}

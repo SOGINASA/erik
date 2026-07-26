@@ -1,8 +1,32 @@
+import sqlite3
+
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
 
 db = SQLAlchemy()
+
+
+@event.listens_for(Engine, 'connect')
+def _sqlite_unicode_lower(dbapi_connection, _record):
+    """Делает SQLite'овский lower() юникодным.
+
+    Встроенный lower() в SQLite ASCII-only: 'Асхат' он не меняет. Из-за этого поиск
+    в админке по русскому имени (db.func.lower(User.full_name).like('%асхат%'),
+    routes/admin.py) не находил НИЧЕГО — при том что по email и нику работал, там
+    ASCII. То же касается сравнения ников в routes/auth.py.
+
+    Подменяем функцию питоновской: она знает Unicode. Правится ровно один слой,
+    запросы остаются переносимыми — в Postgres lower() юникодный и сам, а слушатель
+    там просто не сработает. deterministic=True — чтобы функция годилась и внутри
+    индексов/CHECK, иначе SQLite её там запретит.
+    """
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        dbapi_connection.create_function(
+            'lower', 1, lambda s: s.lower() if isinstance(s, str) else s,
+            deterministic=True)
 
 
 def _now():

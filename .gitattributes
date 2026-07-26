@@ -1,0 +1,9 @@
+# Скрипты и Dockerfile исполняются в Linux-контейнере — всегда LF, независимо от ОС
+# разработчика. При core.autocrlf=true (дефолт git на Windows) checkout отдал бы
+# рабочей копии CRLF, docker build забрал бы её как есть, и контейнер упал бы на
+# старте: `#!/bin/sh\r` — это несуществующий интерпретатор, а ошибка выглядит как
+# «exec /entrypoint.sh: no such file or directory» и на переносы строк не намекает.
+# Особенно важно для backend/entrypoint.sh: он накатывает миграции перед gunicorn.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf

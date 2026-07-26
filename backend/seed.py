@@ -257,10 +257,19 @@ def seed_demo(reset=False):
             db.session.add(Badge(id=bid, label_ru=ru, label_kz=kz, glyph=glyph))
     db.session.commit()
 
+    # У ОБОИХ админов role='vol'. Админство живёт в user_type, а role — это продуктовая
+    # роль в приложении, и ставить админу 'org' или 'coord' значит подмешать ему чужой
+    # кабинет: сайдбар нарисует «Создать помощь» и «Моя НКО» (Shell.jsx) организации,
+    # которой у него нет, а штаб координатора откроется пустым. При 'vol' навигация
+    # админа чистая — обычное приложение плюс пункт «Админка», — потому что
+    # волонтёрские пункты и так скрыты под !isAdmin.
+    ADMIN_ROLE = 'vol'
+
     # админ-АККАУНТ (email/пароль) — чтобы работал вход администратора через ФОРМУ логина.
     # Демо-креды: admin@erik.kz / admin123. В проде — flask create-admin с уникальным паролем.
     if not User.query.filter_by(email='admin@erik.kz').first():
         admin_acc = User(email='admin@erik.kz', full_name='Администратор erik',
+                         role=ADMIN_ROLE, city_id='ast',
                          user_type='admin', is_active=True, is_verified=True)
         admin_acc.set_password('admin123')
         db.session.add(admin_acc)
@@ -270,7 +279,7 @@ def seed_demo(reset=False):
     # СЮДА. demo-coord теперь обычный координатор (без доступа к модерации).
     if not User.query.filter_by(device_id='demo-admin').first():
         db.session.add(User(device_id='demo-admin', full_name='Администратор erik',
-                            role='org', city_id='ast', user_type='admin', is_active=True))
+                            role=ADMIN_ROLE, city_id='ast', user_type='admin', is_active=True))
         db.session.commit()
 
     if Gathering.query.filter_by(code='PARK18').first():
@@ -375,14 +384,22 @@ def seed_demo(reset=False):
     # формула». Здесь появляется история, на которой считается бэктест.
     _seed_history(coord)
 
-    # демо-волонтёр (demo-v0) записан на пару событий ленты — чтобы «Мои мероприятия»
-    # были не пустыми при входе как «Волонтёр».
-    vol = User.query.filter_by(device_id='demo-v0').first()
-    if vol is not None:
-        for code, ans in [('ELD19', 'yes'), ('PAW20', 'maybe'), ('BLD21', 'yes')]:
+    # Чужие RSVP демо-личностей — чтобы «Мои мероприятия» не были пустыми.
+    # Координатор записан НАРАВНЕ с волонтёром и именно на ЧУЖИЕ сборы (НКО-шные, не
+    # свои): роль в erik это прогрессия, а не режим — получив coord, человек не
+    # перестаёт ходить волонтёром. Без этих строк экран координатора выглядел бы
+    # пустым, и починенный пункт меню читался бы как всё ещё сломанный.
+    for dev, rsvps in (
+        ('demo-v0', [('ELD19', 'yes'), ('PAW20', 'maybe'), ('BLD21', 'yes')]),
+        ('demo-coord', [('TRE25', 'yes'), ('BLD21', 'maybe')]),
+    ):
+        u = User.query.filter_by(device_id=dev).first()
+        if u is None:
+            continue
+        for code, ans in rsvps:
             gv = Gathering.query.filter_by(code=code).first()
-            if gv and not Participant.query.filter_by(gathering_id=gv.id, user_id=vol.id).first():
-                db.session.add(Participant(gathering_id=gv.id, user_id=vol.id, name=vol.full_name,
+            if gv and not Participant.query.filter_by(gathering_id=gv.id, user_id=u.id).first():
+                db.session.add(Participant(gathering_id=gv.id, user_id=u.id, name=u.full_name,
                                            answer=ans, answered_at=datetime.now(timezone.utc)))
         db.session.commit()
 

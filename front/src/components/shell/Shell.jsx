@@ -128,7 +128,15 @@ function Sidebar({ route }) {
       <nav style={{ display: 'flex', flexDirection: 'column', gap: M.navGap }}>
         <NavBtn icon="feed" label={t.navFeed} active={route === 'feed'} onClick={() => go('/feed', 'feed')} />
         <NavBtn icon="map" label={t.navMap} active={route === 'map'} onClick={() => go('/map', 'map')} />
-        {loggedIn && role === 'vol' && !isAdmin && (
+        {/* «Мои мероприятия» (свои RSVP) — ЛЮБОМУ вошедшему, без фильтра по роли.
+            Роль в erik это прогрессия (vol → coord → org), а не режим: координатор
+            не перестаёт записываться на чужие сборы, а НКО и админ тем более. Под
+            role==='vol' && !isAdmin пункт пропадал у всех, кроме чистого волонтёра,
+            и своих записей было не найти вообще — при том что и гейт роута
+            ('myEvents' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES), и бэкенд
+            (/api/me/events под @profiled_required, без проверки роли) их пускают.
+            Меню было строже гейта — та же ошибка, что когда-то с «Моими сборами». */}
+        {loggedIn && (
           <NavBtn icon="check" label={isRu ? 'Мои мероприятия' : 'Менің іс-шараларым'} active={route === 'myEvents'} onClick={() => go('/my-events', 'myEvents')} />
         )}
         {isOrganizer && (
@@ -137,8 +145,8 @@ function Sidebar({ route }) {
         {/* «Мои сборы» — любому вошедшему (роут 'me' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES),
             как в мобильном MoreSheet. Раньше пункт был только у организаторов, и волонтёр на
             десктопе не имел ни одной точки входа к созданию сбора (пустой /me ведёт на /new →
-            бэк повышает vol→coord). !isAdmin НЕ ставим: demo-coord имеет userType=admin, и
-            под этим условием он бы ПОТЕРЯЛ «Мои сборы», которые видел раньше. */}
+            бэк повышает vol→coord). !isAdmin НЕ ставим сознательно: у админа role='vol'
+            (seed.py, ADMIN_ROLE), и под этим условием он потерял бы «Мои сборы» вообще. */}
         {loggedIn && (
           <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
         )}

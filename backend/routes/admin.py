@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
-from models import db, User, Org, Report, Gathering, CharityRequest, Follow
+from models import db, User, Org, Report, Gathering, CharityRequest, Follow, USER_ROLES
 from utils.decorators import admin_required
 from utils.serializers import serialize_org
 
@@ -12,16 +12,31 @@ admin_bp = Blueprint('admin', __name__)
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def list_users():
-    """Список пользователей с пагинацией и поиском"""
-    page = int(request.args.get('page', 1))
-    per_page = min(int(request.args.get('per_page', 20)), 100)
+    """Список пользователей: серверные поиск, фильтр по роли (?role=) и пагинация.
+
+    Роль фильтруется и СЧИТАЕТСЯ на сервере намеренно. Раньше и то и другое делал
+    клиент по одной загруженной странице (20 из 91): единственный координатор лежит
+    на пятой странице, поэтому чип показывал «Координаторы 0», а фильтр по нему —
+    «Никого не нашли». Со стороны это читалось как «у координаторов пропала роль».
+
+    'admin' — отдельное значение фильтра: админство живёт в user_type, а не в
+    User.role, и админ не должен попадать в свою продуктовую роль вторым экземпляром.
+    """
+    def _int(name, default):
+        try:
+            return max(1, int(request.args.get(name, default)))
+        except (TypeError, ValueError):
+            return default            # ?page=abc — это не повод отдавать 500
+
+    page = _int('page', 1)
+    per_page = min(_int('per_page', 20), 100)
     search = request.args.get('search', '').strip()
+    role = (request.args.get('role') or 'all').strip()
 
-    query = User.query.order_by(User.created_at.desc())
-
+    base = User.query
     if search:
         like = f'%{search.lower()}%'
-        query = query.filter(
+        base = base.filter(
             db.or_(
                 db.func.lower(User.email).like(like),
                 db.func.lower(User.nickname).like(like),
@@ -29,13 +44,32 @@ def list_users():
             )
         )
 
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    # user_type у device-строк теоретически бывает NULL, а `NULL != 'admin'` в SQL
+    # даёт NULL (строка выпадает из выдачи) — поэтому проверяем обе ветки явно.
+    not_admin = db.or_(User.user_type.is_(None), User.user_type != 'admin')
+
+    # Счётчики чипов — по всей выборке поиска, ДО фильтра по роли: иначе выбранный
+    # чип обнулял бы все остальные.
+    counts = {'all': base.count(),
+              'admin': base.filter(User.user_type == 'admin').count()}
+    for key in USER_ROLES:
+        counts[key] = base.filter(User.role == key, not_admin).count()
+
+    query = base
+    if role == 'admin':
+        query = query.filter(User.user_type == 'admin')
+    elif role in USER_ROLES:
+        query = query.filter(User.role == role, not_admin)
+
+    pagination = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False)
 
     return jsonify({
         'users': [u.to_dict(include_sensitive=True) for u in pagination.items],
         'total': pagination.total,
         'page': pagination.page,
         'pages': pagination.pages,
+        'counts': counts,
     })
 
 

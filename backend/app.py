@@ -15,9 +15,31 @@ from werkzeug.exceptions import HTTPException
 from config import get_config, DATABASE_DIR, validate_config
 from models import db, User
 
+from utils.schema import SCHEMA_HEAD, detect_revision, schema_lag
+
 # Инициализация расширений
 migrate = Migrate()
 jwt = JWTManager()
+
+
+def _warn_if_schema_behind(app):
+    """Громко предупредить, что БД отстала от моделей.
+
+    create_all() добавляет недостающие ТАБЛИЦЫ, но не КОЛОНКИ в существующие. БД от
+    прошлой версии остаётся наполовину обновлённой — новая таблица есть, новой колонки
+    нет — и первый же SELECT по users падает 500. Молча это проходить не должно:
+    симптом выглядит как «сломалась вся система юзеров», а чинится одной командой.
+    """
+    from sqlalchemy import inspect
+
+    rev = schema_lag(inspect(db.engine))
+    if rev is None:
+        return
+    app.logger.warning(
+        '[db] схема БД отстала: соответствует %s, нужна %s. '
+        'db.create_all() колонки в существующие таблицы не добавляет — '
+        'запросы к users/participants будут падать. Почините: flask db-sync',
+        rev, SCHEMA_HEAD)
 
 
 def create_app(config_object=None):
@@ -35,11 +57,12 @@ def create_app(config_object=None):
     jwt.init_app(app)
 
     # Для локальной разработки/демо схема поднимается create_all() (zero-config).
-    # В проде используйте миграции: `flask db upgrade` и запуск с SKIP_DB_CREATE=1.
+    # В проде используйте миграции: `flask db-sync` и запуск с SKIP_DB_CREATE=1.
     # Флаг также нужен при генерации миграций (autogenerate против пустой БД).
     if os.environ.get('SKIP_DB_CREATE') != '1':
         with app.app_context():
             db.create_all()
+            _warn_if_schema_behind(app)
 
     # Регистрация блюпринтов
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
@@ -129,6 +152,37 @@ def init_db():
     print('Инициализация базы данных...')
     db.create_all()
     print('База данных инициализирована!')
+
+
+@app.cli.command('db-sync')
+def db_sync():
+    """Привести схему БД к head. Единая точка входа вместо `flask db upgrade`.
+
+    Безопасна для всех трёх состояний, в которых БД этого проекта реально бывает:
+      1) пустая: прогоняем всю цепочку миграций;
+      2) под alembic: обычный upgrade;
+      3) поднята create_all() без alembic_version: штампуем ревизией, которой схема
+         ФАКТИЧЕСКИ соответствует (_detect_revision), и докатываем остальное. Голый
+         upgrade тут упал бы на «table users already exists».
+
+    Текст сообщений — ASCII-safe: команду зовёт и Windows-консоль в cp1251, где
+    печать стрелок и прочей типографики роняет click с UnicodeEncodeError.
+    """
+    from sqlalchemy import inspect
+    from flask_migrate import stamp, upgrade
+
+    insp = inspect(db.engine)
+    if insp.get_table_names() and not insp.has_table('alembic_version'):
+        rev = detect_revision(insp)
+        if rev is None:
+            raise click.ClickException(
+                'БД непустая, но не похожа на схему erik — штамповать нечем. '
+                'Проверьте DATABASE_URL или начните с пустой БД.')
+        click.echo(f'БД без alembic_version: штампую {rev} по фактической схеме')
+        stamp(revision=rev)
+
+    upgrade()
+    click.echo('Схема БД на head.')
 
 
 @app.cli.command('seed-demo')

@@ -143,7 +143,7 @@ export default function Login() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {PERSONAS.map((p) => (
               <button
-                key={p.role}
+                key={p.device}
                 type="button"
                 className="erik-btn erik-lift"
                 onClick={() => quick(p)}

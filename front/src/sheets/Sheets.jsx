@@ -187,7 +187,9 @@ function MoreSheet() {
             Пряча его за ролью, меню было строже гейта: волонтёр без сборов не видел
             экрана, который его же и зовёт создать первый. Гостя развернёт goClose. */}
         {item('list', t.myGatherings, () => goClose('/me', 'me'))}
-        {loggedIn && role === 'vol' && !isAdmin && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
+        {/* Свои RSVP — любому вошедшему, без фильтра по роли (см. Shell.jsx, тот же пункт):
+            координатор и НКО записываются на чужие сборы наравне с волонтёром. */}
+        {loggedIn && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
         {item('user', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}

@@ -188,7 +188,9 @@ export const api = {
   orgBroadcast: (body) => request('/me/org/broadcast', { method: 'POST', body }), // {title, textRu, textKz}
 
   // ── админ-панель (под уже существующие и новые роуты) ──
-  adminUsers: (page = 1, search = '') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}`),
+  // role: all|vol|coord|org|admin — фильтр серверный (список пагинируется по 20,
+  // клиентский фильтр видел бы только текущую страницу). Ответ несёт counts по всей выборке.
+  adminUsers: (page = 1, search = '', role = 'all') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}`),
   updateUser: (id, patch) => request(`/admin/users/${id}`, { method: 'PATCH', body: patch }),
   adminStats: () => request('/admin/stats'),
   adminOrgs: (status = 'all') => request(`/admin/orgs?status=${status}`),
