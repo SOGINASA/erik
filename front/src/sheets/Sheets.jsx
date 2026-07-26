@@ -1106,16 +1106,25 @@ function RolesSheet() {
   const theme = draft ? (payload && payload.theme) : g.theme;
   const presets = rolePresets(theme);
 
-  const sync = (next) => { setRows(next); if (draft) setDraftRoles(next); };
+  // В store (черновик для createGathering + сводка на форме) кладём только
+  // заполненные роли: пустая строка «Своя роль» живёт лишь в локальном rows,
+  // пока пользователь не введёт название.
+  const sync = (next) => { setRows(next); if (draft) setDraftRoles(next.filter((r) => (r.titleRu || '').trim())); };
   const patch = (i, p) => sync(rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
   const remove = (i) => sync(rows.filter((_, idx) => idx !== i));
   const cap = (v) => Math.max(0, Math.min(99, v));
 
-  const addRow = (row) => {
+  const capReached = () => {
     if (rows.length >= ROLES_MAX) {
       showToast(isRu ? `Больше ${ROLES_MAX} ролей на один сбор не нужно` : `Бір жиынға ${ROLES_MAX} рөлден артық қажет емес`);
-      return;
+      return true;
     }
+    return false;
+  };
+
+  // Пресеты: приходят с готовым названием, дедуплицируем и не даём пустых.
+  const addRow = (row) => {
+    if (capReached()) return;
     const t = (row.titleRu || '').trim();
     if (!t) return;
     // Повторный тап по чипу пресета — не ошибка ввода: молча игнорируем дубль,
@@ -1124,11 +1133,20 @@ function RolesSheet() {
     sync([...rows, row]);
   };
 
+  // «Своя роль»: добавляет ПУСТУЮ редактируемую строку в обход проверки на пустое
+  // название (та нужна только пресетам). Дедуп здесь не применяем — пустых строк
+  // можно несколько, пользователь заполнит их сам.
+  const addBlank = () => {
+    if (capReached()) return;
+    sync([...rows, { titleRu: '', titleKz: '', capacity: 1, newbie: false }]);
+  };
+
   const save = async () => {
     if (busy) return;
     if (draft) { close(); return; }          // черновик уедет вместе с созданием сбора
     setBusy(true);
-    const r = await saveRoles(rows);
+    // Незаполненные строки «Своя роль» не отправляем — бэк ждёт название.
+    const r = await saveRoles(rows.filter((row) => (row.titleRu || '').trim()));
     setBusy(false);
     if (r.ok) { close(); return; }
     // 409 с conflicts — роль занята: спрашиваем подтверждение отдельной шторкой.
@@ -1143,7 +1161,7 @@ function RolesSheet() {
     }
   };
 
-  const totalSlots = rows.reduce((n, r) => n + (Number(r.capacity) || 0), 0);
+  const totalSlots = rows.reduce((n, r) => n + ((r.titleRu || '').trim() ? (Number(r.capacity) || 0) : 0), 0);
   const needed = draft ? (payload && payload.needed) : g.needed;
 
   return (
@@ -1229,7 +1247,7 @@ function RolesSheet() {
         variant="secondary"
         icon="plus"
         style={{ marginBottom: 14 }}
-        onClick={() => addRow({ titleRu: '', titleKz: '', capacity: 1, newbie: false })}
+        onClick={addBlank}
         disabled={rows.length >= ROLES_MAX}
       >
         {isRu ? 'Своя роль' : 'Өз рөлі'}
