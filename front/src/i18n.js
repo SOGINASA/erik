@@ -10,7 +10,7 @@ export const DICT = {
     fOrg: 'От имени НКО', fOrgPersonal: 'Личный сбор (без организации)', fCover: 'Обложка', fCoverPh: 'Ссылка на картинку (необязательно)', createCta: 'Создать сбор',
     codeTitle: 'Введите код', open: 'Открыть',
     shareTitle: 'Сбор создан', shareCodeLabel: 'Код сбора', shareChatLabel: 'Готовый текст для чата', copyText: 'Скопировать текст', share: 'Поделиться', openAsCoord: 'Открыть сбор',
-    ansYes: 'Приду', ansMaybe: 'Пока не знаю', ansNo: 'Не в этот раз', youAnswered: 'Вы ответили', change: 'изменить',
+    ansYes: 'Приду', ansMaybe: 'Пока не знаю', ansNo: 'Отказаться', youAnswered: 'Вы ответили', change: 'изменить',
     openMaps: 'Открыть в картах', guestAddrTitle: 'Адрес',
     maybeReassure: 'Напомним за день до сбора. Ответ можно поменять в любой момент.',
     forecastLabel: 'Придёт по прогнозу', barComing: 'ответили «приду»', barMaybe: 'под вопросом', barOut: 'отказались',
@@ -112,7 +112,7 @@ export const DICT = {
     fOrg: 'ҮЕҰ атынан', fOrgPersonal: 'Жеке жиын (ұйымсыз)', fCover: 'Мұқаба', fCoverPh: 'Сурет сілтемесі (міндетті емес)', createCta: 'Жиын құру',
     codeTitle: 'Кодты енгізіңіз', open: 'Ашу',
     shareTitle: 'Жиын құрылды', shareCodeLabel: 'Жиын коды', shareChatLabel: 'Чатқа дайын мәтін', copyText: 'Мәтінді көшіру', share: 'Бөлісу', openAsCoord: 'Жиынды ашу',
-    ansYes: 'Келемін', ansMaybe: 'Әзірге білмеймін', ansNo: 'Бұл жолы емес', youAnswered: 'Сіз жауап бердіңіз', change: 'өзгерту',
+    ansYes: 'Келемін', ansMaybe: 'Әзірге білмеймін', ansNo: 'Бас тарту', youAnswered: 'Сіз жауап бердіңіз', change: 'өзгерту',
     openMaps: 'Картадан ашу', guestAddrTitle: 'Мекенжай',
     maybeReassure: 'Жиынға бір күн қалғанда еске саламыз. Жауапты кез келген уақытта өзгертуге болады.',
     // barComing раньше было «келеді» — ровно как statusYes, и на казахском факт и
