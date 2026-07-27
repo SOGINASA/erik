@@ -6,6 +6,7 @@ import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
+import { copyToClipboard, shareOrCopy, shareUrlFor } from '../lib/share';
 import { fromServer, sourceLabel } from '../lib/forecastView';
 import { THEMES, EVENTS, avatarOf, initialOf } from '../lib/data';
 import { profileHref } from '../lib/nav';
@@ -176,6 +177,24 @@ export default function Event() {
 
   const openRegister = () => (name ? openSheet('register', ev.id) : openSheet('auth'));
 
+  // Ссылка на событие — ровно та же публичная /g/:code, что раздаёт координатор со своего
+  // дашборда. Волонтёр зовёт своих чаще организатора, а скопировать ему было нечего: /e/:id
+  // из адресной строки лежит за входом (App.jsx: /g/:code — единственный роут вне гейта), и
+  // друг по такой ссылке упирался бы в логин вместо кнопки «Приду».
+  // code приезжает в карточке события (serialize_event_card → _base_gathering); если его
+  // почему-то нет — блока нет, кнопка «скопировать» без ссылки хуже её отсутствия.
+  // Демо-событие (лента не доехала и осталась моком EVENTS) исключаем по той же причине,
+  // что и жалобу ниже: его 'PARK18' на сервере не существует, и человек разослал бы друзьям
+  // ссылку на «сбор не найден». Событие, догруженное по id (fetched), реально всегда.
+  const isDemoEvent = ev !== fetched && feedGatheringId(ev.id, events) === null;
+  const link = ev.code && !isDemoEvent ? shareUrlFor(ev.code) : null;
+  const copiedToast = () => showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді');
+  const doCopy = async () => { await copyToClipboard(link); copiedToast(); };
+  const doShare = async () => {
+    const r = await shareOrCopy({ title, text: `«${title}» — ${when}. ${place}`, url: link });
+    if (r === 'copied') copiedToast();
+  };
+
   // Иконка строки-детали (line-стиль, цвет var(--ink-3)) — как в дизайне.
   const rowIcon = (children) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
@@ -267,6 +286,25 @@ export default function Event() {
           >
             {t.register}
           </button>
+        )}
+
+        {/* Ссылка на событие — та же карточка, что у координатора (CoordGathering): код,
+            «Скопировать» и системный «Поделиться». Своё событие показывает её и здесь:
+            человек пришёл на страницу события, а не на дашборд, и гонять его туда за
+            ссылкой незачем. */}
+        {link && (
+          <div style={{ marginTop: 16, padding: '16px 18px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, letterSpacing: '.02em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 4 }}>{t.linkLabel}</div>
+              <div style={{ fontFamily: 'var(--fm)', fontWeight: 600, fontSize: 17, letterSpacing: '.08em', color: 'var(--ink)' }}>{ev.code}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+              <button type="button" className="erik-btn erik-btn-secondary" onClick={doCopy} style={{ height: 40, padding: '0 14px', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.copy}</button>
+              <button type="button" className="erik-btn erik-btn-secondary" onClick={doShare} aria-label={t.share} style={{ width: 40, height: 40, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>
+                <Icon name="share" size={17} stroke={1.6} />
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Кто ещё идёт. Виден только записавшимся — это же правило и на бэке
