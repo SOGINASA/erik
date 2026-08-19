@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
+import { sourceLabel } from '../lib/forecastView';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useIsDesktop } from '../lib/nav';
@@ -47,6 +48,26 @@ export default function CheckIn() {
   const total = pool.length;
   const markedCount = pool.filter((p) => marks[p.id]).length;
 
+  // Третье число на экране отметки: сколько ждала модель. Сверху факт («отмечено 12 / 38»),
+  // под ним предсказание — прогноз и его проверка реальностью стоят в одном кадре.
+  // forecastView() при пустом serverForecast собирает НОВЫЙ объект-фолбэк на каждый вызов,
+  // а zustand v5 сравнивает снапшот по ссылке (useSyncExternalStore) — подписка самой
+  // селектор-функцией дала бы бесконечный ререндер. Подписываемся на входы, вид собираем в useMemo.
+  const serverForecast = useGatheringStore((s) => s.serverForecast);
+  // deps перечислены руками: forecastView() читает стор через getState(), и линтер не видит,
+  // что её настоящие входы — это serverForecast и gathering.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => useGatheringStore.getState().forecastView(), [serverForecast, g]);
+  // Нет прогноза (view === null или число не приехало) → третьей строки просто нет. Выдумывать нельзя.
+  const expected = view && Number.isFinite(view.expected) ? Math.round(view.expected) : null;
+  // «модель ждала» — только когда число действительно от модели. Формула и демо
+  // подписываются своими словами: молча выдавать оценку за модель запрещено.
+  const expLabel = view && view.source === 'model' ? t.fcCheckExpected : (isRu ? 'прогноз ожидал' : 'болжам күткен');
+  // Источник подписан всегда. Офлайн-кэш добавляет пометку «прогноз из кэша» К источнику,
+  // а не вместо него: sourceLabel при stale возвращает только пометку и источник теряется.
+  const srcBase = view ? sourceLabel({ ...view, stale: false }, t) : null;
+  const srcLabel = view && view.stale && srcBase ? `${srcBase} · ${t.fcStale}` : srcBase;
+
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'rgba(244,245,241,.9)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid var(--line)' }}>
@@ -55,9 +76,21 @@ export default function CheckIn() {
             <button type="button" className="erik-row-hover" onClick={() => navigate(`/c/${g.id}`)} aria-label="Назад" style={{ width: 40, height: 40, marginLeft: -8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink)', cursor: 'pointer', borderRadius: 'var(--r-s)' }}>
               <Icon name="back" size={20} />
             </button>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 26, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' }}>{markedCount} / {total}</span>
-              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{t.markedLabel}</span>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--fd)', fontWeight: 700, fontSize: 26, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' }}>{markedCount} / {total}</span>
+                <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{t.markedLabel}</span>
+              </div>
+              {/* Прогноз — вторым планом и через стрелку, а не через «·» одним кеглем с фактом:
+                  между фактом и предсказанием должен читаться переход, а не пара равных чисел. */}
+              {expected != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap', fontSize: 12, lineHeight: 1.3, color: 'var(--ink-3)' }}>
+                  <span aria-hidden="true">→</span>
+                  <span>{expLabel}</span>
+                  <span style={{ fontFamily: 'var(--fm)', fontWeight: 600, color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums' }}>≈ {expected}</span>
+                  {srcLabel && <span>· {srcLabel}</span>}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 2px 10px', fontSize: 12, color: 'var(--ink-3)' }}>

@@ -10,16 +10,17 @@ from flask_jwt_extended import jwt_required
 
 from models import (
     db, User, Gathering, GatheringCoordinator, Participant, Theme, City, Org,
-    ANSWERS, PRESENCES,
+    ANSWERS, PRESENCES, ORGANIZER_ROLES,
 )
 from services.codes import generate_code
+from services.roles import apply_roles, create_roles, find_role, release_role
 from services.forecast import forecast_payload, finalize_gathering
 from services.context import compute_ctx
 from services.identity import current_user
 from utils.decorators import profiled_required, gathering_owner_required
 from utils.serializers import (
     serialize_gathering_owner, serialize_gathering_card, serialize_participant,
-    serialize_coordinator,
+    serialize_coordinator, serialize_roles,
 )
 
 gatherings_bp = Blueprint('gatherings', __name__)
@@ -99,11 +100,24 @@ def create_gathering():
     + необязательные {theme, cityId, orgId, imageUrl, titleKz, placeKz}.
 
     Device-уровень (имя даётся ЗДЕСЬ, при первом сборе) — поэтому НЕ @profiled_required,
-    иначе новичок без имени не смог бы создать первый сбор.
+    иначе новый организатор без имени не смог бы создать первый сбор.
     """
     user = current_user()
     if user is None or not user.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
+
+    # Создавать сборы может только организатор (coord|org). Границы здесь не было вовсе:
+    # роут молча повышал vol → coord на первом же сборе, и роль «волонтёр», выбранная в
+    # онбординге, ничего не значила — любой записавшийся мог завести своё мероприятие.
+    # Это разные продукты: волонтёр ХОДИТ на сборы, координатор/НКО их проводит, отвечает
+    # за явку и видит ростер с телефонами. Проверяем ДО всех правок (имя, роли, сбор),
+    # чтобы отказ не оставил после себя половину изменений.
+    # Гейт именно серверный: фронт прячет кнопку (front/src/lib/nav.js: ORGANIZER_ROUTES),
+    # но прямой POST мимо интерфейса он не остановит.
+    if user.role not in ORGANIZER_ROLES:
+        return jsonify({'error': 'Создавать сборы могут только организаторы',
+                        'errorKz': 'Жиындарды тек ұйымдастырушылар құра алады'}), 403
+
     data = request.get_json(silent=True) or {}
 
     what = (data.get('what') or data.get('title') or '').strip()
@@ -123,8 +137,6 @@ def create_gathering():
     name = (data.get('name') or '').strip()
     if name and not (user.full_name or '').strip():
         user.full_name = name
-    if user.role == 'vol':
-        user.role = 'coord'
 
     starts_at = _parse_starts_at(data.get('date'), data.get('time'))
     gathering = Gathering(
@@ -143,6 +155,9 @@ def create_gathering():
     db.session.add(gathering)
     db.session.flush()
     db.session.add(GatheringCoordinator(gathering_id=gathering.id, user_id=user.id, role='owner'))
+    # Роли — в ТОЙ ЖЕ транзакции, что и сам сбор. Вторым запросом нельзя: он может не дойти,
+    # а координатор уже уехал с экрана и получил бы сбор без ролей, о которых он не узнает.
+    create_roles(gathering, data.get('roles'))
     db.session.commit()
 
     share_url = f"{current_app.config['SHARE_BASE_URL']}/g/{gathering.code}"
@@ -150,7 +165,10 @@ def create_gathering():
         'id': gathering.id,
         'code': gathering.code,
         'shareUrl': share_url,
-        'role': user.role,   # мог повыситься vol → coord выше; фронту иначе неоткуда узнать до boot()
+        # Роль автором сбора больше не меняется (повышение vol → coord убрано вместе с
+        # самой возможностью волонтёра создать сбор). Поле оставлено: фронт кладёт его
+        # в сессию, и после смены роли в другом месте это дешёвая синхронизация.
+        'role': user.role,
         'gathering': serialize_gathering_owner(gathering),
     }), 201
 
@@ -165,14 +183,23 @@ def get_gathering(id):
 @gatherings_bp.route('/<int:id>/forecast', methods=['GET'])
 @gathering_owner_required
 def get_forecast(id):
-    return jsonify(forecast_payload(g.gathering))
+    """Прогноз явки. Источник — обученная модель; формула включается, только если
+    модель недоступна, и тогда это видно в поле source.
+
+    ?source=formula принудительно считает фолбэком — нужно, чтобы показать разницу
+    между моделью и формулой на одних и тех же данных, не трогая конфиг сервера.
+    """
+    prefer_ml = request.args.get('source') != 'formula'
+    return jsonify(forecast_payload(g.gathering, include_people=True, prefer_ml=prefer_ml))
 
 
 @gatherings_bp.route('/<int:id>/ml-forecast', methods=['GET'])
 @gathering_owner_required
 def get_ml_forecast(id):
-    """ML-прогноз явки (обучаемая модель из ml/). Компаньон аналитического /forecast.
-    Если модель не обучена/недоступна — отдаёт {'available': False, ...}, не 5xx."""
+    """Детализация модели по людям: P(придёт) на каждого участника.
+
+    Форма ответа сохранена ради обратной совместимости. Агрегат теперь приезжает
+    в основном /forecast — здесь остаётся поимённая раскладка."""
     from services.attendance_ml import forecast_gathering
     return jsonify(forecast_gathering(g.gathering))
 
@@ -187,10 +214,20 @@ def poll(id):
     except (ValueError, TypeError):
         since = -1
     rev = gathering.revision or 0
+    from services.forecast import forecast_with_probs
+    f, probs = forecast_with_probs(gathering, include_people=True)
+    probs = probs or {}
+    # roles — в ОБЕ ветки. Состав ролей меняет и со-координатор, а bump() поднимет ревизию:
+    # без ролей в payload коллега получил бы «пустое обновление» и на втором устройстве это
+    # читается как «приложение зависло». Список короткий — дельту по нему не считаем.
+    roles = serialize_roles(gathering)
     if since == rev:
-        return jsonify({'revision': rev, 'changed': [], 'forecast': forecast_payload(gathering)})
-    changed = [serialize_participant(p, coordinator=True) for p in gathering.participants]
-    return jsonify({'revision': rev, 'changed': changed, 'forecast': forecast_payload(gathering)})
+        return jsonify({'revision': rev, 'changed': [], 'forecast': f, 'roles': roles})
+    roles_by_id = {r.id: r for r in gathering.roles}
+    changed = [serialize_participant(p, coordinator=True, p_value=probs.get(p.id),
+                                     roles_by_id=roles_by_id)
+               for p in gathering.participants]
+    return jsonify({'revision': rev, 'changed': changed, 'forecast': f, 'roles': roles})
 
 
 @gatherings_bp.route('/<int:id>/share', methods=['GET'])
@@ -211,7 +248,14 @@ def share(id):
 @gathering_owner_required
 def update_gathering(id):
     """Правка сбора. Помимо {what, where, date, time, needed} принимает
-    {titleKz, placeKz, theme, cityId, orgId, imageUrl}."""
+    {titleKz, placeKz, theme, cityId, orgId, imageUrl}.
+
+    Ключ 'roles' здесь НАМЕРЕННО не обрабатывается — роли правятся только своим ресурсом
+    (PUT /<id>/roles). Причина: SettingsSheet шлёт форму целиком, а семантика этого роута —
+    «ключа нет в теле → поле не трогаем»; массив в неё не ложится (roles:[] не отличить от
+    «удалить все»), и одно «Сохранить» однажды молча снесло бы весь набор вместе с
+    привязками участников. Плюс удаление занятой роли требует подтверждения (force).
+    """
     gathering = g.gathering
     data = request.get_json(silent=True) or {}
 
@@ -284,6 +328,74 @@ def resubmit_gathering(id):
     gathering.bump()
     db.session.commit()
     return jsonify({'gathering': serialize_gathering_owner(gathering)})
+
+
+# ── роли волонтёров на сборе ──
+@gatherings_bp.route('/<int:id>/roles', methods=['GET'])
+@gathering_owner_required
+def list_roles(id):
+    return jsonify({'roles': serialize_roles(g.gathering)})
+
+
+@gatherings_bp.route('/<int:id>/roles', methods=['PUT'])
+@gathering_owner_required
+def put_roles(id):
+    """Заменить НАБОР ролей целиком: {roles:[{id?, titleRu, titleKz?, capacity?, newbie?}], force?}.
+
+    Со своим id — правка, без id — новая роль, отсутствующий id — удаление. Набор маленький
+    и шторка правит его целиком, поэтому CRUD по одной роли не нужен.
+
+    Пускаем и со-координатора (как и весь остальной ростер: он удаляет участников и меняет
+    их ответы). Владельческая привилегия здесь не нужна — удаление занятой роли и так
+    требует явного force, а сам сбор этим роутом не тронуть.
+    """
+    gathering = g.gathering
+    # На завершённом/отклонённом сборе ростер заморожен — роли туда же: finalize уже
+    # посчитал итог, и правка задним числом разошлась бы с ним.
+    if _finalized(gathering):
+        return jsonify({'error': 'Сбор завершён — роли больше не меняются',
+                        'errorKz': 'Жиын аяқталды — рөлдер өзгермейді'}), 409
+
+    data = request.get_json(silent=True) or {}
+    ok, payload, status = apply_roles(gathering, data.get('roles'), force=bool(data.get('force')))
+    if not ok:
+        db.session.rollback()
+        return jsonify(payload), status
+
+    gathering.bump()
+    db.session.commit()
+    return jsonify({'roles': serialize_roles(gathering), 'freed': payload.get('freed', 0)})
+
+
+@gatherings_bp.route('/<int:id>/participants/<int:pid>/role', methods=['PUT'])
+@gathering_owner_required
+def set_participant_role(id, pid):
+    """{roleId | null} — координатор перетасовывает людей по ролям на месте.
+
+    Вместимость МЯГКАЯ: координатор в поле — авторитет, человек уже стоит перед ним. Роль
+    честно нарисуется «3 из 2», а не откажет. Чужую роль всё равно не берём.
+    """
+    if _finalized(g.gathering):
+        return jsonify({'error': 'Сбор завершён — роли больше не меняются'}), 409
+    part = _get_participant(g.gathering, pid)
+    if part is None:
+        return jsonify({'error': 'Участник не найден'}), 404
+    data = request.get_json(silent=True) or {}
+    raw = data.get('roleId')
+    if raw in (None, '', 0):
+        part.role_id = None
+    else:
+        role = find_role(g.gathering, raw)
+        if role is None:
+            return jsonify({'error': 'Роль не найдена на этом сборе'}), 400
+        part.role_id = role.id
+    g.gathering.bump()
+    db.session.commit()
+    return jsonify({
+        'participant': serialize_participant(part, coordinator=True,
+                                             roles_by_id={r.id: r for r in g.gathering.roles}),
+        'roles': serialize_roles(g.gathering),
+    })
 
 
 # ── со-координаторы ──
@@ -386,11 +498,24 @@ def set_participant_answer(id, pid):
     if answer not in ANSWERS:
         return jsonify({'error': 'answer ∈ yes|maybe|no'}), 400
     part.answer = answer
+    # «Не придёт» освобождает место в роли: держать слот за человеком, который уже сказал,
+    # что не будет, значит показывать координатору закрытую роль вместо свободной.
+    if answer == 'no':
+        release_role(part)
+    # Координатору смена роли участника разрешена здесь же — он видит людей глазами и
+    # отвечает за расстановку; переполнение допускаем осознанно (см. pick_role → over).
+    if 'roleId' in data and answer != 'no':
+        role = find_role(g.gathering, data.get('roleId')) if data.get('roleId') else None
+        if data.get('roleId') and role is None:
+            return jsonify({'error': 'Роль не найдена на этом сборе'}), 400
+        part.role_id = role.id if role is not None else None
     g.gathering.bump()
     db.session.commit()
     return jsonify({
-        'participant': serialize_participant(part, coordinator=True),
+        'participant': serialize_participant(part, coordinator=True,
+                                             roles_by_id={r.id: r for r in g.gathering.roles}),
         'counts': _counts(g.gathering),
+        'roles': serialize_roles(g.gathering),
     })
 
 
@@ -419,16 +544,21 @@ def add_guest(id):
     if not name:
         return jsonify({'error': 'Имя обязательно'}), 400
     present = data.get('present', True)
+    # Роль walk-in гостю ставит координатор — вместимость здесь МЯГКАЯ: человек уже стоит
+    # перед ним, отказать «нет мест» физически поздно. Чужую роль всё равно не берём.
+    role = find_role(g.gathering, data.get('roleId')) if data.get('roleId') else None
     part = Participant(
         gathering_id=g.gathering.id, user_id=None, name=name, is_guest=True,
         answer='yes', presence='came' if present else None,
         checked_in_at=datetime.now(timezone.utc) if present else None,
         client_mark_id=data.get('clientMarkId'),
+        role_id=role.id if role is not None else None,
     )
     db.session.add(part)
     g.gathering.bump()
     db.session.commit()
-    return jsonify({'participant': serialize_participant(part, coordinator=True)}), 201
+    return jsonify({'participant': serialize_participant(
+        part, coordinator=True, roles_by_id={r.id: r for r in g.gathering.roles})}), 201
 
 
 @gatherings_bp.route('/<int:id>/participants/<int:pid>/history', methods=['GET'])
@@ -448,11 +578,14 @@ def checkin_pool(id):
     gathering = g.gathering
     pool = [p for p in gathering.participants if p.answer != 'no']
     marked = sum(1 for p in pool if p.presence == 'came')
+    roles_by_id = {r.id: r for r in gathering.roles}
     return jsonify({
         'revision': gathering.revision or 0,
         'total': len(pool),
         'marked': marked,
-        'participants': [serialize_participant(p, coordinator=True) for p in pool],
+        'participants': [serialize_participant(p, coordinator=True, roles_by_id=roles_by_id)
+                         for p in pool],
+        'roles': serialize_roles(gathering),
     })
 
 

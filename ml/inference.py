@@ -31,7 +31,7 @@ import json
 import joblib
 
 from config import MODEL_PATH, METRICS_PATH, EVENT_TYPES, ANSWERS
-from features import features_from_history
+from features import features_from_history, features_frame
 
 
 class AttendancePredictor:
@@ -66,6 +66,30 @@ class AttendancePredictor:
         """
         X = features_from_history(history, event)
         proba = float(self.pipeline.predict_proba(X)[0, 1])
+        return self._result(proba, event)
+
+    def predict_batch(self, items: list[tuple[dict, dict]]) -> list[dict]:
+        """Пакетное предсказание для списка (history, event).
+
+        Собирает ОДНУ матрицу N×M и делает один вызов predict_proba. Результат
+        поэлементно совпадает с [predict(h, e) for h, e in items] — признаки
+        считает та же features.feature_dict_from_history, — но на ростере в
+        45 человек это один проход по пайплайну вместо сорока пяти.
+        """
+        if not items:
+            return []
+        X = features_frame(items)
+        proba = self.pipeline.predict_proba(X)[:, 1]
+        return [self._result(float(p), e) for p, (_h, e) in zip(proba, items)]
+
+    def predict_proba_batch(self, items: list[tuple[dict, dict]]) -> list[float]:
+        """Только вероятности (без человекочитаемой обвязки) — для агрегатов."""
+        if not items:
+            return []
+        return [float(p) for p in self.pipeline.predict_proba(features_frame(items))[:, 1]]
+
+    def _result(self, proba: float, event: dict) -> dict:
+        """Единая форма ответа для одиночного и пакетного предсказания."""
         will = proba >= self.threshold
         return {
             "will_attend": bool(will),
@@ -78,10 +102,6 @@ class AttendancePredictor:
             "answer": event.get("answer"),
             "model": self.model_name,
         }
-
-    def predict_batch(self, items: list[tuple[dict, dict]]) -> list[dict]:
-        """Пакетное предсказание для списка (history, event)."""
-        return [self.predict(h, e) for h, e in items]
 
 
 def _confidence_band(p: float) -> str:

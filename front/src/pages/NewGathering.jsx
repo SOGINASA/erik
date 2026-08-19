@@ -86,6 +86,8 @@ export default function NewGathering() {
   const desktop = useIsDesktop();
   const hasName = !!useSessionStore((s) => s.name);
   const createGathering = useGatheringStore((s) => s.create);
+  const draftRoles = useGatheringStore((s) => s.draftRoles);
+  const resetDraftRoles = useGatheringStore((s) => s.resetDraftRoles);
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
   const isRu = useLang() === 'ru';
@@ -119,6 +121,11 @@ export default function NewGathering() {
   useEffect(() => {
     if (myCityId) setForm((f) => (f.cityId ? f : { ...f, cityId: myCityId }));
   }, [myCityId]);
+
+  // Черновик ролей живёт в сторе, а стор переживает навигацию — без сброса при уходе
+  // следующий сбор унаследовал бы роли брошенной формы (сами поля формы обнуляются).
+  // Шторка ролей монтируется поверх страницы и размонтирования не вызывает.
+  useEffect(() => () => resetDraftRoles(), [resetDraftRoles]);
 
   // Темы — из общего словаря lib/data, а не отдельным api.getThemes(): это ровно тот
   // набор, по которому лента и карта рисуют чипы фильтра (и он совпадает с seed.THEMES).
@@ -201,6 +208,30 @@ export default function NewGathering() {
           <div>
             <FieldLabel>{t.fNeeded}</FieldLabel>
             <Stepper value={form.needed} onDec={() => setForm((f) => ({ ...f, needed: Math.max(1, f.needed - 1) }))} onInc={() => setForm((f) => ({ ...f, needed: Math.min(200, f.needed + 1) }))} />
+          </div>
+          {/* Роли волонтёров (необязательно). В форме уже 9 полей, поэтому здесь не секция,
+              а блок-триггер: сводка + кнопка. Сам набор правится в шторке и живёт срезом
+              стора (draftRoles) — уедет внутри createGathering одним запросом. */}
+          <div>
+            <FieldLabel>{isRu ? 'Роли волонтёров (необязательно)' : 'Еріктілер рөлдері (міндетті емес)'}</FieldLabel>
+            {draftRoles.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {draftRoles.map((r, i) => (
+                  <span key={`${r.titleRu}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', height: 28, padding: '0 12px', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 13, fontWeight: 500 }}>
+                    {(isRu ? r.titleRu : r.titleKz || r.titleRu) || '—'}{r.capacity ? ` · ${r.capacity}` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+            <Button
+              variant="secondary"
+              icon="users"
+              onClick={() => openSheet('roles', { draft: true, theme: form.theme, needed: form.needed })}
+            >
+              {draftRoles.length
+                ? (isRu ? 'Изменить роли' : 'Рөлдерді өзгерту')
+                : (isRu ? 'Настроить роли' : 'Рөлдерді баптау')}
+            </Button>
           </div>
           {/* От имени НКО (необязательно): показываем, только если у пользователя есть свои
               организации. Пусто = личный сбор (org_id останется NULL). */}

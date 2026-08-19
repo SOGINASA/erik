@@ -3,12 +3,14 @@ import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { Container } from '../components/Container';
 import Avatar from '../components/ui/Avatar';
+import { profileHref, useGuardedNav } from '../lib/nav';
 
 // Рейтинг: волонтёры / города / НКО. Табы, строки с рангом-медалью и метрикой.
 export default function Leaderboard() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
+  const go = useGuardedNav();
   const volunteers = usePlatformStore((s) => s.volunteers);
   const cities = usePlatformStore((s) => s.cities);
   const orgs = usePlatformStore((s) => s.orgs);
@@ -61,14 +63,33 @@ export default function Leaderboard() {
 
       {leaderTab === 'vol' && (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {volunteers.map((v, i) => (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid var(--line)' }}>
-              {rankCell(medal(i), i + 1)}
-              <Avatar name={v.name} size={38} />
-              {nameCell(v.name, `${v.city} · ${v.events}${isRu ? ' сборов' : ' жиын'}`)}
-              {metricCell(`${v.hours}${isRu ? ' ч' : ' сағ'}`)}
-            </div>
-          ))}
+          {volunteers.map((v, i) => {
+            // Строка ведёт в профиль волонтёра — так же, как строка НКО ведёт на её
+            // страницу. На демо-данных (id 'v1') ссылки нет: жать было бы некуда.
+            const href = profileHref(v.id);
+            const row = (
+              <>
+                {rankCell(medal(i), i + 1)}
+                <Avatar name={v.name} size={38} />
+                {nameCell(v.name, `${v.city} · ${v.events}${isRu ? ' сборов' : ' жиын'}`)}
+                {metricCell(`${v.hours}${isRu ? ' ч' : ' сағ'}`)}
+              </>
+            );
+            const base = { display: 'flex', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid var(--line)' };
+            return href ? (
+              <button
+                key={v.id}
+                type="button"
+                className="erik-row-hover"
+                onClick={() => go(href, 'profile')}
+                style={{ ...base, width: '100%', border: 'none', borderBottom: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+              >
+                {row}
+              </button>
+            ) : (
+              <div key={v.id} style={base}>{row}</div>
+            );
+          })}
         </div>
       )}
 

@@ -5,6 +5,7 @@ import { useOrganizerStore, orgNotice } from '../store/useOrganizerStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { useIsDesktop } from '../lib/nav';
 import { daysFromToday, plural } from '../lib/data';
+import { verdictColor, sourceLabel } from '../lib/forecastView';
 import { Container } from '../components/Container';
 import Icon from '../components/Icon';
 import Button from '../components/ui/Button';
@@ -37,6 +38,14 @@ export default function Manage() {
   // Первая загрузка: показывать моки как свои цифры нельзя, вместо них скелетон.
   const booting = status === 'loading' && source === 'demo';
   const notice = orgNotice(source, status, isRu, loggedIn);
+  // На демо-данных прогноза нет вовсе: сборы придуманы, и число рядом с ними было бы
+  // выдумкой. Показываем только пометку «демо-данные».
+  const demoData = source === 'demo';
+
+  // Дробное «21,3» само по себе отличает прогноз от счётчика людей (тот всегда целый).
+  const dec = (v) => (v == null ? '—' : String(v).replace('.', ','));
+  // В списке сборов прогноз округляем до целого — десятые уместны на экране сбора.
+  const round0 = (v) => (v == null || Number.isNaN(Number(v)) ? null : Math.round(Number(v)));
 
   const active = events.filter((e) => e.status !== 'done' && e.status !== 'rejected');
   const rejected = events.filter((e) => e.status === 'rejected');
@@ -60,6 +69,49 @@ export default function Manage() {
       ? <Skeleton width={54} height={26} />
       : '—';
 
+  // «Ждём по прогнозу» — сколько людей модель ждёт на всех активных сборах. Это НЕ
+  // «подтвердили приход» из соседней плитки: там счётчик нажавших «приду», здесь
+  // предсказание. Своей формулы у фронта нет — только серверное число или прочерк.
+  const expectedTile = analytics
+    ? dec(analytics.expectedTotal)
+    : analyticsStatus === 'loading' || booting
+      ? <Skeleton width={54} height={26} />
+      : '—';
+  // Источник подписан всегда: подменить модель формулой молча нельзя.
+  const expectedSource = analytics && analytics.forecastSource
+    ? (analytics.forecastSource === 'model' ? t.fcSourceModel : t.fcSourceFormula)
+    : null;
+
+  // Точность прогноза на СВОИХ завершённых сборах: модель против формулы против
+  // наивного счётчика «сколько нажало приду». null у любого из трёх — прочерк.
+  const acc = (analytics && analytics.forecastAccuracy) || null;
+  const accRows = acc ? [
+    { key: 'model', label: t.fcSourceModel, mae: acc.modelMae },
+    { key: 'formula', label: t.fcSourceFormula, mae: acc.formulaMae },
+    { key: 'naive', label: t.fcNaive, mae: acc.confirmedMae },
+  ] : [];
+  // Лучший результат подсвечиваем, только когда он единственный: при ничьей зелёными
+  // стали бы обе строки, и «победа модели» читалась бы там, где её нет.
+  const accBest = (() => {
+    const vals = accRows.map((r) => r.mae).filter((v) => v != null);
+    if (vals.length < 2) return null;
+    const min = Math.min(...vals);
+    return vals.filter((v) => v === min).length === 1 ? min : null;
+  })();
+  const accN = acc ? (acc.nGatherings != null ? acc.nGatherings : acc.n) : null;
+
+  // Строка фактов под прогнозом. В казахском число идёт ПЕРЕД словом («20 керек»),
+  // поэтому порядок собираем, а не склеиваем вслепую. «Ответили» считаем суммой тех
+  // же трёх счётчиков, что стоят рядом (на сервере answered = yes+maybe+no, а в демо
+  // поле заполнено только у прошедших сборов — строка противоречила бы сама себе).
+  const answersLine = (e) => {
+    const total = e.yes + e.maybe + e.no;
+    const need = isRu ? `${t.mgNeedShort} ${e.needed}` : `${e.needed} ${t.mgNeedShort}`;
+    const ans = isRu ? `${t.fcAnswered} ${total}` : `${total} ${t.fcAnswered}`;
+    const [y, m, n] = isRu ? ['да', 'может', 'нет'] : ['иә', 'мүмкін', 'жоқ'];
+    return `${need} · ${ans}: ${e.yes} ${y}, ${e.maybe} ${m}, ${e.no} ${n}`;
+  };
+
   // Метка срока сбора.
   const whenTag = (e) => {
     if (e.status === 'live') return { label: t.mgLiveTag, bg: 'var(--yard-soft)', color: 'var(--yard)' };
@@ -68,7 +120,7 @@ export default function Manage() {
     return { label, bg: 'var(--paper)', color: 'var(--ink-2)' };
   };
 
-  // Что требует внимания: заявки + сборы с наибольшей неопределённостью.
+  // Что требует внимания: заявки + сборы, которым по ПРОГНОЗУ не хватит людей.
   const attention = [];
   if (pending > 0) {
     attention.push({
@@ -77,15 +129,39 @@ export default function Manage() {
       cta: t.mgReview, onClick: () => navigate('/manage/requests'),
     });
   }
-  active
-    .filter((e) => e.maybe > 0)
-    .sort((a, b) => b.maybe - a.maybe)
-    .slice(0, 2)
-    .forEach((e) => attention.push({
+  // Основное правило — прогноз: verdict='short' означает «не хватит даже по верхней
+  // границе интервала», это и есть настоящий риск. Сортировка по размеру нехватки.
+  // Раньше отбирали по «больше всего maybe» — много неопределившихся само по себе не
+  // проблема, если модель всё равно ждёт достаточно людей.
+  const shortAhead = demoData ? [] : active
+    .map((e) => ({ e, f: forecastFor(e) }))
+    .filter((x) => x.f && x.f.verdict === 'short' && (x.f.shortBy || 0) > 0)
+    .sort((a, b) => b.f.shortBy - a.f.shortBy)
+    .slice(0, 2);
+  if (shortAhead.length > 0) {
+    shortAhead.forEach(({ e, f }) => attention.push({
       key: e.id, tone: 'maybe',
-      text: `«${isRu ? e.titleRu : e.titleKz}»: ${e.maybe} ${isRu ? plural(e.maybe, ['человек', 'человека', 'человек']) : ''} ${t.mgAttMaybe}`,
+      text: `«${isRu ? e.titleRu : e.titleKz}»: ${isRu
+        // shortBy — недобор относительно ОЖИДАНИЯ (needed − E). Приписывать его
+        // верхней границе нельзя: это разные числа, а вердикт 'short' и так означает,
+        // что нормы не хватит даже по оптимистичному краю интервала.
+        ? `по прогнозу не хватит ${f.shortBy} ${plural(f.shortBy, ['человека', 'человек', 'человек'])}`
+        : `болжам бойынша ${f.shortBy} адам жетпейді`}`,
       cta: t.remind, onClick: () => remindFor(e.id),
     }));
+  } else {
+    // Запасное правило: прогноза нет (демо или сервер его не прислал) — показываем
+    // сборы с наибольшей неопределённостью, как раньше.
+    active
+      .filter((e) => e.maybe > 0)
+      .sort((a, b) => b.maybe - a.maybe)
+      .slice(0, 2)
+      .forEach((e) => attention.push({
+        key: e.id, tone: 'maybe',
+        text: `«${isRu ? e.titleRu : e.titleKz}»: ${e.maybe} ${isRu ? plural(e.maybe, ['человек', 'человека', 'человек']) : ''} ${t.mgAttMaybe}`,
+        cta: t.remind, onClick: () => remindFor(e.id),
+      }));
+  }
 
   const sectionTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '30px 0 12px' };
 
@@ -105,9 +181,9 @@ export default function Manage() {
         )}
 
         {/* Сводка */}
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(5, minmax(0, 1fr))' : 'repeat(2, 1fr)', gap: 12 }}>
           {booting ? (
-            [0, 1, 2, 3].map((i) => (
+            [0, 1, 2, 3, 4].map((i) => (
               <div key={i} style={{ padding: '16px 18px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)' }}>
                 <Skeleton width={54} height={26} />
                 <Skeleton width="70%" height={12} style={{ marginTop: 12 }} />
@@ -117,11 +193,65 @@ export default function Manage() {
             <>
               <StatTile value={stats.active} label={t.mgStatActive} />
               <StatTile value={stats.confirmed} label={t.mgStatConfirmed} tone="yard" />
+              {/* Прогноз стоит рядом с «подтвердили»: разница между этими числами и есть
+                  вклад модели. На мобильном плитка занимает всю ширину — иначе пятая
+                  болталась бы в одиночной строке двухколоночной сетки. */}
+              <div style={{ gridColumn: desktop ? 'auto' : 'span 2' }}>
+                <StatTile
+                  value={expectedTile}
+                  label={<>
+                    {t.fcExpectedTile}
+                    {expectedSource && <span style={{ display: 'block', marginTop: 2, fontSize: 12, color: 'var(--ink-3)' }}>{expectedSource}</span>}
+                  </>}
+                />
+              </div>
               <StatTile value={`${stats.attendance}%`} label={t.mgStatAttendance} />
               <StatTile value={hoursTile} label={t.mgStatHours} />
             </>
           )}
         </div>
+
+        {/* Точность прогноза: чем модель лучше формулы и наивного счётчика — на своих
+            же завершённых сборах. Без этого блока «прогноз 21» — просто цифра. */}
+        {!booting && acc && (
+          <>
+            <div style={sectionTitle}>{isRu ? 'Точность прогноза' : 'Болжам дәлдігі'}</div>
+            <div style={{ padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
+              <button
+                type="button"
+                className="erik-btn"
+                onClick={() => navigate('/forecast-quality')}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', padding: 0, border: 'none', background: 'none', textAlign: 'left', color: 'var(--ink)', cursor: 'pointer' }}
+              >
+                <span style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 16, lineHeight: 1.25 }}>{t.fcQualityBacktest}</span>
+                <Icon name="chevronRight" size={16} stroke={1.8} />
+              </button>
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>{t.fcQualityBacktestSub}</div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+                {accRows.map((r) => {
+                  const best = r.mae != null && accBest != null && r.mae === accBest;
+                  return (
+                    <div key={r.key} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ minWidth: 0, fontSize: 13, lineHeight: 1.35, color: best ? 'var(--ink)' : 'var(--ink-2)' }}>{r.label}</span>
+                      <span style={{ flex: 'none', fontFamily: 'var(--fm)', fontSize: 14, fontWeight: best ? 600 : 500, color: best ? 'var(--yard)' : 'var(--ink-2)' }}>
+                        {r.mae == null ? '—' : `${dec(r.mae)} ${isRu ? 'чел.' : 'адам'}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {accN != null && (
+                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--ink-3)' }}>
+                  {isRu
+                    ? `проверено на ${accN} ${plural(accN, ['завершённом сборе', 'завершённых сборах', 'завершённых сборах'])}`
+                    : `${accN} аяқталған жиында тексерілді`}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Пока идёт первая загрузка — скелетон вместо демо-сборов */}
         {booting && (
@@ -186,9 +316,14 @@ export default function Manage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {active.map((e) => {
-              const f = forecastFor(e);
+              // Прогноз только серверный: нет объекта — рисуем «—», своей формулы у
+              // штаба больше нет. Цвет берём по вердикту (он считан по интервалу),
+              // а не по «E >= needed» — иначе карточка перекрашивалась от одного ответа.
+              const f = demoData ? null : forecastFor(e);
               const tag = whenTag(e);
-              const enough = f.E >= e.needed;
+              const E = f ? round0(f.expected) : null;
+              const lo = f ? round0(f.lo) : null;
+              const hi = f ? round0(f.hi) : null;
               return (
                 <button
                   key={e.id}
@@ -205,20 +340,35 @@ export default function Manage() {
 
                   <MiniBar yes={e.yes} maybe={e.maybe} no={e.no} />
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
-                    <span style={{ color: enough ? 'var(--yard)' : 'var(--maybe)', fontWeight: 500 }}>
-                      {t.mgForecastShort} ≈ <span style={{ fontFamily: 'var(--fm)', fontWeight: 600 }}>{f.E}</span> {isRu ? 'из' : 'ішінен'} {e.needed}
-                    </span>
-                    <span style={{ color: 'var(--ink-3)' }}>·</span>
-                    <span style={{ color: 'var(--ink-2)' }}><span style={{ fontFamily: 'var(--fm)' }}>{e.yes}</span> {t.mgConfirmedShort}</span>
-                    <span style={{ color: 'var(--ink-3)' }}>·</span>
-                    <span style={{ color: 'var(--ink-2)' }}><span style={{ fontFamily: 'var(--fm)' }}>{e.maybe}</span> {t.mgMaybeShort}</span>
+                  {/* Верхний уровень — ПРЕДСКАЗАНИЕ: крупнее, цветом вердикта, с интервалом
+                      и подписью источника. Раньше здесь была одна строка
+                      «прогноз ≈ 14 · 14 подтвердили · 24 под вопросом»: прогноз и счётчик
+                      стояли одним кеглем через «·» и на демо совпадали числом. */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                    {demoData ? (
+                      <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{t.fcSourceDemo}</span>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: E == null ? 'var(--ink-3)' : verdictColor(f.verdict) }}>
+                          <span style={{ textTransform: 'capitalize' }}>{t.mgForecastShort}</span>{' '}
+                          <span style={{ fontFamily: 'var(--fm)', fontSize: 18 }}>{E == null ? '—' : E}</span>
+                        </span>
+                        {E != null && lo != null && hi != null && (
+                          <span style={{ fontFamily: 'var(--fm)', fontSize: 12, color: 'var(--ink-3)' }}>{lo}–{hi}</span>
+                        )}
+                        {E != null && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>· {sourceLabel(f, t)}</span>}
+                      </>
+                    )}
                     {e.applied > 0 && (
                       <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, height: 24, padding: '0 10px', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', fontSize: 12, fontWeight: 500 }}>
                         <Icon name="users" size={13} stroke={1.8} />{e.applied} {isRu ? plural(e.applied, ['заявка', 'заявки', 'заявок']) : 'өтінім'}
                       </span>
                     )}
                   </div>
+
+                  {/* Нижний уровень — ФАКТЫ: сколько нужно и как ответили. Мельче и серым,
+                      чтобы счётчик ответивших не читался как прогноз. */}
+                  <div style={{ marginTop: 4, fontFamily: 'var(--fm)', fontSize: 12, color: 'var(--ink-3)' }}>{answersLine(e)}</div>
                 </button>
               );
             })}

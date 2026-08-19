@@ -72,14 +72,23 @@ export default function Login() {
     showToast('Если такой email есть — письмо для сброса отправлено');
   };
 
+  // Отказ входа: 404 — бэкенд ЖИВ, но демо-личностей в базе нет (сид не запускался,
+  // см. DEMO_DEVICE_PREFIX). Раньше оба случая шли под текстом «Бэкенд недоступен»,
+  // и на свежем деплое это уводило чинить сеть вместо того, чтобы запустить сид.
+  const demoFail = (e) => showToast(
+    e && e.status === 404
+      ? 'Демо-данные не засеяны — выполните flask seed-demo на сервере'
+      : 'Бэкенд недоступен — запустите сервер и seed-demo',
+  );
+
   // Демо-вход как засеянная личность (реальный токен → реальная роль/данные).
   const quick = async (p) => {
     try {
       await loginAsDevice(p.device);
       navigate(p.to);
       showToast(`Вход как ${p.label}`);
-    } catch (_) {
-      showToast('Бэкенд недоступен — запустите сервер и seed-demo');
+    } catch (e) {
+      demoFail(e);
     }
   };
 
@@ -90,8 +99,8 @@ export default function Login() {
       await loginAsDevice('demo-admin');
       navigate('/admin');
       showToast('Вход как администратор');
-    } catch (_) {
-      showToast('Бэкенд недоступен — запустите сервер и seed-demo');
+    } catch (e) {
+      demoFail(e);
     }
   };
 
@@ -143,7 +152,7 @@ export default function Login() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {PERSONAS.map((p) => (
               <button
-                key={p.role}
+                key={p.device}
                 type="button"
                 className="erik-btn erik-lift"
                 onClick={() => quick(p)}

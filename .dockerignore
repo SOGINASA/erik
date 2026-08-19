@@ -1,0 +1,35 @@
+# Контекст сборки — корень репозитория (backend/Dockerfile копирует backend/ и ml/).
+# Без этого файла в образ уезжают venv с Windows-бинарями, node_modules, секреты и БД.
+
+.git
+.gitignore
+*.md
+!backend/README.md
+
+# Окружения
+backend/venv/
+backend/venv_back/
+backend/.venv/
+backend/env/
+ml/.venv/
+front/node_modules/
+front/build/
+
+# Секреты и локальные данные
+backend/.env
+backend/database/*.db
+backend/database/*.sqlite
+
+# Кэши
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+
+# Тесты и синтетические данные ML (модель уже обучена и закоммичена)
+backend/tests/
+ml/data/
+
+# Материалы, не нужные рантайму
+*.pdf
+front/design/

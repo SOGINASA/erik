@@ -6,8 +6,12 @@ import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
+import { copyToClipboard, shareOrCopy, shareUrlFor } from '../lib/share';
+import { fromServer, sourceLabel } from '../lib/forecastView';
 import { THEMES, EVENTS, avatarOf, initialOf } from '../lib/data';
+import { profileHref } from '../lib/nav';
 import { Container, BackButton } from '../components/Container';
+import PersonRow from '../components/PersonRow';
 import Icon from '../components/Icon';
 
 // Лента держит демо и серверные события под одним видом id ('e'+число) — по самому id
@@ -35,6 +39,12 @@ export default function Event() {
   const showToast = useUiStore((s) => s.showToast);
   const name = useSessionStore((s) => s.name);   // есть профиль? гость (без имени) → просим войти
   const [participants, setParticipants] = useState([]);
+  const [team, setTeam] = useState([]);           // кто ещё идёт (только для записавшихся)
+  // Состояние списка держим ОТДЕЛЬНО от самого списка: пустой массив — это три разных
+  // ответа («грузится», «не смогли загрузить», «кроме вас никого»), и молчать во всех
+  // трёх значит показывать пустое место там, где человек ждёт список.
+  const [teamState, setTeamState] = useState('idle'); // idle|loading|ready|error|demo
+  const [teamError, setTeamError] = useState(null);   // текст причины от сервера, если он её дал
   const [fetched, setFetched] = useState(null);
   const [evState, setEvState] = useState('idle'); // idle | loading | ready | error
 
@@ -72,6 +82,39 @@ export default function Event() {
       .catch(() => { if (alive) setParticipants([]); });
     return () => { alive = false; };
   }, [evId, events]);
+
+  // Ответ волонтёра на ЭТО событие — им же решается, показывать ли список «кто идёт»:
+  // бэк отдаёт его только записавшимся (platform.py:event_co_participants → 403).
+  // 'no' не считается: человек сказал, что не придёт, и в команде его нет.
+  const myAnswer = evId ? regs[evId] : null;
+  const inTeam = myAnswer === 'yes' || myAnswer === 'maybe';
+
+  // Кто ещё идёт: имена + userId, чтобы строка вела в профиль. Запрашиваем ТОЛЬКО когда
+  // право на список уже есть — иначе каждый заход гостя на событие стучался бы в 403.
+  useEffect(() => {
+    if (!evId || !inTeam) { setTeam([]); setTeamState('idle'); return undefined; }
+    const gid = feedGatheringId(evId, events);
+    // Лента не доехала с сервера (офлайн/бэкенд молчит) — она осталась мок-массивом, и
+    // числовой id демо-события совпал бы с ЧУЖИМ реальным сбором. В API не идём, но и не
+    // молчим: это состояние экрана, а не «список пуст».
+    if (gid === null) { setTeam([]); setTeamState('demo'); return undefined; }
+    let alive = true;
+    setTeamState('loading');
+    api.eventCoParticipants(gid).then(
+      (r) => { if (alive) { setTeam(r.participants || []); setTeamState('ready'); setTeamError(null); } },
+      (err) => {
+        if (!alive) return;
+        setTeam([]);
+        setTeamState('error');
+        // Текст сервера показываем как есть: у 403 их два разных («не записаны» /
+        // «пользователь не найден»), и общее «не удалось загрузить» скрыло бы ровно ту
+        // причину, по которой список не открывается. KZ-текст бэк отдаёт рядом.
+        const d = err && err.data;
+        setTeamError(d ? (isRu ? d.error : (d.errorKz || d.error)) : null);
+      },
+    );
+    return () => { alive = false; };
+  }, [evId, events, inTeam, isRu]);
 
   // Событие ещё грузится или не найдено — честный экран вместо чужого events[0]/краша.
   if (!ev) {
@@ -113,12 +156,44 @@ export default function Event() {
   const cityName = isRu ? city.ru : city.kz;
   const themeLabel = isRu ? theme.ru : theme.kz;
   const formatLabel = ev.format === 'reg' ? (isRu ? 'Регулярное' : 'Тұрақты') : (isRu ? 'Разовое' : 'Бір реттік');
-  const goingText = isRu ? `идут ${ev.going}` : `${ev.going} келеді`;
 
-  const reg = regs[ev.id];
+  // ev.going — сырой счётчик нажавших «приду», это ФАКТ записи, а не явка. Надпись «идут 12»
+  // читалась как предсказание, хотя моделью здесь и не пахнет: лента (serialize_event_card)
+  // прогноз не отдаёт, а у демо-событий и ростера-то нет. Выдумывать прогноз на клиенте нельзя —
+  // поэтому просто говорим правду про записавшихся.
+  const signedText = typeof ev.going === 'number'
+    ? (isRu ? `${ev.going} уже записались` : `${ev.going} адам жазылды`)
+    : (isRu ? 'записались —' : 'жазылғандар —');
+  // Ветка на будущее: если сервер всё же пришлёт forecast в карточке события — показываем
+  // прогноз вместо счётчика и подписываем источник. Пока поля нет, ветка молчит.
+  const evForecast = ev.forecast && ev.forecast.expected != null ? fromServer(ev.forecast) : null;
+  const forecastSrc = evForecast ? sourceLabel(evForecast, t) : null;
+  const goingText = evForecast
+    ? (isRu ? `${t.fcWillCome} ≈ ${Math.round(evForecast.expected)}` : `≈ ${Math.round(evForecast.expected)} ${t.fcWillCome}`)
+    : signedText;
+
+  const reg = myAnswer;   // тот же ответ, что решает показ команды (см. inTeam выше)
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 
   const openRegister = () => (name ? openSheet('register', ev.id) : openSheet('auth'));
+
+  // Ссылка на событие — ровно та же публичная /g/:code, что раздаёт координатор со своего
+  // дашборда. Волонтёр зовёт своих чаще организатора, а скопировать ему было нечего: /e/:id
+  // из адресной строки лежит за входом (App.jsx: /g/:code — единственный роут вне гейта), и
+  // друг по такой ссылке упирался бы в логин вместо кнопки «Приду».
+  // code приезжает в карточке события (serialize_event_card → _base_gathering); если его
+  // почему-то нет — блока нет, кнопка «скопировать» без ссылки хуже её отсутствия.
+  // Демо-событие (лента не доехала и осталась моком EVENTS) исключаем по той же причине,
+  // что и жалобу ниже: его 'PARK18' на сервере не существует, и человек разослал бы друзьям
+  // ссылку на «сбор не найден». Событие, догруженное по id (fetched), реально всегда.
+  const isDemoEvent = ev !== fetched && feedGatheringId(ev.id, events) === null;
+  const link = ev.code && !isDemoEvent ? shareUrlFor(ev.code) : null;
+  const copiedToast = () => showToast(isRu ? 'Ссылка скопирована' : 'Сілтеме көшірілді');
+  const doCopy = async () => { await copyToClipboard(link); copiedToast(); };
+  const doShare = async () => {
+    const r = await shareOrCopy({ title, text: `«${title}» — ${when}. ${place}`, url: link });
+    if (r === 'copied') copiedToast();
+  };
 
   // Иконка строки-детали (line-стиль, цвет var(--ink-3)) — как в дизайне.
   const rowIcon = (children) => (
@@ -163,7 +238,8 @@ export default function Event() {
           </div>
           <div style={infoRowStyle}>
             {rowIcon(<><circle cx="12" cy="8" r="3.2" /><path d="M5 20a7 7 0 0 1 14 0" /></>)}
-            {formatLabel} · {goingText}
+            <span>{formatLabel} · {goingText}</span>
+            {forecastSrc && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>· {forecastSrc}</span>}
           </div>
         </div>
 
@@ -176,6 +252,7 @@ export default function Event() {
             );
           })}
           <span style={{ marginLeft: 14, fontSize: 13, color: 'var(--ink-2)' }}>{goingText}</span>
+          {forecastSrc && <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--ink-3)' }}>· {forecastSrc}</span>}
         </div>
 
         {/* Своё событие: вход в дашборд координатора */}
@@ -209,6 +286,88 @@ export default function Event() {
           >
             {t.register}
           </button>
+        )}
+
+        {/* Ссылка на событие — та же карточка, что у координатора (CoordGathering): код,
+            «Скопировать» и системный «Поделиться». Своё событие показывает её и здесь:
+            человек пришёл на страницу события, а не на дашборд, и гонять его туда за
+            ссылкой незачем. */}
+        {link && (
+          <div style={{ marginTop: 16, padding: '16px 18px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, letterSpacing: '.02em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 4 }}>{t.linkLabel}</div>
+              <div style={{ fontFamily: 'var(--fm)', fontWeight: 600, fontSize: 17, letterSpacing: '.08em', color: 'var(--ink)' }}>{ev.code}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+              <button type="button" className="erik-btn erik-btn-secondary" onClick={doCopy} style={{ height: 40, padding: '0 14px', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>{t.copy}</button>
+              <button type="button" className="erik-btn erik-btn-secondary" onClick={doShare} aria-label={t.share} style={{ width: 40, height: 40, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-s)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>
+                <Icon name="share" size={17} stroke={1.6} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Кто ещё идёт. Виден только записавшимся — это же правило и на бэке
+            (platform.py:event_co_participants), меню тут не мягче гейта. Строка ведёт в
+            профиль: волонтёр приходит к незнакомым людям, и возможность заранее посмотреть,
+            с кем он проведёт день, — половина решения «идти или нет». У walk-in гостей
+            аккаунта нет (userId === null) — такая строка просто некликабельная. */}
+        {/* Не записан — говорим, что список ЕСТЬ и как его открыть. Раньше здесь была
+            пустота, неотличимая от «фича не работает». */}
+        {!inTeam && (
+          <div style={{ marginTop: 26, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px dashed var(--line)', fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.45 }}>
+            {isRu
+              ? 'Ответьте «Приду», чтобы увидеть, кто ещё идёт, и открыть их профили.'
+              : 'Кім баратынын көру үшін «Келемін» деп жауап беріңіз.'}
+          </div>
+        )}
+
+        {inTeam && teamState !== 'ready' && (
+          <div style={{ marginTop: 26, padding: '14px 16px', borderRadius: 'var(--r-m)', border: '1px dashed var(--line)', fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.45 }}>
+            {teamState === 'loading' && (isRu ? 'Загружаем, кто идёт…' : 'Кім баратынын жүктеп жатырмыз…')}
+            {teamState === 'error' && (teamError || (isRu
+              ? 'Не удалось загрузить список участников — проверьте связь и обновите страницу.'
+              : 'Қатысушылар тізімі жүктелмеді — байланысты тексеріп, бетті жаңартыңыз.'))}
+            {teamState === 'demo' && (isRu
+              ? 'Это демо-событие — списка участников у него нет.'
+              : 'Бұл демо-іс-шара — қатысушылар тізімі жоқ.')}
+          </div>
+        )}
+
+        {inTeam && teamState === 'ready' && (
+          <div style={{ marginTop: 26 }}>
+            <div style={{ fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 6 }}>
+              {isRu ? `Кто идёт · ${team.length}` : `Кім барады · ${team.length}`}
+            </div>
+            {team.length === 0 && (
+              <div style={{ fontSize: 14, color: 'var(--ink-3)', padding: '8px 4px' }}>
+                {isRu ? 'Пока записались только вы — будьте первым.' : 'Әзірге тек сіз жазылдыңыз.'}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {team.map((p) => {
+                const href = profileHref(p.userId);
+                const roleTitle = isRu ? p.roleTitleRu : p.roleTitleKz;
+                const sub = [
+                  p.isMe ? (isRu ? 'это вы' : 'бұл сіз') : null,
+                  roleTitle || null,
+                  p.answer === 'maybe' ? (isRu ? 'возможно придёт' : 'мүмкін келеді') : null,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <PersonRow
+                    key={p.id}
+                    name={p.name}
+                    historyText={sub || null}
+                    dim={p.answer === 'maybe'}
+                    onClick={href ? () => navigate(href) : undefined}
+                    right={href
+                      ? <Icon name="chevronRight" size={16} stroke={1.7} />
+                      : <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{isRu ? 'без профиля' : 'профильсіз'}</span>}
+                  />
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Заявка организатору: навыки + сообщение (для чужих событий) */}

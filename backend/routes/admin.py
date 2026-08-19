@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
-from models import db, User, Org, Report, Gathering, CharityRequest, Follow
+from models import (db, User, Org, Report, Gathering, CharityRequest, Follow,
+                    RoleRequest, USER_ROLES, ORGANIZER_ROLES)
 from utils.decorators import admin_required
-from utils.serializers import serialize_org
+from utils.serializers import serialize_org, serialize_role_request
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -12,16 +13,31 @@ admin_bp = Blueprint('admin', __name__)
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def list_users():
-    """Список пользователей с пагинацией и поиском"""
-    page = int(request.args.get('page', 1))
-    per_page = min(int(request.args.get('per_page', 20)), 100)
+    """Список пользователей: серверные поиск, фильтр по роли (?role=) и пагинация.
+
+    Роль фильтруется и СЧИТАЕТСЯ на сервере намеренно. Раньше и то и другое делал
+    клиент по одной загруженной странице (20 из 91): единственный координатор лежит
+    на пятой странице, поэтому чип показывал «Координаторы 0», а фильтр по нему —
+    «Никого не нашли». Со стороны это читалось как «у координаторов пропала роль».
+
+    'admin' — отдельное значение фильтра: админство живёт в user_type, а не в
+    User.role, и админ не должен попадать в свою продуктовую роль вторым экземпляром.
+    """
+    def _int(name, default):
+        try:
+            return max(1, int(request.args.get(name, default)))
+        except (TypeError, ValueError):
+            return default            # ?page=abc — это не повод отдавать 500
+
+    page = _int('page', 1)
+    per_page = min(_int('per_page', 20), 100)
     search = request.args.get('search', '').strip()
+    role = (request.args.get('role') or 'all').strip()
 
-    query = User.query.order_by(User.created_at.desc())
-
+    base = User.query
     if search:
         like = f'%{search.lower()}%'
-        query = query.filter(
+        base = base.filter(
             db.or_(
                 db.func.lower(User.email).like(like),
                 db.func.lower(User.nickname).like(like),
@@ -29,13 +45,32 @@ def list_users():
             )
         )
 
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    # user_type у device-строк теоретически бывает NULL, а `NULL != 'admin'` в SQL
+    # даёт NULL (строка выпадает из выдачи) — поэтому проверяем обе ветки явно.
+    not_admin = db.or_(User.user_type.is_(None), User.user_type != 'admin')
+
+    # Счётчики чипов — по всей выборке поиска, ДО фильтра по роли: иначе выбранный
+    # чип обнулял бы все остальные.
+    counts = {'all': base.count(),
+              'admin': base.filter(User.user_type == 'admin').count()}
+    for key in USER_ROLES:
+        counts[key] = base.filter(User.role == key, not_admin).count()
+
+    query = base
+    if role == 'admin':
+        query = query.filter(User.user_type == 'admin')
+    elif role in USER_ROLES:
+        query = query.filter(User.role == role, not_admin)
+
+    pagination = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False)
 
     return jsonify({
         'users': [u.to_dict(include_sensitive=True) for u in pagination.items],
         'total': pagination.total,
         'page': pagination.page,
         'pages': pagination.pages,
+        'counts': counts,
     })
 
 
@@ -71,6 +106,8 @@ def moderation_stats():
     pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
     verified_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(True)).scalar() or 0
     open_reports = db.session.query(db.func.count(Report.id)).filter(Report.status != 'resolved').scalar() or 0
+    pending_role_requests = db.session.query(db.func.count(RoleRequest.id)).filter(
+        RoleRequest.status == 'pending').scalar() or 0
 
     users_total = db.session.query(db.func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
     volunteers = db.session.query(db.func.count(User.id)).filter(
@@ -105,6 +142,7 @@ def moderation_stats():
     return jsonify({
         'pendingOrgs': pending_orgs,
         'openReports': open_reports,
+        'pendingRoleRequests': pending_role_requests,
         'verifiedOrgs': verified_orgs,
         'orgs': pending_orgs + verified_orgs,
         'users': users_total,
@@ -362,6 +400,86 @@ def reject_org(oid):
     db.session.delete(org)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ── Заявки на роль организатора ──
+# Волонтёр не создаёт сборы (routes/gatherings.py:create_gathering), и повышения «само
+# собой» больше нет — роль выдаёт админ здесь. Очередь живёт рядом с верификацией НКО и
+# модерацией сборов: это тот же жанр решения, и разбирают её в одном экране.
+@admin_bp.route('/role-requests', methods=['GET'])
+@admin_required
+def admin_role_requests():
+    """?status=pending (по умолчанию) | approved | declined | all."""
+    status = (request.args.get('status') or 'pending').strip()
+    q = RoleRequest.query
+    if status in ('pending', 'approved', 'declined'):
+        q = q.filter(RoleRequest.status == status)
+    rows = q.order_by(RoleRequest.created_at.desc(), RoleRequest.id.desc()).all()
+    return jsonify({'requests': [serialize_role_request(r) for r in rows]})
+
+
+def _decide_role_request(rid):
+    """Общая часть approve/reject: заявка + заявитель, либо (None, error_response)."""
+    row = db.session.get(RoleRequest, rid)
+    if row is None:
+        return None, None, (jsonify({'error': 'Заявка не найдена'}), 404)
+    if row.status != 'pending':
+        # Повторное решение молча перезаписало бы автора и время, а роль уже выдана —
+        # это не идемпотентность, а потеря истории. Плюс защита от двойного клика.
+        return None, None, (jsonify({'error': 'Заявка уже рассмотрена',
+                                     'errorKz': 'Өтінім қаралып қойған'}), 409)
+    user = db.session.get(User, row.user_id)
+    if user is None or not user.is_active:
+        return None, None, (jsonify({'error': 'Заявитель не найден'}), 404)
+    return row, user, None
+
+
+def _admin_id():
+    from flask_jwt_extended import get_jwt_identity
+    try:
+        return int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return None
+
+
+@admin_bp.route('/role-requests/<int:rid>/approve', methods=['POST'])
+@admin_required
+def approve_role_request(rid):
+    """Одобрить: выдать запрошенную роль. Это единственное место, где vol → coord."""
+    from services.notifications import notify_role_request_decision
+
+    row, user, err = _decide_role_request(rid)
+    if err is not None:
+        return err
+    # Роль берём из ЗАЯВКИ, а не из тела запроса: админ решает по тому, что видит в
+    # очереди, и подменить выдаваемую роль запросом из браузера не должен.
+    if row.requested_role in ORGANIZER_ROLES:
+        user.role = row.requested_role
+    row.status = 'approved'
+    row.decided_by = _admin_id()
+    row.decided_at = datetime.now(timezone.utc)
+    notify_role_request_decision(row, approved=True)
+    db.session.commit()
+    return jsonify({'request': serialize_role_request(row, user)})
+
+
+@admin_bp.route('/role-requests/<int:rid>/reject', methods=['POST'])
+@admin_required
+def reject_role_request(rid):
+    """Отклонить с причиной (необязательной). Роль не меняется, заявку можно подать заново."""
+    from services.notifications import notify_role_request_decision
+
+    row, user, err = _decide_role_request(rid)
+    if err is not None:
+        return err
+    reason = ((request.get_json(silent=True) or {}).get('reason') or '').strip()[:400]
+    row.status = 'declined'
+    row.reject_reason = reason or None
+    row.decided_by = _admin_id()
+    row.decided_at = datetime.now(timezone.utc)
+    notify_role_request_decision(row, approved=False, reason=reason or None)
+    db.session.commit()
+    return jsonify({'request': serialize_role_request(row, user)})
 
 
 @admin_bp.route('/reports', methods=['GET'])

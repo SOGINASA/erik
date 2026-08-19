@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { buildGathering, EVENTS } from '../lib/data';
-import { forecast, counts } from '../lib/forecast';
+import { counts } from '../lib/forecast';
+import { fromServer, fromParticipants } from '../lib/forecastView';
 import { api } from '../lib/api';
 import { commit, isOffline, isForbidden } from '../lib/optimistic';
 import { useUiStore } from './useUiStore';
@@ -10,6 +11,10 @@ import { usePlatformStore } from './usePlatformStore';
 const isRu = () => useSessionStore.getState().lang === 'ru';
 const curLang = () => (isRu() ? 'ru' : 'kz');
 const toast = (text) => useUiStore.getState().showToast(text);
+
+// Столько же, сколько GATHERING_ROLE_MAX на бэке (models.py). Лишние строки бэк молча
+// отбрасывает, но давать их набрать в шторке — врать про то, что они сохранятся.
+const ROLES_MAX = 8;
 
 let rafId = null;
 let cuFallback = null;
@@ -83,6 +88,11 @@ const upsertOp = (queue, op) => {
   return n;
 };
 
+// Прогноз из офлайн-снапшота: в localStorage лежит весь ответ сервера, включая
+// forecast. Показываем его помеченным stale, а не подменяем молча локальной
+// формулой — молчаливая подмена и есть та проблема, за которую критиковали.
+const staleForecast = (snap) => (snap && snap.forecast ? fromServer(snap.forecast, { stale: true }) : null);
+
 // Данные текущего сбора + отметки явки + анимация числа прогноза.
 // Оптимистичные мутации: сначала локально, затем в API; при офлайне остаёмся на моках.
 // Подправить счётчик «идут» у события ленты (usePlatformStore): going считает только 'yes'.
@@ -99,15 +109,37 @@ export const useGatheringStore = create((set, get) => ({
   displayE: null,
   polled: false,
   regs: {}, // ответы на события ленты: { [eventId]: 'yes'|'maybe'|'no' }
-  mlForecast: null, // компаньон-прогноз ML: { available, expected, participants[] } | { available:false }
+  // Прогноз с сервера — ЕДИНСТВЕННЫЙ источник числа на экране. Считается моделью
+  // (source:'model'); формула включается, только если модель недоступна, и тогда
+  // это видно в подписи. null = ещё не приезжал (показываем скелетон, не выдумку).
+  serverForecast: null,
+  mlForecast: null, // поимённая раскладка модели: { available, participants[] } | { available:false }
   checkinQueue: [], // несинканные офлайн-отметки явки
   syncing: false,   // идёт batch-синк
   online: isOnline(),
   guestError: null, // гостевой экран: null | 'notfound' (сбора нет) | 'offline' (нет сети)
+  // Черновик ролей для НЕсозданного сбора (форма NewGathering). Живёт здесь, а не в
+  // useState шторки: диспетчер шторок размонтирует компонент при закрытии (Sheets.jsx),
+  // и тап по бэкдропу или Esc стёр бы весь набор, пока форма создания остаётся открытой.
+  // Строка: {titleRu, titleKz, capacity, newbie, preset}.
+  draftRoles: [],
 
   // --- производные ---
-  forecast: () => forecast(get().gathering.participants || [], get().gathering.ctx),
-  counts: () => counts(get().gathering.participants || []),
+  // Прогноз: серверный, если он есть. Фолбэк на локальную формулу — только когда
+  // сервера нет вовсе (демо-сбор без пары, офлайн без кэша), и он честно помечен.
+  forecastView: () => {
+    const s = get();
+    if (s.serverForecast) return s.serverForecast;
+    const g = s.gathering || {};
+    return fromParticipants(g.participants || [], g.ctx, g.needed, {
+      demo: !!g.demo, reason: 'no_server_forecast',
+    });
+  },
+  counts: () => {
+    const s = get();
+    if (s.serverForecast && s.serverForecast.counts) return s.serverForecast.counts;
+    return counts(get().gathering.participants || []);
+  },
 
   // --- загрузка/создание ---
   create: async (form) => {
@@ -122,6 +154,10 @@ export const useGatheringStore = create((set, get) => ({
       // JSON.stringify их выкинет (бэк оставит org_id/image_url прежними/NULL). Имена в
       // ТЕЛЕ запроса — orgId/imageUrl (см. createGathering в lib/api.js).
       orgId: form.orgId, imageUrl: form.imageUrl,
+      // Роли — из черновика шторки, а не из form: набор правится в RolesSheet и живёт
+      // срезом стора. Ключ перечисляем ЯВНО, как и всё остальное тело: забыть его здесь
+      // значит молча создать сбор без ролей (тот же класс потери, что был с theme/cityId).
+      roles: get().draftRoles.length ? get().draftRoles : undefined,
     };
     if (body.name) useSessionStore.getState().setIdentity(body.name, useSessionStore.getState().phone);
     // Успех → { gathering, ... } как раньше. Провал → { error: { offline, forbidden, message } }.
@@ -136,20 +172,86 @@ export const useGatheringStore = create((set, get) => ({
       return { error: { offline: isOffline(r.error), forbidden: isForbidden(r.error), message: r.error && r.error.message } };
     }
     const res = r.data;
-    // Первый созданный сбор повышает vol→coord: бэк отдаёт новую роль в res.role, но без
-    // применения к сессии UI остаётся с прежней ролью до перезагрузки (известный LOW-баг).
+    // Создание роль больше не меняет (сбор и заводит только организатор), но бэк по-прежнему
+    // отдаёт актуальную в res.role — дешёвая сверка с сервером на случай, если роль сменили
+    // в другом месте (кабинет НКО повышает до 'org'). Обычно это запись того же значения.
     if (res.role) useSessionStore.getState().setRole(res.role);
-    set({ gathering: res.gathering, marks: deriveMarks(res.gathering.participants), displayE: null, polled: false });
+    // Черновик ролей сбрасываем ТОЛЬКО после успешного создания: стор переживает
+    // навигацию, и без этого следующий сбор унаследовал бы роли предыдущего. При провале
+    // набор остаётся — форма открыта, человек повторит отправку.
+    set({ gathering: res.gathering, marks: deriveMarks(res.gathering.participants), displayE: null, polled: false,
+          serverForecast: fromServer(res.gathering.forecast), draftRoles: [] });
     return res;
   },
 
+  // --- черновик ролей (форма создания сбора) ---
+  setDraftRoles: (rows) => set({ draftRoles: rows.slice(0, ROLES_MAX) }),
+  addDraftRole: (row) => set((s) => (
+    s.draftRoles.length >= ROLES_MAX || !row.titleRu.trim()
+      // Дубликат по названию — не ошибка ввода, а повторный тап по чипу пресета:
+      // молча игнорируем, иначе бэк вернул бы 400 на ровном месте.
+      || s.draftRoles.some((r) => r.titleRu.trim().toLowerCase() === row.titleRu.trim().toLowerCase())
+      ? {}
+      : { draftRoles: [...s.draftRoles, row] }
+  )),
+  patchDraftRole: (i, patch) => set((s) => ({
+    draftRoles: s.draftRoles.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+  })),
+  removeDraftRole: (i) => set((s) => ({ draftRoles: s.draftRoles.filter((_, idx) => idx !== i) })),
+  resetDraftRoles: () => set({ draftRoles: [] }),
+
+  // --- роли существующего сбора ---
+  // force=true подтверждает удаление роли, на которой есть люди. Возвращаем сырой
+  // результат commit: шторке нужен 409 с conflicts, чтобы спросить подтверждение.
+  saveRoles: async (roles, force = false) => {
+    const id = get().gathering.id;
+    const numeric = eventNumericId(id);
+    if (numeric == null) {
+      toast(isRu() ? 'Роли доступны только на реальном сборе' : 'Рөлдер тек нақты жиында қолжетімді');
+      return { ok: false };
+    }
+    const r = await commit({
+      call: () => api.setGatheringRoles(numeric, roles, force),
+      okRu: 'Роли сохранены', okKz: 'Рөлдер сақталды',
+      errRu: 'Не удалось сохранить роли', errKz: 'Рөлдерді сақтау мүмкін болмады',
+      // 409 = «на роль записались» либо «вместимость ниже занятого»: это не сбой, а
+      // вопрос к координатору. Тост тут только помешает — шторка покажет своё.
+      silent: (err) => err && err.status === 409,
+    });
+    if (r.ok && r.data) set((s) => ({ gathering: { ...s.gathering, roles: r.data.roles } }));
+    return r;
+  },
+
+  // Координатор ставит участнику роль (PersonSheet). Вместимость на бэке здесь мягкая:
+  // он видит человека перед собой, и отказ «мест нет» ему возвращать поздно — роль честно
+  // нарисуется «3 из 2». Обновляем и ростер, и счётчики ролей из ответа.
+  setParticipantRole: async (pid, roleId) => {
+    const gid = get().gathering.id;
+    const numeric = eventNumericId(gid);
+    if (numeric == null) return { ok: false };
+    const r = await commit({
+      call: () => api.setParticipantRole(numeric, pid, roleId),
+      errRu: 'Не удалось изменить роль', errKz: 'Рөлді өзгерту мүмкін болмады',
+    });
+    if (r.ok && r.data) {
+      set((s) => ({
+        gathering: {
+          ...s.gathering,
+          roles: r.data.roles,
+          participants: s.gathering.participants.map((x) => (x.id === pid ? { ...x, ...r.data.participant } : x)),
+        },
+      }));
+    }
+    return r;
+  },
+
   loadCoord: async (id) => {
-    set({ mlForecast: null }); // сбрасываем ML прошлого сбора
+    set({ mlForecast: null, serverForecast: null }); // сбрасываем прогноз прошлого сбора
     const numeric = eventNumericId(id); // 'e5' из ленты → '5'
     if (numeric == null) {
       // Демо-сбор без серверной пары ('ed1'): в API не идём — вернулся бы чужой сбор.
       const snap = readJSON(CI_G(String(id)), null);
-      if (snap) set({ gathering: snap, marks: deriveMarks(snap.participants), checkinQueue: readJSON(CI_Q(String(id)), []) });
+      if (snap) set({ gathering: snap, marks: deriveMarks(snap.participants), checkinQueue: readJSON(CI_Q(String(id)), []), serverForecast: staleForecast(snap) });
       return;
     }
     try {
@@ -162,30 +264,53 @@ export const useGatheringStore = create((set, get) => ({
         if (op.pid != null) participants = participants.map((p) => (p.id === op.pid ? { ...p, presence: op.present ? 'came' : null } : p));
       }
       const gathering = { ...res.gathering, participants };
-      writeJSON(CI_G(gid), gathering); // снапшот для перезагрузки офлайн
-      set({ gathering, marks: deriveMarks(participants), checkinQueue: queue, polled: false });
+      writeJSON(CI_G(gid), gathering); // снапшот для перезагрузки офлайн (вместе с forecast и p_i)
+      set({ gathering, marks: deriveMarks(participants), checkinQueue: queue, polled: false,
+            serverForecast: fromServer(res.gathering.forecast) });
       if (queue.length) get().flushCheckin();
     } catch (_) {
-      // офлайн: восстанавливаем сбор и очередь из localStorage
+      // офлайн: восстанавливаем сбор и очередь из localStorage. Прогноз из снапшота
+      // помечаем stale — показывать вчерашнее число как живое нельзя.
       const snap = readJSON(CI_G(numeric), null);
-      if (snap) set({ gathering: snap, marks: deriveMarks(snap.participants), checkinQueue: readJSON(CI_Q(numeric), []) });
+      if (snap) set({ gathering: snap, marks: deriveMarks(snap.participants), checkinQueue: readJSON(CI_Q(numeric), []), serverForecast: staleForecast(snap) });
     }
   },
 
-  // Компаньон-прогноз ML (обучаемая модель). Мягко: недоступна → { available:false }.
+  // Перечитать прогноз после ручной правки ростера: модель пересчитывает не только
+  // сумму, но и вероятность каждого — ждать следующего тика поллинга (до 10 с) на
+  // экране, где координатор только что изменил ответ, было бы враньём.
+  refreshForecast: async () => {
+    const numeric = eventNumericId(get().gathering.id);
+    if (numeric == null) return;
+    try {
+      const f = await api.forecast(numeric);
+      set({ serverForecast: fromServer(f) });
+      get().animateForecast(false);
+    } catch (_) {
+      /* офлайн — на экране остаётся прошлое число, поллинг догонит */
+    }
+  },
+
+  // Полная поимённая раскладка модели (вероятность КАЖДОГО участника, не только
+  // «на грани»). Экрану координатора это больше не нужно: агрегат, сегменты и список
+  // для напоминания приезжают вместе со сбором, а p_i — прямо в participants[].p.
+  // Оставлено как точка для отладки и будущих экранов; автоматически НЕ вызывается,
+  // чтобы не делать лишний запрос на каждое открытие сбора.
   loadMlForecast: async () => {
     const numeric = eventNumericId(get().gathering.id);
-    if (numeric == null) { set({ mlForecast: { available: false } }); return; }
+    if (numeric == null) { set({ mlForecast: { available: false, reason: 'demo' } }); return; }
     try {
       const r = await api.mlForecast(numeric);
       set({ mlForecast: r });
-    } catch (_) {
-      set({ mlForecast: { available: false } });
+    } catch (err) {
+      set({ mlForecast: { available: false, reason: (err && err.status === 403) ? 'forbidden' : 'offline' } });
     }
   },
 
   // Список своих сборов для экрана «Мои сборы». Пусто/офлайн — экран падает на демо.
   loadMine: async () => {
+    // /gatherings/mine под @profiled_required — см. loadMyEvents.
+    if (!useSessionStore.getState().hasProfile()) return;
     try {
       const res = await api.myGatherings();
       if (Array.isArray(res.gatherings)) set({ myGatherings: res.gatherings });
@@ -225,13 +350,40 @@ export const useGatheringStore = create((set, get) => ({
   rsvp: async (code, answer) => {
     try {
       const res = await api.putRsvp(code, answer);
-      set((s) => (s.gathering ? { gathering: { ...s.gathering, comingCount: res.comingCount, myAnswer: answer } } : {}));
+      set((s) => (s.gathering ? { gathering: {
+        ...s.gathering, comingCount: res.comingCount, myAnswer: answer,
+        // Ответ 'no' освобождает место — сервер уже это сделал, отражаем и локально,
+        // иначе блок выбора роли остался бы с чужой подписью.
+        roles: res.roles || s.gathering.roles, myRoleId: res.roleId,
+      } } : {}));
       return { ok: true, data: res };
     } catch (err) {
       // Не глотаем: возвращаем различимый результат, чтобы экран откатил оптимистичный
       // ответ и показал правду (напр. 409 «Сбор уже завершён»). Ср. commit() в lib/optimistic.
       return { ok: false, error: err };
     }
+  },
+
+  // Выбор роли на гостевом экране — ПОСЛЕ того, как запись уже прошла. Отдельным PUT,
+  // потому что RSVP остаётся одно-тапным и роль не должна его задерживать.
+  // Идёт через commit: без него офлайн-провал выглядел бы успехом (роль видна локально,
+  // сервер о ней не знает) — ровно тот класс бага, что уже чинили в этом сторе.
+  pickGuestRole: async (code, roleId) => {
+    const answer = (get().gathering && get().gathering.myAnswer) || 'yes';
+    const r = await commit({
+      call: () => api.putRsvp(code, answer, { roleId }),
+      okRu: 'Роль выбрана', okKz: 'Рөл таңдалды',
+      errRu: 'Не удалось выбрать роль', errKz: 'Рөлді таңдау мүмкін болмады',
+      silent: (err) => err && err.status === 409,   // «роль разобрали» — экран скажет сам
+    });
+    // Актуальные роли приходят и в успехе, и в теле 409: перерисовываем остатки сразу.
+    const fresh = r.ok ? (r.data && r.data.roles) : (r.error && r.error.data && r.error.data.roles);
+    set((s) => (s.gathering ? { gathering: {
+      ...s.gathering,
+      roles: fresh || s.gathering.roles,
+      myRoleId: r.ok ? roleId : s.gathering.myRoleId,
+    } } : {}));
+    return r;
   },
 
   // --- мутации сбора (оптимистично + API) ---
@@ -260,7 +412,7 @@ export const useGatheringStore = create((set, get) => ({
       get().animateForecast(false);
     };
     return commit({
-      apply: () => writeAnswer(a),
+      apply: () => { writeAnswer(a); get().refreshForecast(); },
       // Откатываем, только если наш запрос по участнику — последний: более свежий тап
       // уже записал своё значение, и его сервер мог принять.
       rollback: () => { if (answerGen.get(id) === gen) writeAnswer(prevAnswer); },
@@ -365,9 +517,12 @@ export const useGatheringStore = create((set, get) => ({
     if (idx < 0) return;
     const removed = list[idx];
     return commit({
-      apply: () => set((s) => ({
-        gathering: { ...s.gathering, participants: s.gathering.participants.filter((p) => p.id !== id) },
-      })),
+      apply: () => {
+        set((s) => ({
+          gathering: { ...s.gathering, participants: s.gathering.participants.filter((p) => p.id !== id) },
+        }));
+        get().refreshForecast();
+      },
       // Возвращаем НА ТО ЖЕ МЕСТО: порядок ростера — это порядок ответов, и участник,
       // всплывший в конец списка, читается как «его удалили и добавили заново».
       rollback: () => set((s) => {
@@ -464,15 +619,23 @@ export const useGatheringStore = create((set, get) => ({
     // Отката нет намеренно: серверных значений на руках нет, а стирать набранный
     // текст на ошибке сохранения — хуже, чем оставить его в форме с честным тостом.
     return commit({
-      call: () => api.patchGathering(g.id, {
-        what: g.titleRu, where: g.placeRu,
-        titleKz: g.titleKz, placeKz: g.placeKz,
-        needed: g.needed,
-        // Тема/город/орг/обложка правятся в шторке настроек — без них PATCH откатывал бы
-        // их к серверным. Имена в ТЕЛЕ — theme/cityId/orgId/imageUrl (см. patchGathering),
-        // а в объекте gathering обложка лежит под image (serialize_gathering_owner).
-        theme: g.theme, cityId: g.cityId, orgId: g.orgId, imageUrl: g.image,
-      }),
+      // Норма (needed) участвует в вердикте и в «не хватит N» — эти поля считает
+      // сервер, поэтому после сохранения прогноз надо перечитать, иначе степпер в
+      // шторке уже показывает новое число, а строка нормы держит старое.
+      call: async () => {
+        const r = await api.patchGathering(g.id, {
+          what: g.titleRu, where: g.placeRu,
+          titleKz: g.titleKz, placeKz: g.placeKz,
+          needed: g.needed,
+          // Тема/город/орг/обложка правятся в шторке настроек — без них PATCH откатывал бы
+          // их к серверным. Имена в ТЕЛЕ — theme/cityId/orgId/imageUrl (см. patchGathering),
+          // а в объекте gathering обложка лежит под image (serialize_gathering_owner).
+          theme: g.theme, cityId: g.cityId, orgId: g.orgId, imageUrl: g.image,
+        });
+        // Тема сбора — тоже вход модели (event_type), так что перечитываем и после её правки.
+        get().refreshForecast();
+        return r;
+      },
       okRu: 'Изменения сохранены', okKz: 'Өзгерістер сақталды',
       errRu: 'Не удалось сохранить изменения', errKz: 'Өзгерістерді сақтау мүмкін болмады',
     });
@@ -507,11 +670,17 @@ export const useGatheringStore = create((set, get) => ({
   setOrg: (v) => set((s) => ({ gathering: { ...s.gathering, orgId: v } })),
   setImage: (v) => set((s) => ({ gathering: { ...s.gathering, image: v } })),
 
-  registerEvent: (eventId, a) => {
+  // roleId (необязателен) — роль волонтёра на сборе. Обычный путь ленты его НЕ шлёт:
+  // запись остаётся одно-тапной, а роль досылается вторым вызовом уже после успеха
+  // (см. pickEventRole). Возвращаем результат commit наружу — вызывающему экрану надо
+  // знать, что запись реально прошла, прежде чем предлагать выбрать роль.
+  registerEvent: (eventId, a, roleId) => {
     const numeric = serverEventId(eventId);
     if (numeric == null) {
       toast(isRu() ? 'Этот сбор недоступен для записи' : 'Бұл жиынға жазылу мүмкін емес');
-      return;
+      // Раньше возвращалось undefined, и вызывающий не мог отличить «не отправляли»
+      // от успеха — на демо-ленте это открывало бы шторку роли поверх несуществующей записи.
+      return Promise.resolve({ ok: false });
     }
     const prev = get().regs[eventId];
     // «идут» считает только 'yes' — счётчик двигаем по переходу prev → a (оптимистично,
@@ -522,10 +691,33 @@ export const useGatheringStore = create((set, get) => ({
       // Откатываем, только если наш ответ ещё стоит: пока PUT летел, пользователь мог
       // выбрать другой (и тот уже сохранился) — иначе сотрём чужую запись насовсем.
       rollback: () => { if (get().regs[eventId] !== a) return; bumpGoing(eventId, -delta); set((s) => ({ regs: withReg(s.regs, eventId, prev) })); },
-      call: () => api.setEventReg(numeric, a),
+      call: () => api.setEventReg(numeric, a, roleId ? { roleId } : {}),
       okRu: 'Ответ сохранён', okKz: 'Жауап сақталды',
       errRu: 'Не удалось сохранить ответ', errKz: 'Жауапты сақтау мүмкін болмады',
     });
+  },
+
+  // Выбор роли ПОСЛЕ записи (событие ленты). Отдельный вызов, а не часть registerEvent:
+  // запись должна состояться даже если человек роль не выберет, а роль — не должна
+  // блокировать запись. Идёт через commit, поэтому офлайн честно откатится и стостится:
+  // без этого человек видел бы выбранную роль локально, а сервер о ней не знал.
+  pickEventRole: async (eventId, roleId) => {
+    const numeric = serverEventId(eventId);
+    if (numeric == null) return { ok: false };
+    const answer = get().regs[eventId] || 'yes';
+    const r = await commit({
+      call: () => api.setEventReg(numeric, answer, { roleId }),
+      okRu: 'Роль выбрана', okKz: 'Рөл таңдалды',
+      errRu: 'Не удалось выбрать роль', errKz: 'Рөлді таңдау мүмкін болмады',
+      // 409 «роль уже разобрали» — не сбой связи, а гонка за место: экран покажет свой
+      // текст и перерисует остатки из тела ответа.
+      silent: (err) => err && err.status === 409,
+    });
+    // Свежие роли (с актуальным taken) приезжают и в успехе, и в 409 — кладём их в ленту,
+    // чтобы счётчики «3 из 5» не остались устаревшими на карточке события.
+    const fresh = r.ok ? (r.data && r.data.roles) : (r.error && r.error.data && r.error.data.roles);
+    if (fresh) usePlatformStore.getState().patchEventRoles(eventId, fresh, r.ok ? roleId : undefined);
+    return r;
   },
 
   unregisterEvent: (eventId) => {
@@ -549,7 +741,8 @@ export const useGatheringStore = create((set, get) => ({
 
   // --- анимация числа прогноза ---
   animateForecast: (fromZero) => {
-    const target = get().forecast().E;
+    const view = get().forecastView();
+    const target = view ? view.expected : 0;
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia &&
@@ -586,6 +779,10 @@ export const useGatheringStore = create((set, get) => ({
       const since = g.revision == null ? -1 : g.revision;
       try {
         const res = await api.poll(g.id, since);
+        // Свежий серверный прогноз приезжает В КАЖДОМ тике поллинга — отдельного
+        // запроса не нужно. Раньше это поле молча выбрасывалось, и число на экране
+        // жило своей жизнью от клиентской формулы.
+        if (res && res.forecast) set({ serverForecast: fromServer(res.forecast) });
         if (res && res.changed && res.changed.length) {
           set((s) => ({
             gathering: { ...s.gathering, participants: mergeChanged(s.gathering.participants, res.changed), revision: res.revision },

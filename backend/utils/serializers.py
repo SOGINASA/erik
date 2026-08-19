@@ -54,18 +54,66 @@ def _base_gathering(g):
     }
 
 
-def serialize_participant(p, coordinator=False):
-    """coordinator=True раскрывает телефон и историю (PII)."""
+def serialize_role(role, taken=0):
+    """Роль сбора для клиента. taken считается по ростеру (services/roles.role_counts).
+
+    free=None при capacity=0 — это «без ограничения», и UI не должен рисовать «N из M»
+    там, где M не существует.
+    """
+    return {
+        'id': role.id,
+        'titleRu': role.title_ru,
+        'titleKz': role.title_kz,
+        'capacity': role.capacity or 0,
+        'taken': taken,
+        'free': max(0, role.capacity - taken) if role.capacity else None,
+        'newbie': bool(role.newbie),
+        'preset': role.preset,
+    }
+
+
+def serialize_roles(g):
+    """Все роли сбора одним проходом по ростеру."""
+    from services.roles import role_counts
+    counts = role_counts(g)
+    return [serialize_role(r, counts.get(r.id, 0)) for r in g.roles]
+
+
+def serialize_participant(p, coordinator=False, p_value=None, roles_by_id=None):
+    """coordinator=True раскрывает телефон, историю и вероятность явки (PII).
+
+    p_value — P(придёт) от модели для ЭТОГО человека. Персональная оценка
+    надёжности: наружу (в публичные списки участников) она не уходит никогда.
+
+    roles_by_id — {id: GatheringRole} сбора. Роль резолвим ПО СЛОВАРЮ, а не через
+    p.role: PRAGMA foreign_keys в проекте не включается, ondelete='SET NULL' на SQLite
+    не срабатывает, поэтому осиротевший role_id физически возможен (правка БД руками,
+    гонка с удалением роли). Неизвестный id → участник просто «без роли»; 500 на самом
+    частом запросе приложения недопустим.
+    """
     d = {
         'id': p.id,
         'name': p.name,
         'answer': p.answer,
         'presence': p.presence,
         'isGuest': p.is_guest,
+        'roleId': None,
+        'roleTitleRu': None,
+        'roleTitleKz': None,
     }
+    if p.role_id and roles_by_id:
+        role = roles_by_id.get(p.role_id)
+        if role is not None:
+            d['roleId'] = role.id
+            d['roleTitleRu'] = role.title_ru
+            d['roleTitleKz'] = role.title_kz
     if coordinator:
         d['phone'] = p.phone
         d['history'] = p.history
+        # id пользователя — чтобы координатор мог открыть профиль участника из ростера.
+        # У walk-in гостей аккаунта нет: None, и фронт просто не рисует ссылку.
+        d['userId'] = p.user_id
+        d['p'] = round(p_value, 3) if p_value is not None else None
     return d
 
 
@@ -83,9 +131,14 @@ def serialize_coordinator(c, user=None):
 
 
 def serialize_gathering_owner(g):
-    """Полный вид для координатора: ростер + ctx + counts (без прогноза — он отдельным
-    эндпоинтом, но counts безопасны и нужны для полосы/фильтров)."""
-    from services.forecast import compute_forecast
+    """Полный вид для координатора: ростер + ctx + counts + ПРОГНОЗ.
+
+    Прогноз кладём прямо сюда (а не только в отдельный эндпоинт) намеренно: раньше
+    фронт его не запрашивал и считал число сам в браузере по своей копии формулы —
+    из-за этого серверная модель на экран не попадала в принципе. Теперь источник
+    числа один, и он серверный.
+    """
+    from services.forecast import forecast_with_probs
     d = _base_gathering(g)
     d['ctx'] = g.ctx
     d['revision'] = g.revision
@@ -94,18 +147,32 @@ def serialize_gathering_owner(g):
     # orgId/image редактируются через PATCH — отдаём назад, иначе форма правки их теряет
     d['orgId'] = g.org_id
     d['image'] = g.image_url
-    d['participants'] = [serialize_participant(p, coordinator=True) for p in g.participants]
-    d['counts'] = compute_forecast(g.participants, g.ctx or 1.0)['counts']
+    f, probs = forecast_with_probs(g, include_people=True)
+    probs = probs or {}
+    roles_by_id = {r.id: r for r in g.roles}
+    d['participants'] = [serialize_participant(p, coordinator=True, p_value=probs.get(p.id),
+                                               roles_by_id=roles_by_id)
+                         for p in g.participants]
+    d['counts'] = f['counts']
+    d['forecast'] = f
+    d['roles'] = serialize_roles(g)
     return d
 
 
-def serialize_gathering_public(g, my_answer=None):
+def serialize_gathering_public(g, my_answer=None, mine=None):
     """Публичный вид (/g/:code): БЕЗ прогноза, ростера и телефонов.
-    Только агрегат «сейчас придут N» (= число ответивших 'yes')."""
+    Только агрегат «сейчас придут N» (= число ответивших 'yes').
+
+    Роли отдаём ТОЛЬКО агрегатами (сколько занято из скольких) — это тот же класс
+    информации, что comingCount. Имён по ролям и вероятностей здесь нет и быть не должно.
+    mine — свой Participant, чтобы показать уже выбранную роль.
+    """
     d = _base_gathering(g)
     coming = sum(1 for p in g.participants if p.answer == 'yes')
     d['comingCount'] = coming
     d['myAnswer'] = my_answer
+    d['roles'] = serialize_roles(g)
+    d['myRoleId'] = mine.role_id if mine is not None else None
     return d
 
 
@@ -133,12 +200,21 @@ def _going(g):
 
 
 def serialize_event_card(g, viewer_id=None):
-    """Карточка события ленты (форма фронтовой EVENTS)."""
+    """Карточка события ленты (форма фронтовой EVENTS).
+
+    Роли кладём прямо в карточку, а не отдельным запросом: экран события открывает
+    RegisterSheet, зная только id, и после записи выбирать роль было бы физически не из
+    чего. Список короткий (≤8), а g.roles/g.participants грузятся selectin-ом одним
+    батчем на всю ленту — лишних запросов на карточку не появляется.
+    """
     d = _base_gathering(g)
     d['orgId'] = g.org_id
     d['going'] = _going(g)
     d['image'] = g.image_url
     d['mine'] = viewer_id is not None and g.owner_id == viewer_id
+    d['roles'] = serialize_roles(g)
+    mine = next((p for p in g.participants if viewer_id is not None and p.user_id == viewer_id), None)
+    d['myRoleId'] = mine.role_id if mine is not None else None
     return d
 
 
@@ -189,7 +265,11 @@ def serialize_user_public(u):
     for r in recs:
         gath = db.session.get(Gathering, r.gathering_id)
         dru, _dkz, _t = date_labels(gath.starts_at) if (gath and gath.starts_at) else (None, None, None)
-        history.append({'t': gath.title_ru if gath else '—', 'd': dru or '', 'came': r.presence == 'came'})
+        # id сбора отдаём, чтобы строка истории вела на его страницу (/e/:id). Сбор мог
+        # быть удалён — тогда id None, и фронт оставляет строку некликабельной.
+        history.append({'id': gath.id if gath else None,
+                        't': gath.title_ru if gath else '—',
+                        'd': dru or '', 'came': r.presence == 'came'})
     return {
         'id': u.id, 'name': u.full_name, 'city': city.name_ru if city else None,
         'cityId': u.city_id,
@@ -317,6 +397,9 @@ def serialize_application(app):
     return {
         'id': app.id,
         'eventId': app.gathering_id,
+        # id автора заявки (не id самой заявки) — для перехода в его профиль. Заявка
+        # могла прийти без аккаунта (гостевая форма) — тогда None.
+        'userId': app.applicant_id,
         'name': app.name,
         'phone': app.phone,
         'city': city.name_ru if city else None,
@@ -326,6 +409,37 @@ def serialize_application(app):
         'reliability': user.reliability if user else None,
         'history': history,
         'status': app.status,
+        'agoRu': ago_ru, 'agoKz': ago_kz,
+    }
+
+
+def serialize_role_request(r, user=None):
+    """Заявка на роль организатора — для очереди админа и для самого заявителя.
+
+    Кладём агрегаты заявителя (город, часы, сборы, надёжность): админ решает не по
+    формуле, а по человеку, и уходить за этим вторым запросом в /users/<id> на каждую
+    строку очереди он не станет. Телефона здесь нет — заявка не даёт на него права.
+    """
+    from models import db, City, User
+    if user is None:
+        user = r.user if r.user is not None else (
+            db.session.get(User, r.user_id) if r.user_id else None)
+    city = db.session.get(City, user.city_id) if (user and user.city_id) else None
+    ago_ru, ago_kz = _ago_labels(r.created_at)
+    return {
+        'id': r.id,
+        'userId': r.user_id,
+        'name': (user.full_name if user else None) or 'Без имени',
+        'city': city.name_ru if city else None,
+        'currentRole': user.role if user else None,
+        'role': r.requested_role,
+        'message': r.message or '',
+        'status': r.status,
+        'rejectReason': r.reject_reason,
+        'hours': (user.hours_total or 0) if user else 0,
+        'events': (user.events_attended or 0) if user else 0,
+        'reliability': (user.reliability or 0) if user else 0,
+        'createdAt': _iso(r.created_at),
         'agoRu': ago_ru, 'agoKz': ago_kz,
     }
 

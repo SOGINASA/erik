@@ -5,23 +5,39 @@ top-level модули `config`/`features`, имена которых перес
 Поэтому импортируем его ИЗОЛИРОВАННО (подменяя записи в sys.modules только на время
 импорта) — чтобы ml-`config` не перезаписал backend-`config` и наоборот.
 
-Мост мягко деградирует: если ml/ нет, зависимости не установлены или модель ещё не
-обучена (артефакт в ml/artifacts/ — в .gitignore, его может не быть), API отдаёт
-{'available': False, 'reason': ...} с подсказкой, а бэкенд НЕ падает.
+Мост мягко деградирует: если ml/ нет, зависимости не установлены или артефакт
+модели отсутствует, всё возвращает None/available:false, а бэкенд НЕ падает —
+прогноз честно откатывается на аналитическую формулу (services/forecast.py).
 
-Маппинг входа — как в ml/README.md («Как это ложится на бэкенд»):
-    history.came      ← User.trust_came   (для гостя — snapshot hist_came_at_rsvp)
-    history.total     ← User.trust_total  (для гостя — snapshot hist_total_at_rsvp)
-    history.interests ← User.skills       (временный маппинг; справочник тем-интересов позже)
-    event.event_type  ← Gathering.theme   (у сборов координатора её может не быть → '')
-    event.answer      ← Participant.answer
+Что изменилось против первой версии (это и есть суть претензии жюри):
+  • признаки собираются ПОЛНОСТЬЮ (services/history_features.py), а не три поля из
+    четырнадцати — иначе модель в проде вырождалась в функцию (came, total, answer),
+    то есть ровно в ту же формулу, которую она должна была заменить;
+  • предсказание батчевое — одна матрица на весь ростер вместо N вызовов;
+  • ручная калибровка p**γ убрана: модель калибруется изотонически при обучении
+    (ml/train.py), поэтому Σ p_i — это и есть ожидаемая явка, а не «шкала».
+
+Маппинг входа:
+    history.*          ← services/history_features.build_histories (журнал AttendanceRecord)
+    event.event_type   ← Gathering.theme (id темы совпадает с ml/config.EVENT_TYPE_IDS)
+    event.answer       ← Participant.answer
 """
 import importlib.util
+import json
+import os
 import sys
 from pathlib import Path
 
-# ml/ — сосед backend/: .../backend/services/attendance_ml.py → parents[2] = корень репо
-ML_DIR = Path(__file__).resolve().parents[2] / 'ml'
+from services.history_features import build_histories
+
+# ml/ — сосед backend/: .../backend/services/attendance_ml.py → parents[2] = корень репо.
+# В контейнере каталоги лежат раздельно (/app и /ml), поэтому путь переопределяется
+# переменной окружения ERIK_ML_DIR.
+ML_DIR = Path(os.environ.get('ERIK_ML_DIR') or (Path(__file__).resolve().parents[2] / 'ml'))
+
+# Аварийный рубильник: ERIK_ML_DISABLE=1 гасит модель, не трогая код и артефакты.
+# Нужен, чтобы в любой момент показать «а что будет без ML» и проверить фолбэк.
+_DISABLED = os.environ.get('ERIK_ML_DISABLE') == '1'
 
 # ml/inference.py делает `from config import ...` / `from features import ...` — их и
 # изолируем. Порядок важен: config → features → inference (кросс-импорты между ними).
@@ -30,30 +46,19 @@ _ML_MODULES = ('config', 'features', 'inference')
 # Подсказки для каждого нерабочего состояния — уходят во фронт как поле hint.
 _HINTS = {
     'no_ml_dir': 'Каталог ml/ не найден рядом с backend/',
-    'deps_missing': 'Установите зависимости ML: pip install -r ml/requirements.txt',
+    'deps_missing': 'Установите зависимости ML: pip install -r backend/requirements-ml.txt',
     'model_not_trained': 'Обучите модель: cd ml && python train.py',
+    'disabled': 'ML отключён переменной окружения ERIK_ML_DISABLE=1',
     'error': 'Не удалось загрузить ML-модель — см. логи сервера',
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Калибровка вероятностей.
-#
-#  Раньше здесь стояла ad-hoc степень p → p**γ, чтобы поджать «сырые» оптимистичные
-#  скоры бустинга. Теперь калибровка ОБУЧАЕМАЯ и живёт в самой модели: ml/train.py
-#  оборачивает классификатор в изотоническую CalibratedClassifierCV. Поэтому
-#  pred['probability'] — уже честная P(придёт), и сумма таких p_i по участникам =
-#  ожидаемая явка сбора (на отложенном тесте Σp попадает в фактическую явку с
-#  ошибкой ~2%). Никакой ручной степени здесь больше не нужно — оставляем тождество,
-#  чтобы точка калибровки была явной и заменяемой.
-def _calibrate(p):
-    """Модель уже откалибрована при обучении → возвращаем вероятность как есть."""
-    return p
-
+ANSWERED = ('yes', 'maybe', 'no')
 
 # Ленивое одноразовое состояние моста.
 _predictor = None      # inference.AttendancePredictor | None
 _status = None         # 'ok' | ключ из _HINTS
 _loaded = False        # была ли уже попытка загрузки
+_quality = None        # кэш artifacts/*.json
 
 
 def _isolated_import_inference():
@@ -89,6 +94,9 @@ def _load():
         return
     _loaded = True
 
+    if _DISABLED:
+        _status = 'disabled'
+        return
     if not ML_DIR.exists():
         _status = 'no_ml_dir'
         return
@@ -111,10 +119,21 @@ def _load():
 
 def reload():
     """Сбросить кэш (например, после того как модель обучили при живом сервере)."""
-    global _predictor, _status, _loaded
+    global _predictor, _status, _loaded, _quality
     _predictor = None
     _status = None
     _loaded = False
+    _quality = None
+
+
+def warmup():
+    """Прогреть модель на старте воркера (вызывается из app.create_app).
+
+    Без прогрева первый координатор, открывший сбор, ждёт распаковку joblib
+    (~2-3 с), и так в каждом из воркеров gunicorn.
+    """
+    _load()
+    return _status
 
 
 def is_available():
@@ -122,31 +141,75 @@ def is_available():
     return _predictor is not None
 
 
-def _history_from_participant(part):
-    """Агрегаты истории для модели. Привязан к User — живой trust_*, иначе snapshot RSVP."""
-    if part.user_id and part.user is not None:
-        u = part.user
-        return {
-            'came': u.trust_came or 0,
-            'total': u.trust_total or 0,
-            'interests': u.skills or [],
-        }
+def status():
+    _load()
+    return _status
+
+
+def unavailable_payload():
+    """Единая форма «модели нет» — с причиной и подсказкой, что сделать."""
+    return {'available': False, 'reason': status(), 'hint': _HINTS.get(status())}
+
+
+def model_info():
+    """Паспорт модели для UI: имя, порог и ключевые метрики отложенного теста."""
+    if not is_available():
+        return None
+    q = quality() or {}
+    metrics = q.get('metrics') or {}
     return {
-        'came': part.hist_came_at_rsvp or 0,
-        'total': part.hist_total_at_rsvp or 0,
-        'interests': [],
+        'name': _predictor.model_name,
+        'threshold': round(float(_predictor.threshold), 4),
+        'calibrated': True,
+        'rocAuc': metrics.get('roc_auc'),
+        'brier': metrics.get('brier'),
+        'nTest': metrics.get('n_test'),
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Предсказание
+# ─────────────────────────────────────────────────────────────────────────────
+
+def probabilities(gathering, at_rsvp=False):
+    """P(придёт) для каждого ответившего участника → {participant_id: p} или None.
+
+    Правило «все или никто»: если модель недоступна или не смогла оценить хотя бы
+    одного ответившего, возвращаем None и вызывающий целиком уходит на формулу.
+    Смешивать источники в одной сумме нельзя — E тихо занижался бы, а по числу
+    было бы не понять, чем оно посчитано.
+    """
+    if not is_available():
+        return None
+
+    parts = [p for p in gathering.participants if p.answer in ANSWERED]
+    if not parts:
+        return {}
+
+    try:
+        histories = build_histories(gathering, at_rsvp=at_rsvp)
+        event_type = gathering.theme or ''
+        items = [(histories[p.id], {'event_type': event_type, 'answer': p.answer})
+                 for p in parts]
+        probs = _predictor.predict_proba_batch(items)
+    except Exception:
+        return None
+
+    if len(probs) != len(parts):
+        return None
+    return {p.id: float(pr) for p, pr in zip(parts, probs)}
+
+
 def predict_participant(part, event_type):
-    """Предсказание явки для одного участника или None (нет ответа / модель молчит)."""
-    if not is_available() or part.answer not in ('yes', 'maybe', 'no'):
+    """Предсказание по одному участнику (CLI/отладка). Ростер считайте через probabilities."""
+    if not is_available() or part.answer not in ANSWERED:
         return None
     try:
-        return _predictor.predict(
-            _history_from_participant(part),
-            {'event_type': event_type or '', 'answer': part.answer},
-        )
+        gathering = part.gathering
+        history = build_histories(gathering)[part.id] if gathering is not None else {
+            'came': part.history['came'], 'total': part.history['total'], 'interests': [],
+        }
+        return _predictor.predict(history, {'event_type': event_type or '', 'answer': part.answer})
     except Exception:
         return None
 
@@ -154,36 +217,80 @@ def predict_participant(part, event_type):
 def forecast_gathering(gathering):
     """ML-прогноз по сбору: вероятность явки на каждого + агрегат.
 
-    `expected` — сумма откалиброванных при обучении вероятностей всех ответивших:
-    прямая ML-оценка ожидаемой явки (Σ p_i). Компаньон аналитического E из
-    services/forecast.py — это два независимых оценщика (ML и консервативная
-    формула). При недоступной модели — {'available': False, 'reason', 'hint'}
-    (бэкенд не падает)."""
-    if not is_available():
-        return {'available': False, 'reason': _status, 'hint': _HINTS.get(_status)}
+    Форма ответа сохранена байт-в-байт с первой версией эндпоинта
+    GET /gatherings/<id>/ml-forecast — на неё завязан фронт.
+    """
+    probs = probabilities(gathering)
+    if probs is None:
+        return unavailable_payload()
 
+    threshold = float(_predictor.threshold)
     people = []
     expected = 0.0
     for part in gathering.participants:
-        pred = predict_participant(part, gathering.theme)
-        if pred is None:
+        p = probs.get(part.id)
+        if p is None:
             continue
-        prob = _calibrate(pred['probability'])   # на шкале матмодели (сумма ≈ честному E)
-        expected += prob
+        expected += p
         people.append({
             'id': part.id,
             'name': part.name,
             'answer': part.answer,
-            'probability': round(prob, 4),
-            'willAttend': pred['will_attend'],   # решение модели не меняется (порог монотонен)
-            'confidence': pred['confidence'],    # уверенность — по «сырой» вероятности модели
+            'probability': round(p, 4),
+            'willAttend': p >= threshold,
+            'confidence': confidence_band(p),
         })
 
     return {
         'available': True,
         'model': _predictor.model_name,
-        'threshold': round(_calibrate(_predictor.threshold), 4),
+        'threshold': round(threshold, 4),
         'expected': round(expected, 1),
         'needed': gathering.needed,
         'participants': people,
     }
+
+
+def confidence_band(p):
+    """Словесная уверенность — та же шкала, что в ml/inference._confidence_band."""
+    d = abs(p - 0.5)
+    if d >= 0.35:
+        return 'высокая'
+    if d >= 0.15:
+        return 'средняя'
+    return 'низкая'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Паспорт качества модели (artifacts/*.json) — для экрана «Качество прогноза»
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _read_json(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def quality():
+    """metrics.json + baselines.json + feature_importance.json одним словарём.
+
+    Читается с диска один раз. Это не «маркетинг», а ровно те артефакты, которые
+    печатает ml/evaluate.py и ml/baseline.py — воспроизводимые одной командой.
+    """
+    global _quality
+    if _quality is not None:
+        return _quality
+    art = ML_DIR / 'artifacts'
+    if not art.exists():
+        return None
+    payload = {
+        'metrics': _read_json(art / 'metrics.json'),
+        'baselines': _read_json(art / 'baselines.json'),
+        'featureImportance': _read_json(art / 'feature_importance.json'),
+    }
+    if not any(payload.values()):
+        return None
+    _quality = payload
+    return _quality

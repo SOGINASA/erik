@@ -166,6 +166,7 @@ def org_events():
         .group_by(Application.gathering_id).all()
     )
     today = _now().date()
+    by_id = {x.id: x for x in rows}
     events = [serialize_org_event(x, pending.get(x.id, 0), today) for x in rows]
     if status != 'all':
         events = [e for e in events if e['status'] == status]
@@ -173,6 +174,22 @@ def org_events():
     if limit is not None:
         payload['total'] = len(events)
         payload['events'] = events[offset:offset + limit]
+
+    # Прогноз считаем ТОЛЬКО для видимого среза: это проход модели по ростеру
+    # каждого сбора, и делать его для отфильтрованных/непоказанных карточек
+    # незачем. Раньше штаб показывал собственную формулу от счётчиков — из-за
+    # неё «прогноз» на демо-данных совпадал с числом подтвердивших.
+    from services.forecast import forecast_payload
+    for e in payload['events']:
+        row = by_id.get(e['id'])
+        if row is None or e['status'] == 'done':
+            continue          # у прошедшего сбора есть факт явки — прогноз ему уже ни к чему
+        f = forecast_payload(row)
+        e['forecast'] = {
+            'expected': f['E'], 'lo': f['lo'], 'hi': f['hi'], 'sigma': f['sigma'],
+            'source': f['source'], 'model': f['model'],
+            'verdict': f['verdict'], 'shortBy': f['shortBy'],
+        }
     return jsonify(payload)
 
 
@@ -240,26 +257,70 @@ class _AtRsvpPart:
 
 
 def _forecast_mae(done_rows):
-    """Средняя абсолютная ошибка прогноза по завершённым сборам → {mae, n} или None."""
+    """Бэктест прогноза на завершённых сборах: модель против формулы против счётчика.
+
+    Считаем среднюю абсолютную ошибку «сколько ждали» против «сколько пришло» для
+    ТРЁХ предсказателей на одних и тех же сборах:
+      • model    — обученная ML-модель (основной источник);
+      • formula  — аналитическая p = base·trust·ctx (фолбэк);
+      • confirmed — наивная ставка «придут все, кто нажал "приду"». Именно её жюри
+        подозревает в том, что она и есть наш прогноз, — поэтому она в таблице.
+
+    Всё считается «как на момент RSVP» (снапшот hist_*_at_rsvp и история только по
+    более ранним сборам): живой User.trust_* уже обучен ЭТИМ ЖЕ сбором, и прогноз
+    по нему подглядывал бы в собственный ответ.
+
+    → {mae, n, modelMae, formulaMae, confirmedMae, source} или None.
+    """
     from models import ForecastParams
     from services.forecast import compute_forecast
+    from services import attendance_ml
 
     params = ForecastParams.get()
-    errors = []
+    err_model, err_formula, err_confirmed = [], [], []
     for x in done_rows:
+        # Только РЕАЛЬНО закрытые сборы. Сбор, который просто прошёл по дате, но
+        # который координатор не финализировал, явку не знает: там presence пуст у
+        # всех, came=0 — и такой сбор превращал бы бэктест в ложное «прогноз ошибся
+        # на 20 человек» для любого предсказателя.
+        if x.finalized_at is None and x.status != 'done':
+            continue
         parts = [p for p in x.participants if p.answer in ANSWERS]
         if not parts:
             continue                      # без ответов прогноза не было — не штрафуем модель
-        expected = compute_forecast([_AtRsvpPart(p) for p in parts], x.ctx or 1.0, params)['E']
         came = sum(1 for p in x.participants if p.presence == 'came')
-        errors.append(abs(expected - came))
-    if not errors:
+
+        formula_e = compute_forecast([_AtRsvpPart(p) for p in parts], x.ctx or 1.0, params)['E']
+        err_formula.append(abs(formula_e - came))
+        err_confirmed.append(abs(sum(1 for p in parts if p.answer == 'yes') - came))
+
+        probs = attendance_ml.probabilities(x, at_rsvp=True)
+        if probs:
+            err_model.append(abs(sum(probs.values()) - came))
+
+    if not err_formula:
         return None
-    return {'mae': round(sum(errors) / len(errors), 2), 'n': len(errors)}
+
+    def _mae(errs):
+        return round(sum(errs) / len(errs), 2) if errs else None
+
+    model_mae = _mae(err_model)
+    formula_mae = _mae(err_formula)
+    return {
+        # legacy-ключи: mae = ошибка того источника, которым сейчас считается прогноз
+        'mae': model_mae if model_mae is not None else formula_mae,
+        'n': len(err_model) if model_mae is not None else len(err_formula),
+        'source': 'model' if model_mae is not None else 'formula',
+        'modelMae': model_mae,
+        'formulaMae': formula_mae,
+        'confirmedMae': _mae(err_confirmed),
+        'nGatherings': len(err_formula),
+    }
 
 
 def _empty_analytics():
-    return {'activeGatherings': 0, 'confirmedTotal': 0, 'attendancePct': 0, 'hoursTotal': 0,
+    return {'activeGatherings': 0, 'confirmedTotal': 0, 'expectedTotal': 0,
+            'forecastSource': None, 'attendancePct': 0, 'hoursTotal': 0,
             'forecastAccuracy': None, 'byMonth': [], 'topVolunteers': []}
 
 
@@ -330,9 +391,22 @@ def org_analytics():
         u = db.session.get(User, v['id'])
         v['name'] = u.full_name if u else None
 
+    # Сколько людей модель ждёт на всех активных сборах — рядом с «подтвердили».
+    # Два числа разной природы, и разница между ними и есть вклад прогноза.
+    from services.forecast import forecast_payload
+    expected_total = 0.0
+    forecast_source = 'formula'
+    for x in active_rows:
+        f = forecast_payload(x)
+        expected_total += f['E']
+        if f['source'] == 'model':
+            forecast_source = 'model'
+
     return jsonify({'analytics': {
         'activeGatherings': len(active_rows),
         'confirmedTotal': confirmed,
+        'expectedTotal': round(expected_total, 1),
+        'forecastSource': forecast_source,
         'attendancePct': round(100 * came_done / answered) if answered else 0,
         'hoursTotal': hours_total,
         'forecastAccuracy': _forecast_mae(done_rows),
@@ -497,6 +571,9 @@ def _decide_application(application, gathering, accepted):
                 db.session.delete(part)
             else:
                 part.answer = 'no'
+                # Ответ 'no' освобождает место в роли — иначе слот остался бы занят
+                # человеком, которому только что отказали (роль показалась бы закрытой).
+                part.role_id = None
             gathering.bump()
     from services.notifications import notify_application_decision
     notify_application_decision(application, accepted=accepted)

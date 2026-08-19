@@ -23,8 +23,21 @@ def make_tokens(user):
     return access, refresh
 
 
+# Префикс, зарезервированный за демо-личностями сида (demo-coord, demo-v0, demo-org1…).
+# Заводит их ТОЛЬКО seed.py. Фабриковать такую личность по запросу нельзя: на
+# незасеянной базе кнопка «Войти как Координатор» создавала пустого юзера — без имени
+# и с дефолтным role='vol'. Наружу это выглядело как «у координатора пропала роль»
+# (роли и не было), профильные эндпоинты отвечали 403 «Заполните имя», а следующий
+# `flask seed-demo` падал на UNIQUE(device_id) и требовал --reset.
+# Честный отказ лучше: фронт уже говорит «Бэкенд недоступен — запустите seed-demo».
+DEMO_DEVICE_PREFIX = 'demo-'
+
+
 def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=None):
-    """Найти пользователя по device_id или создать нового. Возвращает (user, created)."""
+    """Найти пользователя по device_id или создать нового. Возвращает (user, created).
+
+    (None, False) — запрошена демо-личность, которой в базе нет (сид не запускался).
+    """
     now = datetime.now(timezone.utc)
     created = False
 
@@ -40,6 +53,9 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
             u.user_agent = user_agent
 
     user = User.query.filter_by(device_id=device_id).first() if device_id else None
+
+    if user is None and (device_id or '').startswith(DEMO_DEVICE_PREFIX):
+        return None, False              # демо-личность заводит только сид
 
     if user is None:
         user = User(

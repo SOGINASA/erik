@@ -7,6 +7,10 @@ import { api } from './api';
 import { useLang } from '../i18n';
 
 // Роуты, требующие входа. Гость видит ленту, карту, событие, НКО — остальное просит войти.
+// 'forecastQuality' сюда НЕ входит намеренно: паспорт модели прогноза открыт всем
+// (эндпоинт /api/forecast/quality тоже публичный). Там нет ничего персонального —
+// только метрики модели на отложенном тесте, и любой должен иметь возможность
+// проверить, чем считается число, не заводя аккаунт.
 export const GATED_ROUTES = new Set([
   'me', 'myEvents', 'messages', 'convo', 'notifications', 'leaderboard', 'charity',
   'coord', 'check', 'new', 'admin', 'profile',
@@ -14,12 +18,15 @@ export const GATED_ROUTES = new Set([
 ]);
 
 // Роуты штаба организатора — мало войти, нужна роль coord/org.
+// 'new' (создание сбора) входит сюда: волонтёр записывается на сборы, а проводит их
+// координатор или НКО — это и проверяет бэк (POST /api/gatherings → 403 не-организатору,
+// backend/routes/gatherings.py:create_gathering). Раньше роут был открыт всем, потому что
+// бэк молча повышал vol → coord на первом сборе; повышения больше нет, и открытый роут
+// стал бы формой, которая гарантированно упирается в отказ сервера.
 // Сознательно НЕ входят:
-//   'new'          — бэк сам повышает vol → coord при создании первого сбора
-//                    (backend/routes/gatherings.py:126), гейт тут отрезал бы путь в организаторы;
 //   'coord'/'check' — доступ решает владение конкретным сбором, а не роль;
 //                    это уже честно проверяет бэк (gathering_owner_required → 403).
-export const ORGANIZER_ROUTES = new Set(['manage', 'manageRequests', 'manageVolunteers']);
+export const ORGANIZER_ROUTES = new Set(['new', 'manage', 'manageRequests', 'manageVolunteers']);
 
 // Контур НКО — отдельный кабинет организации ('/manage/org'). Гейт не по «организатор
 // вообще» (coord/org), а именно по роли 'org': это кабинет НКО, координатору сюда не нужно.
@@ -50,6 +57,7 @@ export function routeName(pathname) {
   if (pathname.startsWith('/manage')) return 'manage';
   if (pathname.startsWith('/u/')) return 'profile';
   if (pathname.startsWith('/o/')) return 'org';
+  if (pathname.startsWith('/forecast-quality')) return 'forecastQuality';
   if (pathname.startsWith('/leaderboard')) return 'leaderboard';
   if (pathname.startsWith('/charity')) return 'charity';
   if (pathname.match(/^\/messages\/[^/]+/)) return 'convo';
@@ -57,6 +65,15 @@ export function routeName(pathname) {
   if (pathname.startsWith('/notifications')) return 'notifications';
   if (pathname.startsWith('/admin')) return 'admin';
   return 'notfound';
+}
+
+// Ссылка на публичный профиль пользователя — или null, если открывать нечего.
+// Проверка на целое число не формальность: сторы стартуют с демо-данных, где id
+// строковые ('v1', 'ov1'), и такая строка увела бы на /u/v1 → «Профиль не найден».
+// Гости сборов и заявки без аккаунта приходят с userId === null — тоже null.
+export function profileHref(id) {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? `/u/${n}` : null;
 }
 
 // Десктоп = ширина ≥ 900px.
@@ -120,11 +137,11 @@ export function routeAccess(route, { loggedIn, role, isAdmin, resolved }) {
   return isOrganizerRole(role) ? 'ok' : 'role';
 }
 
-// Роль на клиенте умеет протухать без перезагрузки: бэк повышает vol → coord на первом
-// сборе (backend/routes/gatherings.py:126), а фронт после создания сессию не перечитывает —
-// и персистнутая 'vol' считается известной сразу (roleKnown=true, ждать нечего). Отказ
-// штаба такому организатору советовал бы создать сбор, который он только что создал,
-// и чинился только полной перезагрузкой (boot() перечитает роль).
+// Роль на клиенте умеет протухать без перезагрузки: бэк повышает пользователя до 'org'
+// при заведении НКО (backend/routes/platform.py:create_org), а фронт сессию после этого
+// не перечитывает — и персистнутая 'vol' считается известной сразу (roleKnown=true, ждать
+// нечего). Отказ штаба такому организатору чинился бы только полной перезагрузкой
+// (boot() перечитает роль).
 // Поэтому перед отказом ОДИН раз перечитываем свою роль у бэка. Именно GET /me: он только
 // читает, тогда как boot() (POST /session) переписал бы токен и userType аккаунт-сессии.
 // setState, а не setRole: роль пришла ОТ бэка, и roleDirty («выбрана в онбординге, ещё не
@@ -155,15 +172,18 @@ export function useRouteAccess(route) {
   return verdict === 'role' && !refetched ? 'pending' : verdict;
 }
 
-// Текст отказа для тоста. Волонтёру подсказываем, как роль получить, — это правда:
-// первый созданный сбор повышает vol → coord.
+// Текст отказа для тоста. Раньше здесь советовали «создайте свой сбор, чтобы получить
+// роль» — это было правдой, пока бэк повышал vol → coord на первом сборе. Теперь совет
+// стал бы кругом: сбор и есть то, что не пускают создать. Говорим прямо, чем роли
+// отличаются, и показываем реальный самообслуживаемый путь в организаторы — кабинет НКО
+// (/manage/org открыт всем, POST /orgs повышает до 'org', см. platform.py:create_org).
 export function accessDeniedText(verdict, isRu) {
   if (verdict === 'admin') {
     return isRu ? 'Раздел доступен только администраторам' : 'Бөлім тек әкімшілерге қолжетімді';
   }
   return isRu
-    ? 'Нужна роль организатора — создайте свой сбор, чтобы её получить'
-    : 'Ұйымдастырушы рөлі қажет — оны алу үшін өз жинағыңызды құрыңыз';
+    ? 'Сборы проводят организаторы. Волонтёр записывается на чужие — или заводит НКО в кабинете организации'
+    : 'Жиындарды ұйымдастырушылар өткізеді. Волонтёр басқалардың жиынына жазылады — немесе ұйым кабинетінде ҮЕҰ ашады';
 }
 
 // Навигация с проверкой доступа: гостя на закрытый роут ведём в лист авторизации,

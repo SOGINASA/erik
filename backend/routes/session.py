@@ -38,6 +38,13 @@ def session():
         phone=data.get('phone'),
         user_agent=request.headers.get('User-Agent'),
     )
+    if user is None:
+        # Запросили демо-личность, которой в базе нет (DEMO_DEVICE_PREFIX): сид не
+        # запускался. Пускать сюда пустышку значит выдать «координатора» без роли и
+        # без имени — лучше честный отказ с готовым рецептом.
+        return jsonify({'error': 'Демо-личность не найдена — запустите flask seed-demo',
+                        'errorKz': 'Демо-тұлға табылмады — flask seed-demo іске қосыңыз'}), 404
+
     access, refresh = make_tokens(user)
     return jsonify({
         'token': access,
@@ -73,6 +80,12 @@ def update_me():
         user.lang = data['lang']
     if 'skills' in data and isinstance(data['skills'], list):
         user.skills = data['skills']
+    if 'interests' in data and isinstance(data['interests'], list):
+        # Только существующие id тем и не больше четырёх: это вход признака
+        # interest_match модели прогноза, мусор туда пускать нельзя.
+        from models import Theme
+        valid = {t.id for t in Theme.query.all()}
+        user.interests = [str(x) for x in data['interests'] if str(x) in valid][:4]
     db.session.commit()
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 

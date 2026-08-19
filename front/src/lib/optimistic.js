@@ -39,7 +39,13 @@ function errorText(err, errRu, errKz) {
 // apply/rollback — синхронные мутации стора, call — () => Promise.
 // Возвращает { ok: true, data } либо { ok: false, error }; наружу не бросает,
 // чтобы вызывающий обработчик не падал на отменённом действии.
-export async function commit({ apply, rollback, call, okRu, okKz, errRu, errKz }) {
+//
+// silent(err) — предикат «этот ответ не показывать тостом». Нужен там, где код ответа
+// означает не сбой, а ВОПРОС к пользователю: например 409 «на эту роль уже записались»,
+// после которого экран открывает подтверждение и продолжает действие с force. Тост
+// «не удалось» поверх такого диалога противоречил бы происходящему. Откат при этом
+// выполняется как обычно — молчим только про тост.
+export async function commit({ apply, rollback, call, okRu, okKz, errRu, errKz, silent }) {
   if (apply) apply();
   try {
     const data = await call();
@@ -50,7 +56,7 @@ export async function commit({ apply, rollback, call, okRu, okKz, errRu, errKz }
     if (rollback) {
       try { rollback(); } catch (_) { /* стор мог уйти дальше — сообщение важнее */ }
     }
-    toast(errorText(err, errRu, errKz));
+    if (!(typeof silent === 'function' && silent(err))) toast(errorText(err, errRu, errKz));
     return { ok: false, error: err };
   }
 }

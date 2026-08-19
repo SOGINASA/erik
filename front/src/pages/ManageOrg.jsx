@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useT, useLang } from '../i18n';
 import { api } from '../lib/api';
 import { useUiStore } from '../store/useUiStore';
+import { useSessionStore, useSessionReady } from '../store/useSessionStore';
 import { plural } from '../lib/data';
 import { Container } from '../components/Container';
 import { Field, Textarea, FieldLabel } from '../components/ui/controls';
@@ -68,7 +69,16 @@ export default function ManageOrg() {
       setStatus('error');
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  // Ждём готовности сессии (см. MyEvents): /me/orgs под @profiled_required, и до
+  // ответа boot() вызов улетал старым/безымянным токеном в 404. Догрузится сам.
+  // booted нужен, чтобы скелетон был именно ожиданием, а не тупиком: если boot()
+  // уже ответил, а профиля нет, показываем форму создания НКО, а не крутилку.
+  const ready = useSessionReady();
+  const booted = useSessionStore((s) => s.booted);
+  useEffect(() => {
+    if (ready) { load(); return; }
+    if (booted) setStatus('ready');
+  }, [ready, booted, load]);
 
   const themeOptions = themes.map((th) => ({ value: th.id, label: isRu ? th.ru : th.kz }));
   const cityOptions = cities.map((c) => ({ value: c.id, label: isRu ? c.ru : c.kz }));

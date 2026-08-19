@@ -5,7 +5,11 @@ import { useLang } from '../../i18n';
 import { api } from '../../lib/api';
 import { StatCard, SectionCard, StatusPill } from './kit';
 import Button from '../ui/Button';
+import Avatar from '../ui/Avatar';
 import { THEMES } from '../../lib/data';
+
+// Запрошенная роль → подпись в очереди заявок (User.role: coord | org).
+const ROLE_LABEL = { coord: 'Координатор', org: 'НКО' };
 
 // Русская плюрализация для количества жалоб.
 const plZh = (n) => {
@@ -51,6 +55,9 @@ export default function AdminModeration() {
   const loadPlatform = usePlatformStore((s) => s.loadPlatform);
   const loadReports = usePlatformStore((s) => s.loadReports);
   const loadPendingEvents = usePlatformStore((s) => s.loadPendingEvents);
+  const roleRequests = usePlatformStore((s) => s.roleRequests);
+  const loadRoleRequests = usePlatformStore((s) => s.loadRoleRequests);
+  const decideRoleRequest = usePlatformStore((s) => s.decideRoleRequest);
   const approveOrg = usePlatformStore((s) => s.approveOrg);
   const rejectOrg = usePlatformStore((s) => s.rejectOrg);
   const approveEvent = usePlatformStore((s) => s.approveEvent);
@@ -65,9 +72,14 @@ export default function AdminModeration() {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState('');
   const [hidden, setHidden] = useState({});
+  // То же для заявок на роль: своя пара состояний, а не общая с отклонением сбора —
+  // id очередей независимы, и заявка №3 раскрывала бы форму у сбора №3.
+  const [rejectingReq, setRejectingReq] = useState(null);
+  const [reqReason, setReqReason] = useState('');
 
-  // Организации — из платформы; жалобы и сборы на модерации — отдельными вызовами.
-  useEffect(() => { loadPlatform(); loadReports(); loadPendingEvents(); }, [loadPlatform, loadReports, loadPendingEvents]);
+  // Организации — из платформы; жалобы, сборы и заявки на роль — отдельными вызовами.
+  useEffect(() => { loadPlatform(); loadReports(); loadPendingEvents(); loadRoleRequests(); },
+    [loadPlatform, loadReports, loadPendingEvents, loadRoleRequests]);
   // Реальная метрика «ср. время реакции» из /admin/stats.
   useEffect(() => { api.adminStats().then(setStats).catch(() => {}); }, []);
 
@@ -95,10 +107,63 @@ export default function AdminModeration() {
       {/* метрики */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
         <StatCard label="Сборы на модерации" value={visiblePending.length} sub="ждут одобрения" subTone="maybe" icon="calendar" accent="var(--maybe)" tint="var(--maybe-soft)" />
+        <StatCard label="Заявки на роль" value={roleRequests.length} sub="хотят организовывать" subTone="maybe" icon="users" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Ср. время реакции" value={reaction} sub="от жалобы до решения" icon="clock" />
       </div>
+
+      {/* заявки на роль организатора — ЕДИНСТВЕННЫЙ путь vol → coord: создание сбора
+          роль больше не повышает, а сам сбор волонтёру создать нельзя. Показываем
+          агрегаты явки: решение принимается по человеку, а не по тексту заявки. */}
+      <SectionCard title="Заявки на роль организатора" pad={8}>
+        {roleRequests.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {roleRequests.map((r, i) => (
+              <div key={r.id} style={{ borderBottom: i < roleRequests.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px' }}>
+                  <Avatar name={r.name} size={34} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                      <StatusPill tone="blue">{ROLE_LABEL[r.role] || r.role}</StatusPill>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>
+                      {[r.city, `${r.events} сборов`, `надёжность ${r.reliability}%`, isRu ? r.agoRu : r.agoKz].filter(Boolean).join(' · ')}
+                    </div>
+                    {r.message && (
+                      <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 6, lineHeight: 1.4 }}>«{r.message}»</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                    <Button size="sm" variant="secondary" onClick={() => { setRejectingReq(r.id); setReqReason(''); }}>Отклонить</Button>
+                    <Button size="sm" variant="primary" onClick={() => decideRoleRequest(r.id, 'approve')}>Выдать роль</Button>
+                  </div>
+                </div>
+                {/* причина отказа — инлайн, пустая допустима (как у отклонения сбора) */}
+                {rejectingReq === r.id && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0 8px 12px' }}>
+                    <input
+                      value={reqReason}
+                      onChange={(ev) => setReqReason(ev.target.value)}
+                      placeholder={isRu ? 'Причина отказа (необязательно)' : 'Бас тарту себебі (міндетті емес)'}
+                      maxLength={400}
+                      autoFocus
+                      style={{ flex: 1, minWidth: 0, height: 36, padding: '0 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 14 }}
+                    />
+                    <Button size="sm" variant="secondary" onClick={() => setRejectingReq(null)}>{isRu ? 'Отмена' : 'Болдырмау'}</Button>
+                    <Button size="sm" variant="primary" onClick={() => { setRejectingReq(null); decideRoleRequest(r.id, 'reject', reqReason); }}>{isRu ? 'Отклонить' : 'Қабылдамау'}</Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
+            Нет заявок на роль организатора
+          </div>
+        )}
+      </SectionCard>
 
       {/* сборы, ожидающие модерации — новый сбор от волонтёра/координатора появляется здесь
           и попадает в ленту/на карту только после «Одобрить» */}

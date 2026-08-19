@@ -75,8 +75,12 @@ export const api = {
   // сборы (координатор)
   createGathering: (body) => request('/gatherings', { method: 'POST', body }),
   getGathering: (id) => request(`/gatherings/${id}`),
-  forecast: (id) => request(`/gatherings/${id}/forecast`),
+  // Прогноз явки. Источник — обученная модель, формула включается только при её
+  // недоступности (и тогда это видно в поле source). ?source=formula — принудительно
+  // фолбэком, чтобы показать разницу на одних и тех же данных.
+  forecast: (id, source) => request(`/gatherings/${id}/forecast${source ? `?source=${source}` : ''}`),
   mlForecast: (id) => request(`/gatherings/${id}/ml-forecast`),
+  forecastQuality: () => request('/forecast/quality', { auth: false }),
   poll: (id, since) => request(`/gatherings/${id}/poll?since=${since}`),
   patchGathering: (id, body) => request(`/gatherings/${id}`, { method: 'PATCH', body }),
   deleteGathering: (id) => request(`/gatherings/${id}`, { method: 'DELETE' }),
@@ -84,6 +88,15 @@ export const api = {
   share: (id) => request(`/gatherings/${id}/share`),
   myGatherings: () => request('/gatherings/mine'),
   resubmitGathering: (id) => request(`/gatherings/${id}/resubmit`, { method: 'POST' }), // только владелец: отклонённый сбор → на повторную модерацию
+
+  // роли волонтёров на сборе
+  gatheringRoles: (id) => request(`/gatherings/${id}/roles`),
+  // Заменяет НАБОР целиком. force=true нужен, чтобы удалить роль, на которую уже
+  // записались: без него бэк отдаёт 409 со списком conflicts (спрашиваем подтверждение).
+  setGatheringRoles: (id, roles, force = false) =>
+    request(`/gatherings/${id}/roles`, { method: 'PUT', body: { roles, force } }),
+  setParticipantRole: (id, pid, roleId) =>
+    request(`/gatherings/${id}/participants/${pid}/role`, { method: 'PUT', body: { roleId } }),
 
   // ростер (координатор)
   setAnswer: (id, pid, answer) =>
@@ -122,9 +135,20 @@ export const api = {
   getEvents: (qs = '') => request('/events' + qs),
   getEvent: (id) => request(`/events/${id}`),
   eventParticipants: (id, limit = 7) => request(`/events/${id}/participants?limit=${limit}`),
-  setEventReg: (id, answer) => request(`/events/${id}/registration`, { method: 'PUT', body: { answer } }),
+  // Кто ещё идёт на сбор — с userId, чтобы строка вела в профиль. Отдельно от
+  // eventParticipants (та публичная и отдаёт только имена): бэк пускает сюда лишь тех,
+  // кто сам записан на сбор либо его ведёт, остальным 403.
+  eventCoParticipants: (id) => request(`/events/${id}/co-participants`),
+  // extra — как у putRsvp: {roleId} для выбора роли. Второй путь записи на сбор, и он
+  // обязан принимать ровно то же, что гостевой, иначе «роль исчезает при записи из ленты».
+  setEventReg: (id, answer, extra = {}) =>
+    request(`/events/${id}/registration`, { method: 'PUT', body: { answer, ...extra } }),
   deleteEventReg: (id) => request(`/events/${id}/registration`, { method: 'DELETE' }),
   myRegistrations: () => request('/me/registrations'),
+  // Заявка на роль организатора — путь vol → coord через админа (создание сбора роль
+  // больше не повышает). GET отдаёт последнюю заявку или null.
+  myRoleRequest: () => request('/me/role-request'),
+  createRoleRequest: (body = {}) => request('/me/role-request', { method: 'POST', body }), // {role?, message?}
   myEvents: () => request('/me/events'),   // события, на которые волонтёр записался («Мои мероприятия»)
   getOrgs: () => request('/orgs'),
   createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
@@ -172,9 +196,16 @@ export const api = {
   orgBroadcast: (body) => request('/me/org/broadcast', { method: 'POST', body }), // {title, textRu, textKz}
 
   // ── админ-панель (под уже существующие и новые роуты) ──
-  adminUsers: (page = 1, search = '') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}`),
+  // role: all|vol|coord|org|admin — фильтр серверный (список пагинируется по 20,
+  // клиентский фильтр видел бы только текущую страницу). Ответ несёт counts по всей выборке.
+  adminUsers: (page = 1, search = '', role = 'all') => request(`/admin/users?page=${page}&search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}`),
   updateUser: (id, patch) => request(`/admin/users/${id}`, { method: 'PATCH', body: patch }),
   adminStats: () => request('/admin/stats'),
+  // Очередь заявок на роль организатора. approve выдаёт роль из САМОЙ заявки —
+  // тело запроса роль не выбирает (см. backend/routes/admin.py).
+  adminRoleRequests: (status = 'pending') => request(`/admin/role-requests?status=${status}`),
+  approveRoleRequest: (id) => request(`/admin/role-requests/${id}/approve`, { method: 'POST' }),
+  rejectRoleRequest: (id, reason = '') => request(`/admin/role-requests/${id}/reject`, { method: 'POST', body: { reason } }),
   adminOrgs: (status = 'all') => request(`/admin/orgs?status=${status}`),
   resolveReport: (id) => request(`/admin/reports/${id}/resolve`, { method: 'POST' }),
   adminEvents: (qs = '') => request('/admin/events' + qs),

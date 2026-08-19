@@ -15,9 +15,31 @@ from werkzeug.exceptions import HTTPException
 from config import get_config, DATABASE_DIR, validate_config
 from models import db, User
 
+from utils.schema import SCHEMA_HEAD, detect_revision, schema_lag
+
 # Инициализация расширений
 migrate = Migrate()
 jwt = JWTManager()
+
+
+def _warn_if_schema_behind(app):
+    """Громко предупредить, что БД отстала от моделей.
+
+    create_all() добавляет недостающие ТАБЛИЦЫ, но не КОЛОНКИ в существующие. БД от
+    прошлой версии остаётся наполовину обновлённой — новая таблица есть, новой колонки
+    нет — и первый же SELECT по users падает 500. Молча это проходить не должно:
+    симптом выглядит как «сломалась вся система юзеров», а чинится одной командой.
+    """
+    from sqlalchemy import inspect
+
+    rev = schema_lag(inspect(db.engine))
+    if rev is None:
+        return
+    app.logger.warning(
+        '[db] схема БД отстала: соответствует %s, нужна %s. '
+        'db.create_all() колонки в существующие таблицы не добавляет — '
+        'запросы к users/participants будут падать. Почините: flask db-sync',
+        rev, SCHEMA_HEAD)
 
 
 def create_app(config_object=None):
@@ -35,11 +57,12 @@ def create_app(config_object=None):
     jwt.init_app(app)
 
     # Для локальной разработки/демо схема поднимается create_all() (zero-config).
-    # В проде используйте миграции: `flask db upgrade` и запуск с SKIP_DB_CREATE=1.
+    # В проде используйте миграции: `flask db-sync` и запуск с SKIP_DB_CREATE=1.
     # Флаг также нужен при генерации миграций (autogenerate против пустой БД).
     if os.environ.get('SKIP_DB_CREATE') != '1':
         with app.app_context():
             db.create_all()
+            _warn_if_schema_behind(app)
 
     # Регистрация блюпринтов
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
@@ -59,6 +82,16 @@ def create_app(config_object=None):
     def _rollback_on_error(exc):
         if exc is not None:
             db.session.rollback()
+
+    # Прогрев ML-модели на старте воркера: распаковка joblib занимает ~2-3 с, и без
+    # прогрева её платит первый же координатор, открывший сбор, — в каждом из
+    # воркеров gunicorn. Под флагом, чтобы локальный запуск и тесты не тормозили.
+    if os.environ.get('ERIK_ML_WARMUP') == '1':
+        try:
+            from services.attendance_ml import warmup
+            app.logger.info('[ml] прогрев модели прогноза: %s', warmup())
+        except Exception as exc:                      # noqa: BLE001 — старт важнее ML
+            app.logger.warning('[ml] прогрев не удался: %s', exc)
 
     # Главная страница API
     @app.route('/api')
@@ -121,12 +154,59 @@ def init_db():
     print('База данных инициализирована!')
 
 
+@app.cli.command('db-sync')
+def db_sync():
+    """Привести схему БД к head. Единая точка входа вместо `flask db upgrade`.
+
+    Безопасна для всех трёх состояний, в которых БД этого проекта реально бывает:
+      1) пустая: прогоняем всю цепочку миграций;
+      2) под alembic: обычный upgrade;
+      3) поднята create_all() без alembic_version: штампуем ревизией, которой схема
+         ФАКТИЧЕСКИ соответствует (_detect_revision), и докатываем остальное. Голый
+         upgrade тут упал бы на «table users already exists».
+
+    Текст сообщений — ASCII-safe: команду зовёт и Windows-консоль в cp1251, где
+    печать стрелок и прочей типографики роняет click с UnicodeEncodeError.
+    """
+    from sqlalchemy import inspect
+    from flask_migrate import stamp, upgrade
+
+    insp = inspect(db.engine)
+    if insp.get_table_names() and not insp.has_table('alembic_version'):
+        rev = detect_revision(insp)
+        if rev is None:
+            raise click.ClickException(
+                'БД непустая, но не похожа на схему erik — штамповать нечем. '
+                'Проверьте DATABASE_URL или начните с пустой БД.')
+        click.echo(f'БД без alembic_version: штампую {rev} по фактической схеме')
+        stamp(revision=rev)
+
+    upgrade()
+    click.echo('Схема БД на head.')
+
+
 @app.cli.command('seed-demo')
 @click.option('--reset', is_flag=True, default=False,
               help='Полностью очистить доменные таблицы и пересоздать демо (аккаунты сохраняются)')
-def seed_demo_cmd(reset):
-    """Засеять детерминированную демо-синтетику (сбор PARK18 и участники)."""
+@click.option('--if-empty', is_flag=True, default=False,
+              help='Ничего не делать, если в базе уже есть пользователи (автосид при деплое)')
+def seed_demo_cmd(reset, if_empty):
+    """Засеять детерминированную демо-синтетику (сбор PARK18 и участники).
+
+    --if-empty для entrypoint: файл БД в git не едет (.gitignore), поэтому свежий
+    деплой поднимает ПУСТУЮ базу — платформа без событий, а кнопки быстрого входа
+    ведут в никуда. Флаг делает шаг безопасным для повторных стартов: на живой базе
+    он просто ничего не трогает.
+    """
     from seed import seed_demo
+
+    if if_empty:
+        n = User.query.count()
+        if n:
+            click.echo(f'seed-demo: в базе уже {n} пользователей, пропускаю')
+            return
+        click.echo('seed-demo: база пустая, засеваю демо-данные')
+
     seed_demo(reset=reset)
     print('Готово.')
 
