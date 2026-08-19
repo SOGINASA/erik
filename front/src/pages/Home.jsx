@@ -4,6 +4,7 @@ import { usePlatformStore } from '../store/usePlatformStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import Button from '../components/ui/Button';
+import Icon from '../components/Icon';
 // деплой
 const F = (isRu, ru, kz, sru, skz) => ({ title: isRu ? ru : kz, sub: isRu ? sru : skz });
 
@@ -175,7 +176,18 @@ export default function Home() {
               </>
             )}
           </div>
-          <div style={{ marginTop: 28, fontSize: 12, color: 'rgba(255,255,255,.7)' }}>{t.mMade}</div>
+          <div style={{ marginTop: 28, fontSize: 12, color: 'rgba(255,255,255,.72)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            <span>{isRu ? 'Сделано для Tech Vision 2026 · Community Engagement ·' : 'Tech Vision 2026 үшін жасалған · Community Engagement ·'}</span>
+            <button
+              type="button"
+              onClick={() => navigate('/project-rights')}
+              className="footer-team-link"
+              aria-label={isRu ? 'Об авторах и правах на проект' : 'Жоба авторлары мен құқықтары туралы'}
+            >
+              ITshechka team
+              <Icon name="chevronRight" size={14} />
+            </button>
+          </div>
         </div>
       </section>
     </div>

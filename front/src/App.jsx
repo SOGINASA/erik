@@ -33,6 +33,7 @@ import Convo from './pages/Convo';
 import Notifications from './pages/Notifications';
 import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
+import ProjectRights from './pages/ProjectRights';
 
 export default function App() {
   // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP),
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/project-rights" element={<ProjectRights />} />
         <Route path="/g/:code" element={<GuestGathering />} />
         <Route element={<Shell />}>
           <Route path="/feed" element={<Feed />} />
