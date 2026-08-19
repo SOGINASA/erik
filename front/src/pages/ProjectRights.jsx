@@ -21,6 +21,8 @@ const AUTHORS = [
     name: 'Ефремов Иван Александрович',
     phone: '+7 776 122 9953',
     phoneHref: 'tel:+77761229953',
+    telegram: '@Vanek3222',
+    telegramHref: 'https://t.me/Vanek3222',
   },
 ];
 
