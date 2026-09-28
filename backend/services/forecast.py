@@ -159,8 +159,12 @@ def forecast_with_probs(gathering, params=None, include_people=False, prefer_ml=
     Карта вероятностей нужна owner-сериализатору, чтобы поставить p каждому человеку
     в ростере, но в самом JSON прогноза она была бы дублем — поэтому отдаётся рядом.
     """
+    from flask import current_app
+    # Process-local invalidation cannot invalidate another worker's history cache.
+    # Disable reuse with PostgreSQL until a versioned shared cache is introduced.
+    use_cache = not current_app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('postgresql')
     key = _fingerprint(gathering) + (include_people, prefer_ml)
-    cached = _CACHE.get(key)
+    cached = _CACHE.get(key) if use_cache else None
     if cached is not None:
         return cached
 
@@ -205,7 +209,8 @@ def forecast_with_probs(gathering, params=None, include_people=False, prefer_ml=
 
     if len(_CACHE) >= _CACHE_MAX:
         _CACHE.clear()
-    _CACHE[key] = (f, probs)
+    if use_cache:
+        _CACHE[key] = (f, probs)
     return f, probs
 
 
@@ -244,14 +249,17 @@ def _nudge_list(gathering, probs):
 
 def recompute_user_trust(user):
     """Пересчитать агрегаты пользователя из журнала AttendanceRecord (идемпотентно)."""
-    rows = AttendanceRecord.query.filter_by(user_id=user.id).all()
-    total = len(rows)
-    came = sum(1 for r in rows if r.presence == 'came')
+    from sqlalchemy import case, func
+    total, came, hours = db.session.query(
+        func.count(AttendanceRecord.id),
+        func.coalesce(func.sum(case((AttendanceRecord.presence == 'came', 1), else_=0)), 0),
+        func.coalesce(func.sum(AttendanceRecord.hours_credited), 0),
+    ).filter(AttendanceRecord.user_id == user.id).one()
     user.trust_total = total
     user.trust_came = came
     user.reliability = round(100 * came / total) if total else 0
     user.events_attended = came
-    user.hours_total = sum((r.hours_credited or 0) for r in rows)
+    user.hours_total = hours
 
 
 def finalize_gathering(gathering):
@@ -294,8 +302,8 @@ def finalize_gathering(gathering):
     db.session.flush()
 
     from services.notifications import award_badges
-    for uid in affected_user_ids:
-        user = db.session.get(User, uid)
+    for uid in sorted(affected_user_ids):
+        user = User.query.filter_by(id=uid).populate_existing().with_for_update().first()
         if user:
             recompute_user_trust(user)
             award_badges(user)

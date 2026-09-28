@@ -239,7 +239,7 @@ function MoreSheet() {
         {isAdmin && item('shield', t.navAdmin, () => goClose('/admin', 'admin'))}
         <div style={{ height: 1, background: 'var(--line)', margin: '8px 0' }} />
         {loggedIn
-          ? item('external', t.logout, () => { logout(); close(); navigate('/'); showToast(isRu ? 'Вы вышли из аккаунта' : 'Аккаунттан шықтыңыз'); }, true)
+          ? item('external', t.logout, async () => { try { await logout(); close(); navigate('/'); showToast(isRu ? 'Вы вышли из аккаунта' : 'Аккаунттан шықтыңыз'); } catch (e) { showToast(e.message || 'Не удалось выйти. Повторите попытку.'); } }, true)
           : item('users', t.loginWord, () => { close(); navigate('/login'); })}
       </div>
     </Sheet>

@@ -1,3 +1,4 @@
+from services.transactions import load_gathering
 """P3: организатор (Manage HQ) и заявки на событие.
 
 «mine» = сборы, где текущий пользователь владелец (owner_id) ИЛИ со-координатор
@@ -235,7 +236,7 @@ def org_volunteers():
         u = db.session.get(User, uid)
         if u is None or not u.is_active:
             continue
-        last_g = db.session.get(Gathering, gid)
+        last_g = load_gathering(gid)
         out.append(serialize_org_volunteer(u, last_g))
     out.sort(key=lambda v: v['reliability'], reverse=True)
     return jsonify({'volunteers': out})
@@ -487,7 +488,7 @@ def event_applications(id):
 @profiled_required
 def create_application(id):
     """Подать заявку на событие. Тело {skills, message}; PII сервер берёт из User."""
-    gathering = db.session.get(Gathering, id)
+    gathering = load_gathering(id)
     if gathering is None or gathering.status == 'deleted':
         return jsonify({'error': 'Событие не найдено'}), 404
     # На свой сбор заявку не подают: иначе организатор сам себе участник + уведомление.
@@ -527,6 +528,7 @@ def create_application(id):
 def _decide_application(application, gathering, accepted):
     """Решение по заявке — общая часть одиночного и массового пути. БЕЗ commit
     (в bulk коммит один на всю пачку). → True, если что-то изменилось."""
+    db.session.refresh(application)
     target = 'accepted' if accepted else 'declined'
     if application.status == target:
         return False
@@ -587,7 +589,7 @@ def accept_application(aid):
     application = db.session.get(Application, aid)
     if application is None:
         return jsonify({'error': 'Заявка не найдена'}), 404
-    gathering = db.session.get(Gathering, application.gathering_id)
+    gathering = load_gathering(application.gathering_id)
     if not _owns_gathering(g.user, gathering):
         return jsonify({'error': 'Это не ваш сбор'}), 403
 
@@ -603,7 +605,7 @@ def decline_application(aid):
     application = db.session.get(Application, aid)
     if application is None:
         return jsonify({'error': 'Заявка не найдена'}), 404
-    gathering = db.session.get(Gathering, application.gathering_id)
+    gathering = load_gathering(application.gathering_id)
     if not _owns_gathering(g.user, gathering):
         return jsonify({'error': 'Это не ваш сбор'}), 403
 
@@ -634,7 +636,10 @@ def bulk_applications():
 
     accepted = action == 'accept'
     updated, failed, seen = [], [], set()
-    for aid in ids:
+    ordered = Application.query.filter(Application.id.in_(ids)).order_by(Application.gathering_id, Application.id).all()
+    ordered_ids = [a.id for a in ordered]
+    ordered_ids.extend(sorted(set(ids) - set(ordered_ids)))
+    for aid in ordered_ids:
         if aid in seen:                  # дубли в теле — не повод дважды слать уведомление
             continue
         seen.add(aid)
@@ -642,7 +647,7 @@ def bulk_applications():
         if application is None:
             failed.append({'id': aid, 'error': 'Заявка не найдена'})
             continue
-        gathering = db.session.get(Gathering, application.gathering_id)
+        gathering = load_gathering(application.gathering_id)
         if not _owns_gathering(g.user, gathering):
             failed.append({'id': aid, 'error': 'Это не ваш сбор'})
             continue

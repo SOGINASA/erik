@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from models import db, User, City, Theme, USER_ROLES
 from services.legal import validate_legal_acceptance, validate_subject_name, record_legal_consent
 from utils.decorators import rate_limit
@@ -43,6 +43,7 @@ def make_tokens(user):
 
 @auth_bp.route('/register', methods=['POST'])
 @rate_limit(5, 60)
+@jwt_required(optional=True)
 def register():
     """Регистрация пользователя по email или nickname"""
     data = request.get_json(silent=True)
@@ -121,6 +122,9 @@ def register():
         if device_id:
             existing = User.query.filter_by(device_id=device_id).first()
             if existing is not None and not existing.has_account:
+                verify_jwt_in_request()
+                if str(existing.id) != get_jwt_identity() or not existing.is_active:
+                    return jsonify({'error': 'Требуется действующая сессия владельца'}), 403
                 user = existing
                 user.email = email
                 user.nickname = nickname
@@ -151,6 +155,9 @@ def register():
         user.is_verified = False
         user.verification_token = secrets.token_urlsafe(24) if email else None
         user.last_login = datetime.now(timezone.utc)
+        from services.security import revoke_user
+        if user.id is not None:
+            revoke_user(user)
         user.set_password(password)
         consent = record_legal_consent(user, snapshot, 'auth.register')
         db.session.commit()
@@ -177,6 +184,9 @@ def register():
 
     except Exception as e:
         db.session.rollback()
+        from flask_jwt_extended.exceptions import JWTExtendedException
+        if isinstance(e, JWTExtendedException):
+            raise
         from flask import current_app
         current_app.logger.error('Registration transaction failed (%s)', type(e).__name__)
         return jsonify({'error': 'Ошибка при создании аккаунта'}), 500
@@ -184,6 +194,7 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 @rate_limit(10, 60)
+@rate_limit(30, 900, by_account=True)
 def login():
     """Вход пользователя по email, nickname или identifier"""
     data = request.get_json()
@@ -220,6 +231,10 @@ def login():
     if not user or not user.check_password(password):
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
+    import os
+    if os.environ.get('FLASK_ENV') == 'production' and user.user_type == 'admin' and password == 'admin123':
+        return jsonify({'error': 'Неверные данные для входа'}), 401
+
     try:
         user.last_login = datetime.now(timezone.utc)
         db.session.commit()
@@ -243,15 +258,29 @@ def refresh():
     """Обновление токена"""
     try:
         current_user_id = int(get_jwt_identity())
-        user = db.session.get(User, current_user_id)
+        user = User.query.filter_by(id=current_user_id).populate_existing().with_for_update().first()
+        if user is not None and get_jwt().get('ver') != user.token_version:
+            return jsonify({'error': 'Сессия завершена'}), 401
 
         if not user or not user.is_active:
             return jsonify({'error': 'Пользователь не найден'}), 404
 
-        new_access_token, _ = make_tokens(user)
+        from models import UsedRefreshToken
+        from sqlalchemy.exc import IntegrityError
+        import time
+        UsedRefreshToken.query.filter(UsedRefreshToken.expires_at < int(time.time())).delete()
+        payload = get_jwt()
+        db.session.add(UsedRefreshToken(jti=payload['jti'], expires_at=payload['exp']))
+        new_access_token, new_refresh_token = make_tokens(user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'error': 'Refresh-токен уже использован'}), 401
 
         return jsonify({
             'access_token': new_access_token,
+            'refresh_token': new_refresh_token,
             'message': 'Токен обновлен'
         })
 
@@ -364,6 +393,8 @@ def change_password():
         if len(data['new_password']) < 6:
             return jsonify({'error': 'Новый пароль должен содержать минимум 6 символов'}), 400
 
+        from services.security import revoke_user
+        revoke_user(user)
         user.set_password(data['new_password'])
         db.session.commit()
 
@@ -377,6 +408,7 @@ def change_password():
 
 @auth_bp.route('/forgot-password', methods=['POST'])
 @rate_limit(5, 60)
+@rate_limit(5, 3600, by_account=True)
 def forgot_password():
     """Восстановление пароля"""
     data = request.get_json()
@@ -432,13 +464,15 @@ def reset_password():
 
     user = User.query.filter_by(reset_token=data['token']).first()
 
-    if not user or not user.reset_token_expires or user.reset_token_expires < datetime.now(timezone.utc):
+    if not user or not user.reset_token_expires or user.reset_token_expires.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         return jsonify({'error': 'Недействительный или истекший токен'}), 400
 
     if len(data['password']) < 6:
         return jsonify({'error': 'Пароль должен содержать минимум 6 символов'}), 400
 
     try:
+        from services.security import revoke_user
+        revoke_user(user)
         user.set_password(data['password'])
         user.reset_token = None
         user.reset_token_expires = None

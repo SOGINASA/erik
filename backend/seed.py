@@ -249,6 +249,22 @@ def build_participants():
     return out
 
 
+def seed_catalogs():
+    """Idempotent reference data only: no accounts or demo events."""
+    ForecastParams.get()
+
+    for tid, ru, kz, tint, ink in THEMES:
+        if not db.session.get(Theme, tid):
+            db.session.add(Theme(id=tid, label_ru=ru, label_kz=kz, tint=tint, ink=ink))
+    for cid, ru, kz, x, y in CITIES:
+        if not db.session.get(City, cid):
+            db.session.add(City(id=cid, name_ru=ru, name_kz=kz, map_x=x, map_y=y))
+    for bid, ru, kz, glyph in BADGES:
+        if not db.session.get(Badge, bid):
+            db.session.add(Badge(id=bid, label_ru=ru, label_kz=kz, glyph=glyph))
+    db.session.commit()
+
+
 def seed_demo(reset=False):
     if reset:
         # ⚠️ reset ПОЛНОСТЬЮ очищает доменные таблицы (все сборы/НКО/помощь/уведомления),
@@ -267,18 +283,7 @@ def seed_demo(reset=False):
         User.query.filter(User.device_id.like('demo-%')).delete()
         db.session.commit()
 
-    ForecastParams.get()
-
-    for tid, ru, kz, tint, ink in THEMES:
-        if not db.session.get(Theme, tid):
-            db.session.add(Theme(id=tid, label_ru=ru, label_kz=kz, tint=tint, ink=ink))
-    for cid, ru, kz, x, y in CITIES:
-        if not db.session.get(City, cid):
-            db.session.add(City(id=cid, name_ru=ru, name_kz=kz, map_x=x, map_y=y))
-    for bid, ru, kz, glyph in BADGES:
-        if not db.session.get(Badge, bid):
-            db.session.add(Badge(id=bid, label_ru=ru, label_kz=kz, glyph=glyph))
-    db.session.commit()
+    seed_catalogs()
 
     # У ОБОИХ админов role='vol'. Админство живёт в user_type, а role — это продуктовая
     # роль в приложении, и ставить админу 'org' или 'coord' значит подмешать ему чужой

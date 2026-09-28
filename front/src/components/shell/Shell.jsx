@@ -194,7 +194,7 @@ function Sidebar({ route }) {
         {loggedIn && (
           <button
             className="erik-row-hover"
-            onClick={() => { logout(); navigate('/'); showToast(t.logout === 'Шығу' ? 'Аккаунттан шықтыңыз' : 'Вы вышли из аккаунта'); }}
+            onClick={async () => { try { await logout(); navigate('/'); showToast(t.logout === 'Шығу' ? 'Аккаунттан шықтыңыз' : 'Вы вышли из аккаунта'); } catch (e) { showToast(e.message || 'Не удалось выйти. Повторите попытку.'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '8px', marginTop: 4, borderRadius: 'var(--r-m)', color: 'var(--ink-2)', fontSize: 14, fontFamily: 'var(--fb)' }}
           >
             <Icon name="external" size={18} />{t.logout}

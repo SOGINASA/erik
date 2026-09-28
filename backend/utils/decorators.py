@@ -1,3 +1,4 @@
+from services.transactions import load_gathering
 import time
 from collections import defaultdict, deque
 from functools import wraps
@@ -13,7 +14,7 @@ from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
 _rl_hits = defaultdict(deque)
 
 
-def rate_limit(max_calls, per_seconds, by_user=False):
+def rate_limit(max_calls, per_seconds, by_user=False, by_account=False):
     """Ограничение частоты на скользящем окне.
 
     by_user=False — ключ по IP+функции (как было): для эндпоинтов до авторизации
@@ -39,6 +40,20 @@ def rate_limit(max_calls, per_seconds, by_user=False):
                 key = f'u:{ident}:{fn.__name__}'
             else:
                 key = f'{request.remote_addr or "?"}:{fn.__name__}'
+            if by_account:
+                data = request.get_json(silent=True)
+                value = (data.get('identifier') or data.get('email') or data.get('nickname')) if isinstance(data, dict) else None
+                if isinstance(value, str) and value.strip():
+                    from hashlib import sha256
+                    key = 'account:' + sha256(value.strip().lower().encode()).hexdigest() + ':' + fn.__name__
+            if current_app.config.get('REDIS_URL'):
+                from services.rate_limits import allow_request
+                allowed = allow_request(key, max_calls, per_seconds)
+                if allowed is None:
+                    return jsonify({'error': 'Сервис временно недоступен'}), 503
+                if not allowed:
+                    return jsonify({'error': 'Слишком много запросов, попробуйте позже'}), 429, {'Retry-After': str(per_seconds)}
+                return fn(*args, **kwargs)
             now = time.monotonic()
             dq = _rl_hits[key]
             while dq and now - dq[0] > per_seconds:
@@ -109,7 +124,7 @@ def gathering_owner_required(fn):
             return jsonify({'error': 'Пользователь не найден'}), 404
 
         gid = kwargs.get('id') or kwargs.get('gathering_id')
-        gathering = db.session.get(Gathering, gid) if gid is not None else None
+        gathering = load_gathering(gid) if gid is not None else None
         if gathering is None or gathering.status == 'deleted':
             return jsonify({'error': 'Сбор не найден'}), 404
 

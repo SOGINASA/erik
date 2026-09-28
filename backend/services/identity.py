@@ -75,12 +75,9 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
             db.session.flush()
             created = True
         except IntegrityError:
-            # Параллельный запрос уже вставил этого device-юзера — берём победителя гонки.
+            # A concurrent creator won. Never hand out its credentials without proof.
             db.session.rollback()
-            user = User.query.filter_by(device_id=device_id).first()
-            if user is None:
-                raise  # не гонка по device_id — это настоящая ошибка целостности
-            _fill_existing(user)
+            raise
     else:
         _fill_existing(user)
 

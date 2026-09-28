@@ -14,6 +14,8 @@ export default function Feed() {
   const isRu = useLang() === 'ru';
   const navigate = useNavigate();
   const events = usePlatformStore((s) => s.events);
+  const eventsTotal = usePlatformStore((s) => s.eventsTotal);
+  const eventsLoading = usePlatformStore((s) => s.eventsLoading);
   const fTheme = usePlatformStore((s) => s.fTheme);
   const fCity = usePlatformStore((s) => s.fCity);
   const setFeedFilter = usePlatformStore((s) => s.setFeedFilter);
@@ -21,7 +23,7 @@ export default function Feed() {
   const regs = useGatheringStore((s) => s.regs);
 
   // Обновляем ленту при заходе — чтобы только что одобренные админом сборы появлялись.
-  useEffect(() => { loadEvents(); }, [loadEvents]);
+  useEffect(() => { loadEvents(); }, [loadEvents, fTheme, fCity]);
 
   const list = events.filter((e) => (fTheme === 'all' || e.theme === fTheme) && (fCity === 'all' || e.cityId === fCity));
 
@@ -52,6 +54,11 @@ export default function Feed() {
             <EventCard key={e.id} event={e} reg={regs[e.id]} onOpen={() => navigate(`/e/${e.id}`)} />
           ))}
         </div>
+      )}
+      {events.length < eventsTotal && (
+        <button className="erik-btn" disabled={eventsLoading} onClick={() => loadEvents(true)}>
+          {isRu ? (eventsLoading ? 'Загрузка…' : 'Показать ещё') : (eventsLoading ? 'Жүктелуде…' : 'Тағы көрсету')}
+        </button>
       )}
     </Container>
   );

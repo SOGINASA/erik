@@ -17,6 +17,9 @@ def is_configured():
 def send_email(to, subject, body):
     """Вернёт True, если письмо реально отправлено по SMTP; False в dev-режиме (залогировано)."""
     if not is_configured():
+        import os
+        if os.environ.get('FLASK_ENV') == 'production':
+            raise RuntimeError('SMTP is required in production')
         current_app.logger.info('EMAIL (dev, не отправлено) → %s | %s\n%s', to, subject, body)
         return False
     msg = EmailMessage()

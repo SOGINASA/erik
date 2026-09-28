@@ -154,7 +154,7 @@ def test_user_and_consent_rollback_together_if_receipt_fails(client, legal_accep
 def test_existing_device_upgrade_without_consent_does_not_mutate(client):
     user = _anonymous()
     response = client.post('/api/auth/register', json=_registration(),
-                           headers={'X-Device-Id': user.device_id})
+                           headers={'X-Device-Id': user.device_id, **_headers(user)})
     assert response.status_code == 400
     db.session.refresh(user)
     assert user.password_hash is None and user.nickname is None and user.full_name is None
@@ -165,7 +165,7 @@ def test_device_upgrade_keeps_identity_and_appends_receipt(client, legal_accepta
     user = _anonymous()
     uid = user.id
     response = client.post('/api/auth/register', json=_registration(legal_acceptance),
-                           headers={'X-Device-Id': user.device_id})
+                           headers={'X-Device-Id': user.device_id, **_headers(user)})
     assert response.status_code == 201
     assert User.query.one().id == uid
     assert LegalConsent.query.one().user_id == uid
@@ -190,10 +190,10 @@ def test_named_device_upgrade_records_once_and_resume_does_not_fabricate(client,
     user = _anonymous()
     response = client.post('/api/session', json={
         'deviceId': user.device_id, 'name': 'Иван Тестовый', 'legal': legal_acceptance,
-    })
+    }, headers=_headers(user))
     assert response.status_code == 200
     assert LegalConsent.query.one().source == 'session.register'
-    resume = client.post('/api/session', json={'deviceId': user.device_id})
+    resume = client.post('/api/session', json={'deviceId': user.device_id}, headers=_headers(user))
     assert resume.status_code == 200
     assert 'legalConsent' not in resume.get_json()
     assert LegalConsent.query.count() == 1
@@ -204,7 +204,7 @@ def test_existing_named_device_can_resume_without_operator_configuration(client,
     db.session.add(user)
     db.session.commit()
     monkeypatch.setitem(app.config, 'LEGAL_OPERATOR_NAME', '')
-    response = client.post('/api/session', json={'deviceId': user.device_id})
+    response = client.post('/api/session', json={'deviceId': user.device_id}, headers=_headers(user))
     assert response.status_code == 200
     assert LegalConsent.query.count() == 0
 

@@ -51,7 +51,8 @@ async function request(path, opts = {}) {
         const r = await _refreshing;
         if (r && r.access_token) {
           _auth.token = r.access_token;
-          if (_onAuthRefresh) _onAuthRefresh(r.access_token);
+          _auth.refreshToken = r.refresh_token || null;
+          if (_onAuthRefresh) _onAuthRefresh(r.access_token, r.refresh_token || null);
           return request(path, { ...opts, _retry: true });
         }
       } catch (_) {
@@ -69,7 +70,8 @@ async function request(path, opts = {}) {
 export const api = {
   legal: () => request('/legal', { auth: false }),
   // сессия / профиль
-  session: (payload) => request('/session', { method: 'POST', body: payload, auth: false }),
+  session: (payload) => request('/session', { method: 'POST', body: payload }),
+  logout: () => request('/logout', { method: 'POST' }),
   me: () => request('/me'),
   updateMe: (patch) => request('/me', { method: 'PATCH', body: patch }),
 
@@ -219,7 +221,7 @@ export const api = {
 
   // ── аккаунт-авторизация (email/пароль) — сосуществует с device-сессией ──
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),        // {identifier, password}
-  register: (payload) => request('/auth/register', { method: 'POST', body: payload, auth: false }), // данные профиля + версия и подтверждения legal
+  register: (payload) => request('/auth/register', { method: 'POST', body: payload }), // данные профиля + версия и подтверждения legal
   refresh: (refreshToken) => request('/auth/refresh', { method: 'POST', bearer: refreshToken }),
   forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email }, auth: false }),
 };

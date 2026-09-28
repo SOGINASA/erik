@@ -38,8 +38,8 @@ final class Session: ObservableObject {
         api.deviceId = deviceId
         api.token = token
         api.refreshToken = refreshToken
-        api.onTokenRefresh = { [weak self] t in
-            Task { @MainActor in self?.setToken(t, refresh: self?.refreshToken) }
+        api.onTokenRefresh = { [weak self] t, refresh in
+            Task { @MainActor in self?.setToken(t, refresh: refresh) }
         }
     }
 
@@ -125,7 +125,8 @@ final class Session: ObservableObject {
         user = try await APIClient.shared.updateMe(patch)
     }
 
-    func logout() {
+    func logout() async throws {
+        if token != nil { try await APIClient.shared.logout() }
         let fresh = UUID().uuidString
         deviceId = fresh
         d.set(fresh, forKey: "erik.deviceId")

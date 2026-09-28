@@ -4,6 +4,7 @@ struct MoreView: View {
     @EnvironmentObject var session: Session
     @EnvironmentObject var store: PlatformStore
     @State private var showAuth = false
+    @State private var logoutError: String?
 
     var body: some View {
         ScrollView {
@@ -39,7 +40,7 @@ struct MoreView: View {
                     }
                     if session.profiled {
                         Divider().padding(.leading, 48)
-                        Button { session.logout() } label: {
+                        Button { Task { do { try await session.logout() } catch { logoutError = error.localizedDescription } } } label: {
                             rowContent("arrow.right.square", session.tr("Выйти", "Шығу"), tint: Palette.danger)
                         }
                     }
@@ -52,6 +53,7 @@ struct MoreView: View {
         .navigationTitle(session.tr("Ещё", "Тағы"))
         .navigationBarTitleDisplayMode(.inline)
         .erikDestinations()
+        .alert("Не удалось выйти", isPresented: Binding(get: { logoutError != nil }, set: { if !$0 { logoutError = nil } })) { Button("OK") { logoutError = nil } } message: { Text(logoutError ?? "") }
         .sheet(isPresented: $showAuth) { AuthView() }
     }
 

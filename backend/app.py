@@ -20,6 +20,8 @@ from utils.schema import SCHEMA_HEAD, detect_revision, schema_lag
 # Инициализация расширений
 migrate = Migrate()
 jwt = JWTManager()
+from services.security import configure_jwt
+configure_jwt(jwt)
 
 
 def _warn_if_schema_behind(app):
@@ -47,6 +49,10 @@ def create_app(config_object=None):
     app.config.from_object(config_object or get_config())
     # В проде не поднимаемся с публично известными dev-секретами (иначе подделка JWT).
     validate_config()
+    if app.config.get('TRUSTED_PROXY_HOPS', 0):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        hops = app.config['TRUSTED_PROXY_HOPS']
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=0)
     CORS(app, supports_credentials=True, origins=app.config['CORS_ORIGINS'])
 
     # Создаём папку для БД, если её нет
@@ -59,7 +65,7 @@ def create_app(config_object=None):
     # Для локальной разработки/демо схема поднимается create_all() (zero-config).
     # В проде используйте миграции: `flask db-sync` и запуск с SKIP_DB_CREATE=1.
     # Флаг также нужен при генерации миграций (autogenerate против пустой БД).
-    if os.environ.get('SKIP_DB_CREATE') != '1':
+    if os.environ.get('SKIP_DB_CREATE') != '1' and os.environ.get('FLASK_ENV') != 'production':
         with app.app_context():
             db.create_all()
             _warn_if_schema_behind(app)
@@ -107,6 +113,20 @@ def create_app(config_object=None):
                 'admin': '/api/admin - администрирование пользователей',
             },
         })
+
+    @app.route('/api/health')
+    def health():
+        from sqlalchemy import text
+        try:
+            db.session.execute(text('SELECT 1'))
+            if app.config.get('REDIS_URL'):
+                from redis import Redis
+                Redis.from_url(app.config['REDIS_URL'], socket_timeout=2,
+                               socket_connect_timeout=2).ping()
+        except Exception:
+            db.session.rollback()
+            return jsonify({'status': 'unavailable'}), 503
+        return jsonify({'status': 'ok'})
 
     return app
 
@@ -200,6 +220,9 @@ def seed_demo_cmd(reset, if_empty):
     """
     from seed import seed_demo
 
+    if os.environ.get('FLASK_ENV') == 'production':
+        raise click.ClickException('Demo seed is disabled in production')
+
     if if_empty:
         n = User.query.count()
         if n:
@@ -211,11 +234,21 @@ def seed_demo_cmd(reset, if_empty):
     print('Готово.')
 
 
+@app.cli.command('seed-catalogs')
+def seed_catalogs_cmd():
+    """Load cities, themes, badges and forecast defaults without demo identities."""
+    from seed import seed_catalogs
+    seed_catalogs()
+    click.echo('Reference data ready.')
+
+
 @app.cli.command()
 def create_admin():
     """Создать администратора"""
     email = input('Email администратора: ')
-    password = input('Пароль: ')
+    password = click.prompt('Пароль', hide_input=True, confirmation_prompt=True)
+    if len(password) < 12:
+        raise click.ClickException('Для администратора требуется пароль не короче 12 символов')
     full_name = input('Полное имя: ')
 
     if User.query.filter_by(email=email).first():

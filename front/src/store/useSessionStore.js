@@ -174,7 +174,12 @@ export const useSessionStore = create(
       // следующем запуске (POST /session по сохранённому deviceId) заново резолвил бы ту же
       // серверную строку User (имя+токен) и грузил бы её приватные уведомления/диалоги —
       // «выход» откатывался после перезагрузки, а на общем устройстве утекали чужие данные.
-      logout: () => {
+      logout: async () => {
+        // Keep credentials until the server confirms revocation; callers can retry offline.
+        if (get().token) {
+          try { await api.logout(); }
+          catch (e) { if (e.status !== 401) throw e; } // already revoked
+        }
         const fresh = newDeviceId();
         setAuth({ deviceId: fresh, token: null, refreshToken: null });
         set({ deviceId: fresh, loggedIn: false, token: null, userType: null, refreshToken: null,
@@ -214,4 +219,4 @@ const pushAuth = () => {
 pushAuth();
 useSessionStore.persist?.onFinishHydration?.(pushAuth);
 // Обновлённый по refresh access-токен пробрасываем обратно в стор.
-onAuthRefresh((token) => useSessionStore.setState({ token }));
+onAuthRefresh((token, refreshToken) => useSessionStore.setState({ token, refreshToken }));

@@ -47,13 +47,20 @@ class Config:
     # Без него создаётся ЛОКАЛЬНЫЙ SQLite-файл в database/.
     SQLALCHEMY_DATABASE_URI = _database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = ({'pool_pre_ping': True, 'pool_size': 5, 'max_overflow': 5}
+        if SQLALCHEMY_DATABASE_URI.startswith('postgresql') else {})
+    MAX_CONTENT_LENGTH = 1024 * 1024
+    ALLOW_DEMO_LOGIN = (os.environ.get('ALLOW_DEMO_LOGIN') == '1'
+                        and os.environ.get('FLASK_ENV') != 'production')
+    REDIS_URL = os.environ.get('REDIS_URL')
+    TRUSTED_PROXY_HOPS = int(os.environ.get('TRUSTED_PROXY_HOPS', '0'))
 
     # CORS
     CORS_ORIGINS = _cors_origins()
 
     # JWT
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', _DEFAULT_JWT_SECRET)
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
     # erik: базовый URL для ссылки-приглашения erik.kz/g/<code>
@@ -118,14 +125,23 @@ def validate_config():
         return True
 
     errors = []
-    for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL'):
+    for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL', 'CORS_ORIGINS', 'FRONTEND_URL', 'MAIL_SERVER'):
         if not os.environ.get(var):
             errors.append(f'Переменная окружения {var} обязательна в продакшене')
-    if os.environ.get('SECRET_KEY') == _DEFAULT_SECRET:
+    if os.environ.get('SECRET_KEY') in (_DEFAULT_SECRET, 'super-secret-key-change-me'):
         errors.append('SECRET_KEY использует dev-дефолт — задайте уникальный секрет')
-    if os.environ.get('JWT_SECRET_KEY') == _DEFAULT_JWT_SECRET:
+    if os.environ.get('JWT_SECRET_KEY') in (_DEFAULT_JWT_SECRET, 'jwt-secret-key-change-me'):
         errors.append('JWT_SECRET_KEY использует dev-дефолт — задайте уникальный секрет')
 
+    for var in ('SECRET_KEY', 'JWT_SECRET_KEY'):
+        if len(os.environ.get(var, '')) < 32:
+            errors.append(f'{var} должен содержать минимум 32 случайных символа')
+    if os.environ.get('ALLOW_DEMO_LOGIN') == '1' or os.environ.get('ERIK_SEED_DEMO') == '1':
+        errors.append('Демо-вход и автосид запрещены в production')
+    if not os.environ.get('REDIS_URL'):
+        errors.append('REDIS_URL обязателен для общих лимитов запросов')
+    if not os.environ.get('DATABASE_URL', '').startswith('postgresql+psycopg://'):
+        errors.append('В production требуется PostgreSQL с драйвером psycopg')
     if errors:
         raise RuntimeError('Небезопасная конфигурация продакшена:\n  • ' + '\n  • '.join(errors))
     return True
