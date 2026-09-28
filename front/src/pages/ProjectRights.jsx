@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Logo } from '../components/shell/Brand';
 import Icon from '../components/Icon';
+import LegalLinks from '../components/LegalLinks';
 
 const AUTHORS = [
   {
@@ -217,6 +218,7 @@ export default function ProjectRights() {
             оформить отдельное письменное соглашение и получить консультацию специалиста по праву РК.
           </p>
           <div className="rights-updated">Правовая информация проверена по действующим редакциям официальной ИПС «Әділет» · 20 августа 2026 года</div>
+          <LegalLinks />
         </section>
       </main>
     </div>

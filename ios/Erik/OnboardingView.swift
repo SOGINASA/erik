@@ -12,6 +12,9 @@ struct OnboardingView: View {
     @State private var role = "vol"
     @State private var cityId: String?
     @State private var busy = false
+    @State private var error: String?
+    @State private var legal = LegalAcceptance()
+    @State private var legalDocuments: LegalDocuments?
 
     private let roles: [(String, String, String)] = [
         ("vol", "Волонтёр", "Волонтёр"),
@@ -24,7 +27,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text(session.tr("Как вас зовут?", "Атыңыз кім?"))
                     .font(.system(size: 22, weight: .bold))
-                TextField(session.tr("Имя и фамилия", "Аты-жөні"), text: $name)
+                TextField(session.tr("Фамилия, имя, отчество (если есть)", "Тегі, аты, әкесінің аты (бар болса)"), text: $name)
                     .padding(12).background(Palette.card)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line))
 
@@ -54,9 +57,13 @@ struct OnboardingView: View {
                     }
                 }
 
+                LegalAcceptanceSection(acceptance: $legal, documents: $legalDocuments)
+                if let error = error {
+                    Text(error).foregroundColor(Palette.danger).font(.system(size: 13))
+                }
                 Button(session.tr("Продолжить", "Жалғастыру")) { Task { await go() } }
-                    .buttonStyle(PrimaryButtonStyle(enabled: !name.isEmpty && !busy))
-                    .disabled(name.isEmpty || busy)
+                    .buttonStyle(PrimaryButtonStyle(enabled: canSubmit && !busy))
+                    .disabled(!canSubmit || busy)
                     .padding(.top, 8)
             }
             .padding(20)
@@ -68,10 +75,22 @@ struct OnboardingView: View {
 
     private func go() async {
         busy = true; defer { busy = false }
+        error = nil
         do {
-            try await session.continueAsGuest(name: name, role: role, cityId: cityId)
+            try await session.continueAsGuest(name: name, role: role, cityId: cityId, legal: legal)
             onDone?()
             if !inSheet { dismiss() }
-        } catch {}
+        } catch {
+            self.error = (error as? APIError)?.message ?? session.tr("Не удалось продолжить", "Жалғастыру мүмкін болмады")
+            if (error as? APIError)?.status == 409 {
+                legal = LegalAcceptance()
+                legalDocuments = nil
+            }
+        }
+    }
+
+    private var canSubmit: Bool {
+        name.split(whereSeparator: { $0.isWhitespace }).count >= 2
+            && legalDocuments?.registrationAvailable == true && legal.isComplete
     }
 }

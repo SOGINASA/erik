@@ -33,7 +33,7 @@ def make_tokens(user):
 DEMO_DEVICE_PREFIX = 'demo-'
 
 
-def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=None):
+def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=None, commit=True):
     """Найти пользователя по device_id или создать нового. Возвращает (user, created).
 
     (None, False) — запрошена демо-личность, которой в базе нет (сид не запускался).
@@ -86,7 +86,8 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
 
     user.last_seen_at = now
     user.last_login = now
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return user, created
 
 

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { useSessionReady } from '../store/useSessionStore';
 import { isOffline } from '../lib/optimistic';
 import { RoleRow, sortRolesForViewer } from '../sheets/Sheets';
 
@@ -13,6 +14,7 @@ import { EmptyState, Skeleton } from '../components/ui/feedback';
 import { Field } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import AnswerButton from '../components/ui/AnswerButton';
+import LegalLinks from '../components/LegalLinks';
 
 // Общая обёртка: шапка (лого + переключатель языка) одинакова во всех состояниях.
 function Frame({ children }) {
@@ -24,6 +26,7 @@ function Frame({ children }) {
         <LangToggle />
       </div>
       <div style={{ flex: 1, width: '100%', maxWidth: 480, margin: '0 auto', padding: '8px 20px 40px' }}>{children}</div>
+      <footer style={{ padding: '16px 20px 24px', textAlign: 'center' }}><LegalLinks /></footer>
     </div>
   );
 }
@@ -33,6 +36,9 @@ export default function GuestGathering() {
   const t = useT();
   const isRu = useLang() === 'ru';
   const { code } = useParams();
+  const navigate = useNavigate();
+  const canRespond = useSessionReady();
+  const returnQuery = `?returnTo=${encodeURIComponent(`/g/${code}`)}`;
   const g = useGatheringStore((s) => s.gathering);
   const guestError = useGatheringStore((s) => s.guestError);
   const loadGuest = useGatheringStore((s) => s.loadGuest);
@@ -44,25 +50,38 @@ export default function GuestGathering() {
   const [closed, setClosed] = useState(false); // сбор завершился между загрузкой и ответом (409)
   const [booting, setBooting] = useState(true); // до первого loadGuest в сторе ещё чужой gathering — не мигаем демо
   const [roleBusy, setRoleBusy] = useState(false);
+  const [answerBusy, setAnswerBusy] = useState(false);
 
   useEffect(() => {
     setClosed(false);
+    setAnswer(null);
     setBooting(true);
     loadGuest(code).finally(() => setBooting(false));
   }, [code, loadGuest]);
   useEffect(() => {
-    if (g && g.myAnswer) setAnswer(g.myAnswer);
-  }, [g]);
+    setAnswer(canRespond ? g?.myAnswer || null : null);
+  }, [g, canRespond]);
+
+  const requireAccount = () => {
+    showToast(isRu
+      ? 'Войдите или создайте аккаунт, чтобы ответить. После этого вы вернётесь к сбору.'
+      : 'Жауап беру үшін кіріңіз немесе аккаунт жасаңыз. Содан кейін осы жиынға ораласыз.');
+    navigate(`/register${returnQuery}`);
+  };
 
   const pick = async (a) => {
-    const prev = answer;
-    setAnswer(a); // оптимистично
-    const r = await rsvp(code, a);
-    if (r && r.ok) return;
-    // Сервер отверг — откатываем оптимистичный ответ и показываем правду.
-    setAnswer(prev);
+    if (!canRespond) { requireAccount(); return; }
+    if (answerBusy) return;
+    setAnswerBusy(true);
+    let r;
+    try { r = await rsvp(code, a); }
+    catch (error) { r = { ok: false, error }; }
+    finally { setAnswerBusy(false); }
+    if (r && r.ok) { setAnswer(a); return; }
     const err = r && r.error;
-    if (err && err.status === 409) {
+    if (err && err.status === 401) {
+      requireAccount();
+    } else if (err && err.status === 409) {
       setClosed(true); // сбор уже завершён — ответы не принимаются
     } else if (isOffline(err)) {
       showToast(isRu ? 'Нет сети — ответ не сохранён' : 'Желі жоқ — жауап сақталмады');
@@ -75,6 +94,7 @@ export default function GuestGathering() {
   // Стор идёт через commit(), поэтому офлайн честно откатится и стостится — иначе роль
   // была бы видна локально, а сервер о ней не знал.
   const chooseRole = async (roleId) => {
+    if (!canRespond) { requireAccount(); return; }
     if (roleBusy) return;
     setRoleBusy(true);
     const r = await pickGuestRole(code, roleId);
@@ -192,12 +212,22 @@ export default function GuestGathering() {
       <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>{when} · {place}</div>
       <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink-3)' }}>{needLine}</div>
 
+      {!canRespond && (
+        <p style={{ margin: '22px 0 0', fontSize: 14, lineHeight: 1.6, color: 'var(--ink-2)' }}>
+          {isRu ? 'Для ответа ' : 'Жауап беру үшін '}
+          <Link to={`/login${returnQuery}`} style={{ color: 'var(--yard)', textDecoration: 'underline' }}>{isRu ? 'войдите' : 'кіріңіз'}</Link>
+          {isRu ? ' или ' : ' немесе '}
+          <Link to={`/register${returnQuery}`} style={{ color: 'var(--yard)', textDecoration: 'underline' }}>{isRu ? 'создайте аккаунт' : 'аккаунт жасаңыз'}</Link>.
+        </p>
+      )}
+
       {answer === null ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 28 }}>
+        <fieldset disabled={answerBusy} style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '28px 0 0', border: 0, padding: 0, minWidth: 0 }}>
           <AnswerButton kind="yes" label={t.ansYes} selected={false} onClick={() => pick('yes')} />
           <AnswerButton kind="maybe" label={t.ansMaybe} selected={false} onClick={() => pick('maybe')} />
           <AnswerButton kind="no" label={t.ansNo} selected={false} onClick={() => pick('no')} />
-        </div>
+          {answerBusy && <p role="status" style={{ margin: 0, fontSize: 13, color: 'var(--ink-2)' }}>{isRu ? 'Сохраняем ответ…' : 'Жауап сақталуда…'}</p>}
+        </fieldset>
       ) : (
         <div style={{ marginTop: 28, animation: 'erik-rise var(--t-base) var(--ease-out)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderRadius: 'var(--r-m)', background: gsm[0], border: `1px solid ${gsm[1]}` }}>

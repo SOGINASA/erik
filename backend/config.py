@@ -61,6 +61,15 @@ class Config:
     # Базовый URL фронта (для ссылок сброса пароля/верификации в письмах)
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
+    # Публичные сведения оператора. Без них новые регистрации закрыты во всех средах.
+    LEGAL_OPERATOR_NAME = os.environ.get('LEGAL_OPERATOR_NAME', '')
+    LEGAL_OPERATOR_BIN = os.environ.get('LEGAL_OPERATOR_BIN', '')
+    LEGAL_OPERATOR_ADDRESS = os.environ.get('LEGAL_OPERATOR_ADDRESS', '')
+    LEGAL_PRIVACY_EMAIL = os.environ.get('LEGAL_PRIVACY_EMAIL', '')
+    # KZ — подтверждение оператора о фактическом расположении БД и резервных копий.
+    LEGAL_STORAGE_COUNTRY = os.environ.get('LEGAL_STORAGE_COUNTRY', '')
+    LEGAL_PROCESSORS = os.environ.get('LEGAL_PROCESSORS', '')
+
     # Почта (опционально). Без MAIL_SERVER письма логируются, а не отправляются (dev).
     MAIL_SERVER = os.environ.get('MAIL_SERVER')
     MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))

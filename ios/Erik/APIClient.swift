@@ -6,11 +6,47 @@ struct APIError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+private struct APIErrorResponse: Decodable {
+    let error: String?
+}
+
 /// Обёртка, чтобы передавать произвольный Encodable-словарь в тело запроса.
 struct AnyEncodable: Encodable {
     private let encodeFunc: (Encoder) throws -> Void
     init<T: Encodable>(_ wrapped: T) { encodeFunc = wrapped.encode }
     func encode(to encoder: Encoder) throws { try encodeFunc(encoder) }
+}
+
+struct LegalDocuments: Decodable {
+    let version: String
+    let registrationAvailable: Bool
+}
+
+/// Все отметки формируются явным действием пользователя; версия приходит с сервера.
+struct LegalAcceptance: Encodable {
+    var version = ""
+    var termsAccepted = false
+    var privacyAccepted = false
+    var consentAccepted = false
+    var adultConfirmed = false
+
+    var isComplete: Bool {
+        !version.isEmpty && termsAccepted && privacyAccepted && consentAccepted && adultConfirmed
+    }
+}
+
+private struct SessionPayload: Encodable {
+    let deviceId: String
+    let name: String?
+    let role: String?
+    let legal: LegalAcceptance?
+}
+
+private struct RegistrationPayload: Encodable {
+    let identifier: String
+    let password: String
+    let full_name: String
+    let legal: LegalAcceptance
 }
 
 /// REST-клиент бэкенда erik. Личность по устройству (X-Device-Id) + Bearer-токен,
@@ -78,7 +114,7 @@ final class APIClient {
                     return try await request(path, method: method, body: body, auth: auth, retry: true)
                 }
             }
-            let msg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"]
+            let msg = (try? JSONDecoder().decode(APIErrorResponse.self, from: data))?.error
             throw APIError(status: http.statusCode, message: msg ?? "Ошибка запроса (\(http.statusCode))")
         }
 
@@ -94,11 +130,9 @@ final class APIClient {
 
     // MARK: - Сессия / профиль
 
-    func createSession(deviceId: String, name: String?, role: String?) async throws -> SessionResponse {
-        var payload: [String: String] = ["deviceId": deviceId]
-        if let name = name { payload["name"] = name }
-        if let role = role { payload["role"] = role }
-        return try await request("/session", method: "POST", body: enc(payload), auth: false)
+    func createSession(deviceId: String, name: String?, role: String?, legal: LegalAcceptance? = nil) async throws -> SessionResponse {
+        let payload = SessionPayload(deviceId: deviceId, name: name, role: role, legal: legal)
+        return try await request("/session", method: "POST", body: AnyEncodable(payload), auth: false)
     }
     func me() async throws -> UserProfile { (try await request("/me", auth: true) as UserResponse).user }
     func updateMe(_ patch: [String: String]) async throws -> UserProfile {
@@ -112,9 +146,14 @@ final class APIClient {
         try await request("/auth/login", method: "POST",
                           body: enc(["identifier": identifier, "password": password]), auth: false)
     }
-    func register(identifier: String, password: String, fullName: String) async throws -> AuthResponse {
+    func legalDocuments() async throws -> LegalDocuments {
+        try await request("/legal", auth: false)
+    }
+
+    func register(identifier: String, password: String, fullName: String, legal: LegalAcceptance) async throws -> AuthResponse {
         try await request("/auth/register", method: "POST",
-                          body: enc(["identifier": identifier, "password": password, "full_name": fullName]),
+                          body: AnyEncodable(RegistrationPayload(identifier: identifier, password: password,
+                                                                full_name: fullName, legal: legal)),
                           auth: false)
     }
 

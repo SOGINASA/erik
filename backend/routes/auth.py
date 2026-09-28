@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
-from models import db, User
+from models import db, User, City, Theme, USER_ROLES
+from services.legal import validate_legal_acceptance, validate_subject_name, record_legal_consent
 from utils.decorators import rate_limit
 from datetime import datetime, timedelta, timezone
 import re
@@ -44,9 +45,13 @@ def make_tokens(user):
 @rate_limit(5, 60)
 def register():
     """Регистрация пользователя по email или nickname"""
-    data = request.get_json()
-    if not data:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data:
         return jsonify({'error': 'Данные не предоставлены'}), 400
+
+    for key in ('email', 'nickname', 'password', 'full_name', 'identifier', 'phone'):
+        if key in data and data[key] is not None and not isinstance(data[key], str):
+            return jsonify({'error': f'Поле {key} должно быть строкой'}), 400
 
     # Поля (email или nickname - хотя бы одно обязательно)
     email = data.get('email', '').strip().lower() if data.get('email') else None
@@ -83,6 +88,29 @@ def register():
     if nickname and User.query.filter(db.func.lower(User.nickname) == nickname.lower()).first():
         return jsonify({'error': 'Пользователь с таким nickname уже существует'}), 400
 
+    snapshot, legal_error = validate_legal_acceptance(data)
+    if legal_error:
+        return legal_error
+    name_error = validate_subject_name(full_name)
+    if name_error:
+        return name_error
+    role = data.get('role')
+    if role is not None and (not isinstance(role, str) or role not in USER_ROLES):
+        return jsonify({'error': 'Недопустимая роль'}), 400
+    city_id = data.get('cityId')
+    if city_id is not None and not isinstance(city_id, str):
+        return jsonify({'error': 'Город должен быть строковым идентификатором'}), 400
+    if city_id and db.session.get(City, city_id) is None:
+        return jsonify({'error': 'Город не найден'}), 400
+    if len((data.get('phone') or '').strip()) > 32:
+        return jsonify({'error': 'Телефон должен содержать не более 32 символов'}), 400
+    interests = None
+    if 'interests' in data:
+        if not isinstance(data['interests'], list):
+            return jsonify({'error': 'Интересы должны быть списком'}), 400
+        valid_interests = {theme.id for theme in Theme.query.all()}
+        interests = list(dict.fromkeys(x for x in data['interests'] if isinstance(x, str) and x in valid_interests))[:4]
+
     try:
         import secrets
         # Апгрейд device-личности до аккаунта: если запрос пришёл с известным X-Device-Id,
@@ -111,11 +139,20 @@ def register():
             )
             db.session.add(user)
 
+        if role is not None:
+            user.role = role
+        if 'phone' in data:
+            user.phone = (data.get('phone') or '').strip() or None
+        if 'cityId' in data:
+            user.city_id = city_id or None
+        if interests is not None:
+            user.interests = interests
         user.is_active = True
         user.is_verified = False
         user.verification_token = secrets.token_urlsafe(24) if email else None
         user.last_login = datetime.now(timezone.utc)
         user.set_password(password)
+        consent = record_legal_consent(user, snapshot, 'auth.register')
         db.session.commit()
 
         # письмо-подтверждение (в dev без SMTP — только лог; флоу verify-email становится достижим)
@@ -134,12 +171,14 @@ def register():
         return jsonify({
             'user': user.to_dict(include_sensitive=True),
             'access_token': access_token,
-            'refresh_token': refresh_token
+            'refresh_token': refresh_token,
+            'legalConsent': consent.to_dict(),
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        print(f'Ошибка регистрации: {e}')
+        from flask import current_app
+        current_app.logger.error('Registration transaction failed (%s)', type(e).__name__)
         return jsonify({'error': 'Ошибка при создании аккаунта'}), 500
 
 
@@ -254,13 +293,25 @@ def update_profile():
         if not user or not user.is_active:
             return jsonify({'error': 'Пользователь не найден'}), 404
 
-        data = request.get_json()
-        if not data:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not data:
             return jsonify({'error': 'Данные не предоставлены'}), 400
+        for key in ('full_name', 'nickname'):
+            if data.get(key) is not None and not isinstance(data[key], str):
+                return jsonify({'error': f'Поле {key} должно быть строкой'}), 400
 
-        if 'full_name' in data and data['full_name']:
-            user.full_name = data['full_name'].strip()
+        snapshot = None
+        if not user.has_profile and not user.has_account and (data.get('full_name') or data.get('nickname')):
+            snapshot, legal_error = validate_legal_acceptance(data)
+            if legal_error:
+                return legal_error
+            name_error = validate_subject_name(data.get('full_name'))
+            if name_error:
+                return name_error
 
+        # Validate all fields before mutating: a nickname lookup autoflushes the
+        # session and must not leave a partially filled profile on validation errors.
+        new_nickname = None
         if 'nickname' in data and data['nickname']:
             new_nickname = data['nickname'].strip()
             if not validate_nickname(new_nickname):
@@ -271,8 +322,13 @@ def update_profile():
             ).first()
             if existing:
                 return jsonify({'error': 'Этот nickname уже занят'}), 400
-            user.nickname = new_nickname
 
+        if data.get('full_name'):
+            user.full_name = data['full_name'].strip()
+        if new_nickname is not None:
+            user.nickname = new_nickname
+        if snapshot:
+            record_legal_consent(user, snapshot, 'auth.profile')
         db.session.commit()
 
         return jsonify({

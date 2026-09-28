@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Shell from './components/shell/Shell';
 import Sheets from './sheets/Sheets';
 import { Toast } from './components/ui/feedback';
@@ -10,7 +10,7 @@ import { useGatheringStore } from './store/useGatheringStore';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Onboarding from './pages/Onboarding';
+import Legal from './pages/Legal';
 import Feed from './pages/Feed';
 import MapPage from './pages/MapPage';
 import Event from './pages/Event';
@@ -81,7 +81,11 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/onboarding" element={<Navigate to="/register" replace />} />
+        <Route path="/terms" element={<Legal documentKey="terms" />} />
+        <Route path="/privacy" element={<Legal documentKey="privacy" />} />
+        <Route path="/consent" element={<Legal documentKey="consent" />} />
+        <Route path="/legal" element={<Navigate to="/privacy" replace />} />
         <Route path="/project-rights" element={<ProjectRights />} />
         <Route path="/g/:code" element={<GuestGathering />} />
         <Route element={<Shell />}>

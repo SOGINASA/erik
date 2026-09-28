@@ -27,6 +27,15 @@ def create_test_app():
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=1)
 
     app.config.setdefault('SHARE_BASE_URL', 'https://erik.kz')
+    # Synthetic operator metadata is only a test fixture, never a runtime default.
+    app.config.update(
+        LEGAL_OPERATOR_NAME='Тестовый оператор',
+        LEGAL_OPERATOR_BIN='000000000000',
+        LEGAL_OPERATOR_ADDRESS='Тестовый адрес, Казахстан',
+        LEGAL_PRIVACY_EMAIL='privacy@example.test',
+        LEGAL_STORAGE_COUNTRY='KZ',
+        LEGAL_PROCESSORS='Тестовый хостинг в Казахстане; внешняя почта не используется',
+    )
 
     _db.init_app(app)
     JWTManager(app)
@@ -131,3 +140,15 @@ def refresh_headers(user1):
     """Заголовки с refresh-токеном для user1."""
     token = create_refresh_token(identity=str(user1.id))
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+@pytest.fixture
+def legal_acceptance():
+    from services.legal import legal_manifest
+    return {
+        'version': legal_manifest()['version'],
+        'termsAccepted': True,
+        'privacyAccepted': True,
+        'consentAccepted': True,
+        'adultConfirmed': True,
+    }

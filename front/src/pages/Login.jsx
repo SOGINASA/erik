@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { api } from '../lib/api';
@@ -7,6 +7,7 @@ import { Logo, LangToggle } from '../components/shell/Brand';
 import { FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import { guestReturnTo } from '../lib/authReturnTo';
 
 // Быстрый вход в засеянные демо-личности (реальные данные, не мок).
 // device — deviceId засеянной личности (см. seed.py): токен приходит настоящий.
@@ -33,6 +34,7 @@ function AuthField({ icon, right, ...props }) {
 // Страница входа. Логин + пароль и три кнопки быстрого входа по роли.
 export default function Login() {
   const navigate = useNavigate();
+  const returnTo = guestReturnTo(useLocation().search);
   const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
   const loginAsDevice = useSessionStore((s) => s.loginAsDevice);
   const showToast = useUiStore((s) => s.showToast);
@@ -46,11 +48,11 @@ export default function Login() {
   // Быстрый вход по роли ниже остаётся device-логином (демо).
   const submit = async (e) => {
     e.preventDefault();
-    if (!id.trim() || !pass) return;
+    if (!id.trim() || !pass || busy) return;
     setBusy(true);
     try {
       await loginWithPassword({ identifier: id.trim(), password: pass });
-      navigate('/feed');
+      navigate(returnTo || '/feed');
       showToast('С возвращением!');
     } catch (err) {
       showToast(err && err.status === 401 ? 'Неверные данные' : 'Не удалось войти');
@@ -85,7 +87,7 @@ export default function Login() {
   const quick = async (p) => {
     try {
       await loginAsDevice(p.device);
-      navigate(p.to);
+      navigate(returnTo || p.to);
       showToast(`Вход как ${p.label}`);
     } catch (e) {
       demoFail(e);
@@ -178,7 +180,7 @@ export default function Login() {
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 24 }}>
             Нет аккаунта?{' '}
-            <Link to="/register" style={{ color: 'var(--yard)', fontWeight: 500 }}>Создать</Link>
+            <Link to={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : '/register'} style={{ color: 'var(--yard)', fontWeight: 500 }}>Создать</Link>
           </p>
         </div>
       </div>

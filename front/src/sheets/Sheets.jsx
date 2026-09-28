@@ -235,6 +235,7 @@ function MoreSheet() {
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('heart', t.navCharity, () => goClose('/charity', 'charity'))}
         {item('bell', t.navNotif, () => goClose('/notifications', 'notifications'))}
+        {item('shield', isRu ? 'Условия и конфиденциальность' : 'Шарттар және құпиялылық', () => { close(); navigate('/privacy'); })}
         {isAdmin && item('shield', t.navAdmin, () => goClose('/admin', 'admin'))}
         <div style={{ height: 1, background: 'var(--line)', margin: '8px 0' }} />
         {loggedIn

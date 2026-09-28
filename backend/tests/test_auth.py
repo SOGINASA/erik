@@ -8,9 +8,10 @@ def post_json(client, url, data, headers=None):
 
 
 class TestRegister:
-    def test_register_with_email(self, client):
+    def test_register_with_email(self, client, legal_acceptance):
         resp = post_json(client, '/api/auth/register', {
             'email': 'new@test.com', 'password': 'secret123', 'full_name': 'New User',
+            'legal': legal_acceptance,
         })
         assert resp.status_code == 201
         body = resp.get_json()
@@ -18,16 +19,18 @@ class TestRegister:
         assert 'access_token' in body
         assert 'refresh_token' in body
 
-    def test_register_with_nickname(self, client):
+    def test_register_with_nickname(self, client, legal_acceptance):
         resp = post_json(client, '/api/auth/register', {
             'nickname': 'cool_nick', 'password': 'secret123',
+            'full_name': 'New User', 'legal': legal_acceptance,
         })
         assert resp.status_code == 201
         assert resp.get_json()['user']['nickname'] == 'cool_nick'
 
-    def test_register_with_identifier(self, client):
+    def test_register_with_identifier(self, client, legal_acceptance):
         resp = post_json(client, '/api/auth/register', {
             'identifier': 'ident@test.com', 'password': 'secret123',
+            'full_name': 'New User', 'legal': legal_acceptance,
         })
         assert resp.status_code == 201
         assert resp.get_json()['user']['email'] == 'ident@test.com'

@@ -55,10 +55,15 @@ export const useSessionStore = create(
       // кто мы — решает JWT. POST /session нашёл бы юзера по deviceId и подменил бы
       // аккаунт-вход device-личностью: /auth/login device_id к аккаунту не привязывает
       // (routes/auth.py, только register), так что это была бы другая строка User.
-      // Повторные boot() (из login()) идут device-путём — там надо донести name/role.
+      // Гостевая сессия не отправляет имя/роль из локального хранилища:
+      // создание профиля требует явных подтверждений при регистрации.
       boot: async () => {
-        const { deviceId, name, role, roleDirty, token, booted } = get();
+        const { deviceId, name, role, token, booted } = get();
         setAuth({ deviceId });
+        if (!token && !name) {
+          set({ loggedIn: false, booted: true });
+          return null;
+        }
         if (!booted && token) {
           try {
             const res = await api.me();
@@ -77,28 +82,21 @@ export const useSessionStore = create(
               set({ booted: true });
               return null;
             }
-            // Личность отвергнута (токен мёртв, refresh не выручил — onAuthRefresh):
-            // восстанавливать нечего. Гасим сессию и идём на device-путь гостем — иначе
-            // остались бы «залогинены», но уже чужой личностью.
+            // Отвергнутый токен не заменяем новой device-личностью.
             setAuth({ token: null, refreshToken: null });
-            set({ loggedIn: false, token: null, refreshToken: null, userType: null });
+            set({ loggedIn: false, token: null, refreshToken: null, userType: null,
+              name: null, phone: null, role: null, roleDirty: false, booted: true });
+            return null;
           }
         }
         try {
-          const res = await api.session({
-            deviceId,
-            name: name || undefined,
-            // Роль шлём только сразу после выбора в онбординге: POST /session затирает
-            // серверную роль присланной (identity.py:_fill_existing), а серверная бывает
-            // свежее — заведение НКО повышает до 'org' (platform.py:create_org). Слать
-            // персистнутую роль на каждый F5 значило бы откатывать такое повышение.
-            role: roleDirty && role ? role : undefined,
-          });
+          const res = await api.session({ deviceId });
           setAuth({ token: res.token, refreshToken: res.refreshToken || null });
           set({
             token: res.token,
             refreshToken: res.refreshToken || null,
-            name: res.user.full_name || name,
+            name: res.user.full_name || null,
+            loggedIn: !!res.user.full_name,
             role: res.user.role || role || 'vol',
             userType: res.user.user_type || null,   // для гейта админки (demo-coord = 'admin')
             roleDirty: false,
@@ -112,7 +110,8 @@ export const useSessionStore = create(
       },
 
       login: async () => {
-        await get().boot();
+        const res = await get().boot();
+        if (!res?.user?.full_name || !get().token) throw new Error('Зарегистрируйтесь, чтобы продолжить.');
         set((s) => ({ loggedIn: true, role: s.role || 'vol' }));
       },
 
@@ -151,29 +150,23 @@ export const useSessionStore = create(
         return res;
       },
 
-      // Регистрация аккаунта. identifier — email ИЛИ nickname (бэк разберёт).
-      // role/phone/cityId дозаполняются в профиль через PATCH /me (у /auth/register их нет).
-      registerAccount: async ({ identifier, email, nickname, password, full_name, role, phone, cityId }) => {
+      // Профиль и журнал подтверждений создаются одним запросом. До успеха
+      // сервера форма (в том числе пароль) не попадает в сохраняемый стор.
+      registerAccount: async ({ identifier, email, nickname, password, full_name, role, phone, cityId, interests, legal }) => {
         setAuth({ deviceId: get().deviceId });
-        const res = await api.register({ identifier, email, nickname, password, full_name });
+        const res = await api.register({ identifier, email, nickname, password, full_name, role, phone, cityId, interests, legal });
         setAuth({ token: res.access_token, refreshToken: res.refresh_token || null });
         set((s) => ({
           token: res.access_token,
           refreshToken: res.refresh_token || null,
           loggedIn: true,
           userType: (res.user && res.user.user_type) || 'user',
-          role: role || (res.user && res.user.role) || s.role || 'vol',
+          role: (res.user && res.user.role) || role || 'vol',
           name: (res.user && res.user.full_name) || full_name || s.name,
-          phone: phone || s.phone,
+          phone: (res.user && res.user.phone) || phone || null,
+          roleDirty: false,
+          booted: true,
         }));
-        // профильные данные онбординга (город/роль/телефон) — в свой профиль
-        const patch = {};
-        if (role) patch.role = role;
-        if (phone) patch.phone = phone;
-        if (cityId) patch.cityId = cityId;
-        if (Object.keys(patch).length) {
-          try { await api.updateMe(patch); } catch (_) { /* не блокируем регистрацию */ }
-        }
         return res;
       },
 

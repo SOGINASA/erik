@@ -5,6 +5,8 @@
 """
 from datetime import datetime, timezone
 
+from services.legal import validate_legal_acceptance, validate_subject_name, record_legal_consent
+
 from flask import Blueprint, request, jsonify, g, current_app
 from flask_jwt_extended import jwt_required
 
@@ -119,6 +121,11 @@ def create_gathering():
                         'errorKz': 'Жиындарды тек ұйымдастырушылар құра алады'}), 403
 
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Ожидается JSON-объект'}), 400
+    for key in ('name', 'what', 'title', 'where', 'place', 'titleKz', 'placeKz'):
+        if data.get(key) is not None and not isinstance(data[key], str):
+            return jsonify({'error': f'Поле {key} должно быть строкой'}), 400
 
     what = (data.get('what') or data.get('title') or '').strip()
     where = (data.get('where') or data.get('place') or '').strip()
@@ -132,6 +139,15 @@ def create_gathering():
     # KZ по умолчанию = RU (форма одноязычная), но явный titleKz/placeKz уважаем
     what_kz = (data.get('titleKz') or '').strip() or what
     where_kz = (data.get('placeKz') or '').strip() or where
+
+    snapshot = None
+    if not user.has_profile:
+        snapshot, legal_error = validate_legal_acceptance(data)
+        if legal_error:
+            return legal_error
+        name_error = validate_subject_name(data.get('name'))
+        if name_error:
+            return name_error
 
     # имя при первом сборе
     name = (data.get('name') or '').strip()
@@ -158,6 +174,8 @@ def create_gathering():
     # Роли — в ТОЙ ЖЕ транзакции, что и сам сбор. Вторым запросом нельзя: он может не дойти,
     # а координатор уже уехал с экрана и получил бы сбор без ролей, о которых он не узнает.
     create_roles(gathering, data.get('roles'))
+    if snapshot:
+        record_legal_consent(user, snapshot, 'gathering.create')
     db.session.commit()
 
     share_url = f"{current_app.config['SHARE_BASE_URL']}/g/{gathering.code}"

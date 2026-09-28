@@ -165,6 +165,43 @@ class User(db.Model):
         return data
 
 
+class LegalConsent(db.Model):
+    """Append-only registration evidence; no authentication secrets or IP addresses.
+
+    user_id deliberately has no cascading foreign key: deleting an account must
+    not silently erase evidence retained for the published legal purpose. The
+    operator must apply the documented retention policy through maintenance.
+    """
+    __tablename__ = 'legal_consents'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    subject_name = db.Column(db.String(100), nullable=False)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_now)
+    version = db.Column(db.String(64), nullable=False)
+    source = db.Column(db.String(40), nullable=False)
+    terms_accepted = db.Column(db.Boolean, nullable=False)
+    privacy_accepted = db.Column(db.Boolean, nullable=False)
+    consent_accepted = db.Column(db.Boolean, nullable=False)
+    adult_confirmed = db.Column(db.Boolean, nullable=False)
+    document_snapshot = db.Column(db.JSON, nullable=False)
+    document_sha256 = db.Column(db.String(64), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'version': self.version,
+            'acceptedAt': _utc_iso(self.accepted_at),
+            'source': self.source,
+            'documentSha256': self.document_sha256,
+        }
+
+
+@event.listens_for(LegalConsent, 'before_update')
+@event.listens_for(LegalConsent, 'before_delete')
+def _legal_consent_is_immutable(_mapper, _connection, _target):
+    raise ValueError('Legal consent evidence is append-only; use the retention maintenance process')
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Каталоги (минимум для P0; полные соц-модели — в P2)
 # ─────────────────────────────────────────────────────────────────────────────

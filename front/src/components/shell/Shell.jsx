@@ -9,6 +9,7 @@ import { useUiStore } from '../../store/useUiStore';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { routeName, useIsDesktop, useGuardedNav, useUnread, useRouteAccess, accessDeniedText } from '../../lib/nav';
 import { ADMIN_SECTIONS, adminSectionId } from '../admin/nav';
+import LegalLinks from '../LegalLinks';
 
 // Шелл приложения: сайдбар (десктоп) / шапка + таббар (мобиль) вокруг страниц.
 export default function Shell() {
@@ -202,6 +203,7 @@ function Sidebar({ route }) {
         <div style={{ marginTop: 8 }}>
           <LangToggle surface="var(--paper)" />
         </div>
+        <div style={{ marginTop: 12 }}><LegalLinks compact /></div>
       </div>
     </aside>
   );

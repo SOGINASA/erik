@@ -118,11 +118,12 @@ def test_device_user_deactivate_no_password(client, sc):
 
 
 # ── A19 апгрейд device → аккаунт ──
-def test_register_upgrades_device_user(client, sc):
+def test_register_upgrades_device_user(client, sc, legal_acceptance):
     before = User.query.count()
     r = client.post('/api/auth/register',
                     headers={'X-Device-Id': 'd-vol', 'Content-Type': 'application/json'},
-                    json={'email': 'vol@erik.kz', 'password': 'secret123'})
+                    json={'email': 'vol@erik.kz', 'password': 'secret123',
+                          'full_name': 'Волонтёр Тестовый', 'legal': legal_acceptance})
     assert r.status_code == 201
     assert User.query.count() == before               # не создан новый пользователь
     upgraded = db.session.get(User, sc['vol'].id)

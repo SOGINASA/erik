@@ -10,6 +10,11 @@
 @import "tailwindcss";
 @source "./**/*.{js,jsx}";
 
+.legal-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; font-size: 13px; line-height: 1.5; }
+.legal-links a { color: var(--yard); text-decoration: underline; text-underline-offset: 3px; padding: 10px 0; }
+.legal-links a:focus-visible { outline: 3px solid var(--yard); outline-offset: 3px; border-radius: 3px; }
+.legal-links-compact { gap: 0 14px; font-size: 12px; }
+
 /* --- Токены как Tailwind-классы: bg-yard, text-ink-2, rounded-m, font-display --- */
 @theme {
   --color-ink: #14181A;

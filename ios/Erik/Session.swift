@@ -83,11 +83,7 @@ final class Session: ObservableObject {
                 return
             }
         }
-        // device-путь: создаём/находим личность по deviceId
-        if let res = try? await APIClient.shared.createSession(deviceId: deviceId, name: name, role: nil) {
-            setToken(res.token, refresh: res.refreshToken)
-            user = res.user
-        }
+        // Просмотр каталога не создаёт серверную личность до явного согласия.
         booted = true
     }
 
@@ -101,8 +97,9 @@ final class Session: ObservableObject {
     }
 
     func registerAccount(identifier: String, password: String, fullName: String,
-                         role: String?, phone: String?, cityId: String?) async throws {
-        let res = try await APIClient.shared.register(identifier: identifier, password: password, fullName: fullName)
+                         role: String?, phone: String?, cityId: String?, legal: LegalAcceptance) async throws {
+        let res = try await APIClient.shared.register(identifier: identifier, password: password,
+                                                       fullName: fullName, legal: legal)
         setToken(res.access_token, refresh: res.refresh_token)
         user = res.user ?? user
         persistLoggedIn(true)
@@ -114,8 +111,8 @@ final class Session: ObservableObject {
     }
 
     /// Гостевой вход по устройству (быстрый старт без пароля) с именем/ролью.
-    func continueAsGuest(name: String, role: String, cityId: String?) async throws {
-        let res = try await APIClient.shared.createSession(deviceId: deviceId, name: name, role: role)
+    func continueAsGuest(name: String, role: String, cityId: String?, legal: LegalAcceptance) async throws {
+        let res = try await APIClient.shared.createSession(deviceId: deviceId, name: name, role: role, legal: legal)
         setToken(res.token, refresh: res.refreshToken)
         user = res.user
         persistLoggedIn(true)

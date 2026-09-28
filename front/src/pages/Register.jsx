@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { usePlatformStore } from '../store/usePlatformStore';
@@ -9,6 +9,8 @@ import { Logo, LangToggle } from '../components/shell/Brand';
 import { FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import RegistrationConsent, { EMPTY_CONSENTS } from '../components/RegistrationConsent';
+import { guestReturnTo } from '../lib/authReturnTo';
 
 const ROLES = [
   { id: 'vol', title: 'Волонтёр', desc: 'Нахожу сборы рядом и участвую', icon: 'users' },
@@ -45,51 +47,90 @@ function strength(pw) {
 // Многошаговый визард регистрации с анимированными переходами.
 export default function Register() {
   const navigate = useNavigate();
+  const returnTo = guestReturnTo(useLocation().search);
   const cities = usePlatformStore((s) => s.cities);
-  const setIdentity = useSessionStore((s) => s.setIdentity);
-  const setRole = useSessionStore((s) => s.setRole);
-  const login = useSessionStore((s) => s.login);
   const registerAccount = useSessionStore((s) => s.registerAccount);
   const showToast = useUiStore((s) => s.showToast);
 
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState('next');
   const [show, setShow] = useState(false);
-  const [form, setForm] = useState({ role: '', name: '', phone: '', orgName: '', email: '', password: '', confirm: '', city: '', interests: [] });
-  const up = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [form, setForm] = useState({ role: '', name: '', phone: '', email: '', password: '', confirm: '', city: '', interests: [] });
+  const [consents, setConsents] = useState({ ...EMPTY_CONSENTS });
+  const [legal, setLegal] = useState(null);
+  const [legalLoading, setLegalLoading] = useState(true);
+  const [legalError, setLegalError] = useState(false);
+  const [legalReload, setLegalReload] = useState(0);
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
+  const up = (k, v) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    if (k === 'name') setConsents({ ...EMPTY_CONSENTS });
+  };
 
-  const displayName = (form.role === 'org' ? form.orgName : form.name).trim();
-  const valid = [
+  useEffect(() => {
+    let active = true;
+    setLegalLoading(true);
+    setLegalError(false);
+    api.legal().then((result) => {
+      if (active) setLegal(result);
+    }).catch(() => {
+      if (active) { setLegal(null); setLegalError(true); }
+    }).finally(() => {
+      if (active) setLegalLoading(false);
+    });
+    return () => { active = false; };
+  }, [legalReload]);
+
+  const reloadLegal = () => {
+    setConsents({ ...EMPTY_CONSENTS });
+    setLegalLoading(true);
+    setLegalReload((value) => value + 1);
+  };
+
+  const validSteps = [
     !!form.role,
-    !!form.name.trim() && (form.role !== 'org' || !!form.orgName.trim()),
+    form.name.trim().split(/\s+/).length >= 2,
     // Email/логин ОБЯЗАТЕЛЕН: без него finish() шёл беспарольным device-путём и молча терял
     // пароль, город и телефон, показывая при этом «Аккаунт создан».
     !!form.email.trim() && form.password.length >= 6 && form.password === form.confirm,   // min 6 — как на бэке
     !!form.city,
-  ][step];
+  ];
+  const valid = validSteps[step];
+  const legalReady = !legalLoading && !legalError && legal?.registrationAvailable && !!legal.version;
+  const canRegister = validSteps.every(Boolean) && legalReady && Object.values(consents).every(Boolean);
 
-  const next = () => { if (step < 4 && valid) { setDir('next'); setStep(step + 1); } };
-  const back = () => { if (step > 0) { setDir('prev'); setStep(step - 1); } };
+  const next = () => { if (step < 3 && valid) { setError(''); setDir('next'); setStep(step + 1); } };
+  const back = () => { if (step > 0) { setError(''); setDir('prev'); setStep(step - 1); } };
 
-  // Email обязателен (см. valid[2]) — всегда создаём реальный аккаунт: registerAccount сам
-  // доносит role/phone/cityId в профиль через PATCH /me. При ошибке бэка (занятый email,
-  // офлайн/демо) не притворяемся успехом: поднимаем device-личность, НО тоже сохраняем
-  // профиль (город/телефон/роль) и говорим честно, что аккаунт с паролем создать не вышло.
   const finish = async () => {
-    setIdentity(displayName, form.phone.trim() || null);
-    setRole(form.role);
+    if (!canRegister || submitting.current) return;
+    submitting.current = true;
+    setPending(true);
+    setError('');
     try {
       await registerAccount({
-        identifier: form.email.trim(), password: form.password, full_name: displayName,
-        role: form.role, phone: form.phone.trim() || null, cityId: form.city,
+        identifier: form.email.trim(), password: form.password, full_name: form.name.trim(),
+        role: form.role, phone: form.phone.trim() || null, cityId: form.city, interests: form.interests,
+        legal: { ...consents, version: legal.version },
       });
       showToast('Аккаунт создан. Добро пожаловать в erik!');
+      navigate(returnTo || (form.role === 'vol' ? '/feed' : '/manage'));
     } catch (err) {
-      await login(); // запасной вариант (демо/офлайн/занятый email) — не блокируем вход
-      try { await api.updateMe({ role: form.role, phone: form.phone.trim() || undefined, cityId: form.city }); } catch (_) { /* офлайн — профиль долетит позже */ }
-      showToast((err && err.data && err.data.error) || 'Вы вошли (аккаунт с паролем создать не удалось)');
+      if (err?.data?.code === 'legal_version_mismatch') {
+        setError('Условия обновились. Прочитайте документы ещё раз и подтвердите новую редакцию.');
+        reloadLegal();
+      } else if (err?.data?.code === 'legal_configuration_required') {
+        setError('Регистрация временно недоступна. Пожалуйста, попробуйте позже.');
+        reloadLegal();
+      } else {
+        setError(err?.data?.error || 'Не удалось создать аккаунт. Проверьте соединение и попробуйте ещё раз.');
+      }
+    } finally {
+      submitting.current = false;
+      setPending(false);
     }
-    navigate(form.role === 'vol' ? '/feed' : '/manage');
   };
 
   const toggleInterest = (k) => up('interests', form.interests.includes(k) ? form.interests.filter((x) => x !== k) : [...form.interests, k]);
@@ -106,7 +147,7 @@ export default function Register() {
           {ROLES.map((r) => {
             const on = form.role === r.id;
             return (
-              <button key={r.id} type="button" className="erik-btn" onClick={() => up('role', r.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, borderRadius: 'var(--r-m)', border: `1.5px solid ${on ? 'var(--yard)' : 'var(--line)'}`, background: on ? 'var(--yard-soft)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left' }}>
+              <button key={r.id} type="button" className="erik-btn" aria-pressed={on} onClick={() => up('role', r.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, borderRadius: 'var(--r-m)', border: `1.5px solid ${on ? 'var(--yard)' : 'var(--line)'}`, background: on ? 'var(--yard-soft)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ width: 44, height: 44, flex: 'none', borderRadius: 12, background: on ? 'var(--yard)' : 'var(--paper)', color: on ? '#fff' : 'var(--ink-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background var(--t-fast)' }}><Icon name={r.icon} size={20} /></span>
                 <span style={{ flex: 1 }}>
                   <span style={{ display: 'block', fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 17, color: 'var(--ink)' }}>{r.title}</span>
@@ -122,19 +163,14 @@ export default function Register() {
     if (step === 1) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {form.role === 'org' && (
-            <div>
-              <FieldLabel>Название организации</FieldLabel>
-              <WField icon="shield" value={form.orgName} onChange={(e) => up('orgName', e.target.value)} placeholder="Чистый двор" />
-            </div>
-          )}
+          {form.role === 'org' && <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)' }}>Укажите данные представителя. Организацию можно добавить после регистрации.</p>}
           <div>
-            <FieldLabel>{form.role === 'org' ? 'Контактное лицо' : 'Ваше имя'}</FieldLabel>
-            <WField icon="users" value={form.name} onChange={(e) => up('name', e.target.value)} placeholder="Как вас зовут" />
+            <FieldLabel>Фамилия, имя и отчество (при наличии)</FieldLabel>
+            <WField icon="users" aria-label="Фамилия, имя и отчество (при наличии)" autoComplete="name" maxLength={120} value={form.name} onChange={(e) => up('name', e.target.value)} placeholder="Фамилия и имя" />
           </div>
           <div>
             <FieldLabel>Телефон <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>· необязательно</span></FieldLabel>
-            <WField icon="phone" type="tel" value={form.phone} onChange={(e) => up('phone', e.target.value)} placeholder="+7 700 000 00 00" />
+            <WField icon="phone" aria-label="Телефон (необязательно)" type="tel" autoComplete="tel" maxLength={32} value={form.phone} onChange={(e) => up('phone', e.target.value)} placeholder="+7 700 000 00 00" />
           </div>
         </div>
       );
@@ -144,11 +180,11 @@ export default function Register() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <FieldLabel>Email или логин <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>· для входа по паролю</span></FieldLabel>
-            <WField icon="mail" type="text" value={form.email} onChange={(e) => up('email', e.target.value)} placeholder="you@example.kz" autoComplete="username" />
+            <WField icon="mail" aria-label="Email или логин" type="text" maxLength={255} value={form.email} onChange={(e) => up('email', e.target.value)} placeholder="you@example.kz" autoComplete="username" />
           </div>
           <div>
             <FieldLabel>Пароль</FieldLabel>
-            <WField icon="lock" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 6 символов"
+            <WField icon="lock" aria-label="Пароль" autoComplete="new-password" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 6 символов"
               right={<button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Скрыть' : 'Показать'} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer' }}><Icon name={show ? 'eyeOff' : 'eye'} size={18} /></button>} />
             {form.password && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
@@ -163,7 +199,7 @@ export default function Register() {
           </div>
           <div>
             <FieldLabel>Повторите пароль</FieldLabel>
-            <WField icon="lock" type={show ? 'text' : 'password'} value={form.confirm} onChange={(e) => up('confirm', e.target.value)} placeholder="Ещё раз" />
+            <WField icon="lock" aria-label="Повторите пароль" autoComplete="new-password" type={show ? 'text' : 'password'} value={form.confirm} onChange={(e) => up('confirm', e.target.value)} placeholder="Ещё раз" />
             {form.confirm && form.confirm !== form.password && <div style={{ marginTop: 6, fontSize: 13, color: 'var(--danger)' }}>Пароли не совпадают</div>}
           </div>
         </div>
@@ -176,7 +212,7 @@ export default function Register() {
           <FieldLabel>Город</FieldLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
             {cities.map((c) => (
-              <button key={c.id} type="button" className="erik-btn" onClick={() => up('city', c.id)} style={chip(form.city === c.id)}>{c.ru}</button>
+              <button key={c.id} type="button" className="erik-btn" aria-pressed={form.city === c.id} onClick={() => up('city', c.id)} style={chip(form.city === c.id)}>{c.ru}</button>
             ))}
           </div>
         </div>
@@ -184,10 +220,12 @@ export default function Register() {
           <FieldLabel>Что вам интересно? <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>· необязательно</span></FieldLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
             {Object.keys(THEMES).map((k) => (
-              <button key={k} type="button" className="erik-btn" onClick={() => toggleInterest(k)} style={chip(form.interests.includes(k), THEMES[k].tint, THEMES[k].ink)}>{THEMES[k].ru}</button>
+              <button key={k} type="button" className="erik-btn" aria-pressed={form.interests.includes(k)} onClick={() => toggleInterest(k)} style={chip(form.interests.includes(k), THEMES[k].tint, THEMES[k].ink)}>{THEMES[k].ru}</button>
             ))}
           </div>
         </div>
+        <RegistrationConsent legal={legal} loading={legalLoading} error={legalError} values={consents}
+          onChange={(key, checked) => setConsents((values) => ({ ...values, [key]: checked }))} onRetry={reloadLegal} />
       </div>
     );
   };
@@ -201,8 +239,8 @@ export default function Register() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px 20px 48px' }}>
         <div style={{ width: '100%', maxWidth: 440 }}>
-          {step < 4 ? (
-            <>
+          <form onSubmit={(event) => { event.preventDefault(); if (step === 3) finish(); else next(); }}>
+            <fieldset disabled={pending} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               {/* прогресс */}
               <div style={{ marginBottom: 26 }}>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -222,28 +260,20 @@ export default function Register() {
                 {renderStep()}
               </div>
 
+              {error && <p role="alert" style={{ margin: '18px 0 0', fontSize: 14, lineHeight: 1.5, color: 'var(--danger)' }}>{error}</p>}
+
               {/* навигация */}
               <div style={{ display: 'flex', gap: 12, marginTop: 28 }}>
-                {step > 0 && <Button variant="ghost" size="lg" onClick={back} icon="back">Назад</Button>}
-                <Button size="lg" onClick={next} disabled={!valid} full style={{ flex: 1 }}>{step === 3 ? 'Создать аккаунт' : 'Продолжить'}</Button>
+                {step > 0 && <Button type="button" variant="ghost" size="lg" onClick={back} icon="back">Назад</Button>}
+                <Button type="submit" size="lg" loading={pending} disabled={step === 3 ? !canRegister : !valid} full style={{ flex: 1 }}>{pending ? 'Создаём аккаунт…' : step === 3 ? 'Создать аккаунт' : 'Продолжить'}</Button>
               </div>
 
               <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 22 }}>
                 Уже есть аккаунт?{' '}
-                <Link to="/login" style={{ color: 'var(--yard)', fontWeight: 500 }}>Войти</Link>
+                <Link to={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login'} style={{ color: 'var(--yard)', fontWeight: 500 }}>Войти</Link>
               </p>
-            </>
-          ) : (
-            // финальный экран
-            <div style={{ textAlign: 'center', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
-              <div style={{ width: 88, height: 88, margin: '0 auto 22px', borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'erik-check-pop .5s var(--ease-out)' }}>
-                <Icon name="check" size={46} stroke={2.4} />
-              </div>
-              <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 28, letterSpacing: '-.02em', margin: '0 0 6px' }}>Готово, {displayName || 'друг'}!</h1>
-              <p style={{ fontSize: 15, color: 'var(--ink-2)', margin: '0 0 28px' }}>Аккаунт создан. Добро пожаловать в движение — осталось начать.</p>
-              <Button size="lg" full onClick={finish}>Начать</Button>
-            </div>
-          )}
+            </fieldset>
+          </form>
         </div>
       </div>
     </div>

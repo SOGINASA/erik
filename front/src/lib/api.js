@@ -67,6 +67,7 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  legal: () => request('/legal', { auth: false }),
   // сессия / профиль
   session: (payload) => request('/session', { method: 'POST', body: payload, auth: false }),
   me: () => request('/me'),
@@ -218,7 +219,7 @@ export const api = {
 
   // ── аккаунт-авторизация (email/пароль) — сосуществует с device-сессией ──
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),        // {identifier, password}
-  register: (payload) => request('/auth/register', { method: 'POST', body: payload, auth: false }),   // {identifier|email|nickname, password, full_name}
+  register: (payload) => request('/auth/register', { method: 'POST', body: payload, auth: false }), // данные профиля + версия и подтверждения legal
   refresh: (refreshToken) => request('/auth/refresh', { method: 'POST', bearer: refreshToken }),
   forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email }, auth: false }),
 };

@@ -5,6 +5,8 @@
 """
 from datetime import datetime, timezone
 
+from services.legal import validate_legal_acceptance, validate_subject_name, record_legal_consent
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 
@@ -73,7 +75,7 @@ def put_rsvp(code):
     поднимать до @profiled_required нельзя — гость без имени тоже выбирает роль.
     """
     user = current_user()
-    if user is None:
+    if user is None or not user.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
     gathering = _find_open(code)
     if gathering is None:
@@ -82,9 +84,25 @@ def put_rsvp(code):
         return jsonify({'error': 'Сбор уже завершён'}), 409
 
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Ожидается JSON-объект'}), 400
+    for key in ('name', 'phone'):
+        if data.get(key) is not None and not isinstance(data[key], str):
+            return jsonify({'error': f'Поле {key} должно быть строкой'}), 400
+    if len((data.get('phone') or '').strip()) > 32:
+        return jsonify({'error': 'Телефон должен содержать не более 32 символов'}), 400
     answer = data.get('answer')
     if answer not in ANSWERS:
         return jsonify({'error': 'answer ∈ yes|maybe|no'}), 400
+
+    snapshot = None
+    if not user.has_profile:
+        snapshot, legal_error = validate_legal_acceptance(data)
+        if legal_error:
+            return legal_error
+        name_error = validate_subject_name(data.get('name'))
+        if name_error:
+            return name_error
 
     # дозаполняем личность
     name = (data.get('name') or '').strip()
@@ -132,6 +150,8 @@ def put_rsvp(code):
         notify_owner_answer(gathering, user.full_name or name or 'Участник', answer)
 
     gathering.bump()
+    if snapshot:
+        record_legal_consent(user, snapshot, 'guest.rsvp')
     db.session.commit()
 
     coming = sum(1 for p in gathering.participants if p.answer == 'yes')

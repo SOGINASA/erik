@@ -5,6 +5,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { Logo, LangToggle } from '../components/shell/Brand';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import LegalLinks from '../components/LegalLinks';
 // деплой
 const F = (isRu, ru, kz, sru, skz) => ({ title: isRu ? ru : kz, sub: isRu ? sru : skz });
 
@@ -190,6 +191,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+      <footer style={{ width: '100%', maxWidth: 1080, margin: '0 auto', padding: '0 clamp(20px,4vw,40px) 32px' }}>
+        <LegalLinks />
+      </footer>
     </div>
   );
 }
