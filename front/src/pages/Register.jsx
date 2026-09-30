@@ -94,7 +94,7 @@ export default function Register() {
     form.name.trim().split(/\s+/).length >= 2,
     // Email/логин ОБЯЗАТЕЛЕН: без него finish() шёл беспарольным device-путём и молча терял
     // пароль, город и телефон, показывая при этом «Аккаунт создан».
-    !!form.email.trim() && form.password.length >= 6 && form.password === form.confirm,   // min 6 — как на бэке
+    !!form.email.trim() && form.password.length >= 8 && form.password === form.confirm,   // min 8 — как на бэке
     !!form.city,
   ];
   const valid = validSteps[step];
@@ -184,7 +184,7 @@ export default function Register() {
           </div>
           <div>
             <FieldLabel>Пароль</FieldLabel>
-            <WField icon="lock" aria-label="Пароль" autoComplete="new-password" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 6 символов"
+            <WField icon="lock" aria-label="Пароль" autoComplete="new-password" type={show ? 'text' : 'password'} value={form.password} onChange={(e) => up('password', e.target.value)} placeholder="Минимум 8 символов"
               right={<button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Скрыть' : 'Показать'} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer' }}><Icon name={show ? 'eyeOff' : 'eye'} size={18} /></button>} />
             {form.password && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
