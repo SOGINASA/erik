@@ -38,6 +38,7 @@ export default function Login() {
   const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
   const loginAsDevice = useSessionStore((s) => s.loginAsDevice);
   const showToast = useUiStore((s) => s.showToast);
+  const showDemo = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ENABLE_DEMO === 'true';
 
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
@@ -55,7 +56,9 @@ export default function Login() {
       navigate(returnTo || '/feed');
       showToast('С возвращением!');
     } catch (err) {
-      showToast(err && err.status === 401 ? 'Неверные данные' : 'Не удалось войти');
+      showToast(err?.status === 401
+        ? 'Неверный email, никнейм или пароль. Если аккаунта ещё нет — создайте его.'
+        : err?.data?.error || (err?.status ? 'Не удалось войти. Попробуйте позже.' : 'Не удалось связаться с сервером. Проверьте соединение.'));
     } finally {
       setBusy(false);
     }
@@ -70,18 +73,19 @@ export default function Login() {
     }
     try {
       await api.forgotPassword(email);
-    } catch (_) { /* ответ намеренно неинформативен (безопасность) */ }
-    showToast('Если такой email есть — письмо для сброса отправлено');
+      showToast('Если такой email есть — письмо для сброса отправлено');
+    } catch (err) {
+      showToast(err?.data?.error || 'Не удалось запросить восстановление пароля. Попробуйте позже.');
+    }
   };
 
   // Отказ входа: 404 — бэкенд ЖИВ, но демо-личностей в базе нет (сид не запускался,
   // см. DEMO_DEVICE_PREFIX). Раньше оба случая шли под текстом «Бэкенд недоступен»,
   // и на свежем деплое это уводило чинить сеть вместо того, чтобы запустить сид.
-  const demoFail = (e) => showToast(
-    e && e.status === 404
-      ? 'Демо-данные не засеяны — выполните flask seed-demo на сервере'
-      : 'Бэкенд недоступен — запустите сервер и seed-demo',
-  );
+  const demoFail = (e) => showToast(e?.status === 403
+    ? 'Демо-вход отключён. Войдите по email и паролю или создайте аккаунт.'
+    : e?.data?.error || (e?.status === 404 ? 'Демо-профиль не найден.'
+      : e?.status ? 'Не удалось выполнить демо-вход.' : 'Не удалось связаться с сервером.'));
 
   // Демо-вход как засеянная личность (реальный токен → реальная роль/данные).
   const quick = async (p) => {
@@ -120,7 +124,7 @@ export default function Login() {
 
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <FieldLabel>Телефон или email</FieldLabel>
+              <FieldLabel>Email или никнейм</FieldLabel>
               <AuthField icon="mail" type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="you@example.kz" autoComplete="username" />
             </div>
             <div>
@@ -145,6 +149,7 @@ export default function Login() {
             <Button type="submit" size="lg" full loading={busy} disabled={!id.trim() || !pass}>Войти</Button>
           </form>
 
+          {showDemo && <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
             <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
             <span style={{ fontSize: 12, color: 'var(--ink-3)', letterSpacing: '.02em' }}>или войти как</span>
@@ -177,6 +182,7 @@ export default function Login() {
           <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
             демо-админ по паролю: <span style={{ fontFamily: 'var(--fm)' }}>admin@erik.kz / admin123</span>
           </p>
+          </>}
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 24 }}>
             Нет аккаунта?{' '}
