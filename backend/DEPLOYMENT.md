@@ -31,14 +31,22 @@ Copy `.env.example` to `.env` and set actual values. Never commit `.env`.
 - `DATABASE_URL=postgresql+psycopg://erik:URL_ENCODED_PASSWORD@postgres:5432/erik`.
   The password must match `POSTGRES_PASSWORD`; URL-encode special characters.
 - `CORS_ORIGINS`, `FRONTEND_URL`: actual HTTPS frontend origins/URL.
-- All `LEGAL_*` settings required by the existing registration workflow.
+- `LEGAL_*` values populate the published operator information. Missing values
+  do not block registration by default, preserving compatibility with older env files.
+  Set `REQUIRE_LEGAL_CONFIGURATION=1` to require complete metadata before registration.
+  Consent checkboxes and consent records remain enabled in both modes.
 - SMTP is optional. Leave `MAIL_SERVER` empty to run without email. Registration
   and password login still work; email verification messages are not sent and
   password recovery returns `503 email_unavailable` without creating reset tokens.
   When enabling SMTP, set `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, credentials
   and `MAIL_FROM`. Production never logs undelivered messages or their tokens.
-- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo seeding/login and
-  sets `SKIP_DB_CREATE=1`.
+- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo seeding and
+  sets `SKIP_DB_CREATE=1`. Demo login defaults to enabled for compatibility.
+- For a demo deployment, set `ALLOW_DEMO_LOGIN=1` in `.env` and rebuild/recreate
+  the backend: `docker compose up -d --build --force-recreate --no-deps backend`.
+  This enables existing demo accounts, including real administrator access and
+  the seeded admin password. It does not seed or reset data; preserve the restored
+  `DATABASE_URL`. Set the flag back to `0` to disable new demo logins.
 - For exactly one trusted reverse proxy, set `TRUSTED_PROXY_HOPS=1` and configure
   that proxy to overwrite forwarded headers. Default 0 trusts none. Do not expose
   the backend directly when trusting proxy headers.

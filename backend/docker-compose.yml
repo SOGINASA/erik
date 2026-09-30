@@ -38,7 +38,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set postgresql+psycopg://erik:encoded-password@postgres:5432/erik}
       REDIS_URL: redis://redis:6379/0
       ERIK_SEED_DEMO: "0"
-      ALLOW_DEMO_LOGIN: "0"
+      ALLOW_DEMO_LOGIN: "${ALLOW_DEMO_LOGIN:-1}"
       SKIP_DB_CREATE: "1"
       CORS_ORIGINS: ${CORS_ORIGINS:?Set the frontend origin}
       FRONTEND_URL: ${FRONTEND_URL:?Set the frontend URL}

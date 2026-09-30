@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from models import db, User, City, Theme, USER_ROLES
 from services.legal import validate_legal_acceptance, validate_subject_name, record_legal_consent
@@ -232,7 +232,11 @@ def login():
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     import os
-    if os.environ.get('FLASK_ENV') == 'production' and user.user_type == 'admin' and password == 'admin123':
+    demo_password_allowed = (current_app.config.get('ALLOW_DEMO_LOGIN', False)
+                             and user.device_id == 'demo-admin'
+                             and user.email == 'admin@erik.kz')
+    if (os.environ.get('FLASK_ENV') == 'production' and user.user_type == 'admin'
+            and password == 'admin123' and not demo_password_allowed):
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     try:

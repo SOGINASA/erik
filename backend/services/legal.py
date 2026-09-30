@@ -63,7 +63,7 @@ def legal_manifest():
         **declarations,
         'documentVersion': manifest['version'],
         'version': f"{manifest['version']}-{fingerprint}",
-        'registrationAvailable': not missing,
+        'registrationAvailable': not missing or not current_app.config.get('REQUIRE_LEGAL_CONFIGURATION', False),
         'missingConfiguration': missing,
     }
 

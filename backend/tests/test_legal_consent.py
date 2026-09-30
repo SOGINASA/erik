@@ -30,6 +30,22 @@ def _anonymous(device='unregistered-device', role='vol'):
     return user
 
 
+def test_registration_with_legacy_env(client, app, monkeypatch):
+    monkeypatch.setitem(app.config, 'REQUIRE_LEGAL_CONFIGURATION', False)
+    for key in ('LEGAL_OPERATOR_NAME', 'LEGAL_OPERATOR_BIN', 'LEGAL_OPERATOR_ADDRESS',
+                'LEGAL_PRIVACY_EMAIL', 'LEGAL_STORAGE_COUNTRY', 'LEGAL_PROCESSORS'):
+        monkeypatch.setitem(app.config, key, '')
+    manifest = client.get('/api/legal').get_json()
+    assert manifest['registrationAvailable'] is True
+    assert len(manifest['missingConfiguration']) == 6
+    consent = dict(version=manifest['version'], termsAccepted=True, privacyAccepted=True,
+                   consentAccepted=True, adultConfirmed=True)
+    response = client.post('/api/auth/register', json=_registration(consent))
+    assert response.status_code == 201
+    assert User.query.count() == 1
+    assert LegalConsent.query.count() == 1
+
+
 def test_legal_documents_public_and_available(client):
     response = client.get('/api/legal')
     assert response.status_code == 200
@@ -85,6 +101,7 @@ def test_operator_change_invalidates_form(client, app, monkeypatch, legal_accept
     'LEGAL_STORAGE_COUNTRY', 'LEGAL_PROCESSORS',
 ])
 def test_missing_operator_config_closes_new_registration(client, app, monkeypatch, legal_acceptance, setting):
+    monkeypatch.setitem(app.config, 'REQUIRE_LEGAL_CONFIGURATION', True)
     monkeypatch.setitem(app.config, setting, '')
     manifest = client.get('/api/legal').get_json()
     assert manifest['registrationAvailable'] is False
@@ -96,6 +113,7 @@ def test_missing_operator_config_closes_new_registration(client, app, monkeypatc
 
 
 def test_storage_outside_kazakhstan_does_not_enable_registration(client, app, monkeypatch):
+    monkeypatch.setitem(app.config, 'REQUIRE_LEGAL_CONFIGURATION', True)
     monkeypatch.setitem(app.config, 'LEGAL_STORAGE_COUNTRY', 'US')
     manifest = client.get('/api/legal').get_json()
     assert manifest['registrationAvailable'] is False

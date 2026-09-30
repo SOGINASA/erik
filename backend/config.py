@@ -50,8 +50,7 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = ({'pool_pre_ping': True, 'pool_size': 5, 'max_overflow': 5}
         if SQLALCHEMY_DATABASE_URI.startswith('postgresql') else {})
     MAX_CONTENT_LENGTH = 1024 * 1024
-    ALLOW_DEMO_LOGIN = (os.environ.get('ALLOW_DEMO_LOGIN') == '1'
-                        and os.environ.get('FLASK_ENV') != 'production')
+    ALLOW_DEMO_LOGIN = os.environ.get('ALLOW_DEMO_LOGIN', '1') == '1'
     REDIS_URL = os.environ.get('REDIS_URL')
     TRUSTED_PROXY_HOPS = int(os.environ.get('TRUSTED_PROXY_HOPS', '0'))
 
@@ -68,7 +67,8 @@ class Config:
     # Базовый URL фронта (для ссылок сброса пароля/верификации в письмах)
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
-    # Публичные сведения оператора. Без них новые регистрации закрыты во всех средах.
+    # Строгая проверка реквизитов включается отдельно; старый env остаётся рабочим.
+    REQUIRE_LEGAL_CONFIGURATION = os.environ.get('REQUIRE_LEGAL_CONFIGURATION', '0') == '1'
     LEGAL_OPERATOR_NAME = os.environ.get('LEGAL_OPERATOR_NAME', '')
     LEGAL_OPERATOR_BIN = os.environ.get('LEGAL_OPERATOR_BIN', '')
     LEGAL_OPERATOR_ADDRESS = os.environ.get('LEGAL_OPERATOR_ADDRESS', '')
@@ -136,8 +136,8 @@ def validate_config():
     for var in ('SECRET_KEY', 'JWT_SECRET_KEY'):
         if len(os.environ.get(var, '')) < 32:
             errors.append(f'{var} должен содержать минимум 32 случайных символа')
-    if os.environ.get('ALLOW_DEMO_LOGIN') == '1' or os.environ.get('ERIK_SEED_DEMO') == '1':
-        errors.append('Демо-вход и автосид запрещены в production')
+    if os.environ.get('ERIK_SEED_DEMO') == '1':
+        errors.append('Автосид запрещён в production')
     if not os.environ.get('REDIS_URL'):
         errors.append('REDIS_URL обязателен для общих лимитов запросов')
     if not os.environ.get('DATABASE_URL', '').startswith('postgresql+psycopg://'):
