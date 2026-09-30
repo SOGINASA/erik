@@ -25,10 +25,12 @@ beforeEach(() => {
   mockLogin.mockResolvedValue({ user: {} });
 });
 
-test('demo login is hidden by default', () => {
+test('demo login buttons and credentials are visible', () => {
   render(<Login />);
-  expect(screen.queryByRole('button', { name: 'Войти как администратор' })).not.toBeInTheDocument();
-  expect(screen.queryByText(/admin123/)).not.toBeInTheDocument();
+  for (const name of ['Волонтёр', 'Координатор', 'НКО', 'Войти как администратор']) {
+    expect(screen.getByRole('button', { name, exact: true })).toBeInTheDocument();
+  }
+  expect(screen.getByText(/admin123/)).toBeInTheDocument();
 });
 
 test('invalid credentials do not claim the backend is offline', async () => {

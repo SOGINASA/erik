@@ -38,7 +38,6 @@ export default function Login() {
   const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
   const loginAsDevice = useSessionStore((s) => s.loginAsDevice);
   const showToast = useUiStore((s) => s.showToast);
-  const showDemo = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ENABLE_DEMO === 'true';
 
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
@@ -149,7 +148,6 @@ export default function Login() {
             <Button type="submit" size="lg" full loading={busy} disabled={!id.trim() || !pass}>Войти</Button>
           </form>
 
-          {showDemo && <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
             <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
             <span style={{ fontSize: 12, color: 'var(--ink-3)', letterSpacing: '.02em' }}>или войти как</span>
@@ -182,7 +180,6 @@ export default function Login() {
           <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
             демо-админ по паролю: <span style={{ fontFamily: 'var(--fm)' }}>admin@erik.kz / admin123</span>
           </p>
-          </>}
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 24 }}>
             Нет аккаунта?{' '}
