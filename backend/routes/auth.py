@@ -411,6 +411,12 @@ def change_password():
 @rate_limit(5, 3600, by_account=True)
 def forgot_password():
     """Восстановление пароля"""
+    import os
+    from services.email import is_configured
+    # Same response for every address; do not generate unusable reset tokens.
+    if os.environ.get('FLASK_ENV') == 'production' and not is_configured():
+        return jsonify({'error': 'Восстановление пароля недоступно: отправка писем ещё не настроена.',
+                        'code': 'email_unavailable'}), 503
     data = request.get_json()
 
     if not data or not data.get('email'):

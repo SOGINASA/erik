@@ -125,7 +125,7 @@ def validate_config():
         return True
 
     errors = []
-    for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL', 'CORS_ORIGINS', 'FRONTEND_URL', 'MAIL_SERVER'):
+    for var in ('SECRET_KEY', 'JWT_SECRET_KEY', 'DATABASE_URL', 'CORS_ORIGINS', 'FRONTEND_URL'):
         if not os.environ.get(var):
             errors.append(f'Переменная окружения {var} обязательна в продакшене')
     if os.environ.get('SECRET_KEY') in (_DEFAULT_SECRET, 'super-secret-key-change-me'):

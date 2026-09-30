@@ -32,7 +32,11 @@ Copy `.env.example` to `.env` and set actual values. Never commit `.env`.
   The password must match `POSTGRES_PASSWORD`; URL-encode special characters.
 - `CORS_ORIGINS`, `FRONTEND_URL`: actual HTTPS frontend origins/URL.
 - All `LEGAL_*` settings required by the existing registration workflow.
-- SMTP: `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, credentials and `MAIL_FROM`.
+- SMTP is optional. Leave `MAIL_SERVER` empty to run without email. Registration
+  and password login still work; email verification messages are not sent and
+  password recovery returns `503 email_unavailable` without creating reset tokens.
+  When enabling SMTP, set `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, credentials
+  and `MAIL_FROM`. Production never logs undelivered messages or their tokens.
 - Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo seeding/login and
   sets `SKIP_DB_CREATE=1`.
 - For exactly one trusted reverse proxy, set `TRUSTED_PROXY_HOPS=1` and configure

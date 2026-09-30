@@ -19,7 +19,7 @@ def send_email(to, subject, body):
     if not is_configured():
         import os
         if os.environ.get('FLASK_ENV') == 'production':
-            raise RuntimeError('SMTP is required in production')
+            return False  # Mail is optional; never log messages or tokens in production.
         current_app.logger.info('EMAIL (dev, не отправлено) → %s | %s\n%s', to, subject, body)
         return False
     msg = EmailMessage()
