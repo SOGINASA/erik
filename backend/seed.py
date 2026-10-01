@@ -413,7 +413,7 @@ def seed_demo(reset=False):
                 db.session.add(Participant(gathering_id=gv.id, user_id=u.id, name=u.full_name,
                                            answer=ans, answered_at=datetime.now(timezone.utc)))
         db.session.commit()
-
+    # деплой
     # демо-уведомления координатору (лента не должна быть пустой на защите)
     # NB: Notification импортируется на уровне модуля. Локальный `from models import
     # Notification` здесь делал имя локальным для ВСЕЙ функции и ронял блок reset выше.
