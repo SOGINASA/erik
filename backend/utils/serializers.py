@@ -237,14 +237,6 @@ def serialize_org(org, following=None):
     return d
 
 
-def serialize_charity(c):
-    return {
-        'id': c.id, 'titleRu': c.title_ru, 'titleKz': c.title_kz, 'org': c.org_id,
-        'cityId': c.city_id, 'kind': c.kind, 'goal': c.goal, 'raised': c.raised, 'unit': c.unit,
-        'image': c.image_url,
-    }
-
-
 def serialize_volunteer(u):
     from models import db, City
     city = db.session.get(City, u.city_id) if u.city_id else None

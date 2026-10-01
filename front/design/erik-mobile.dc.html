@@ -70,7 +70,6 @@ input::placeholder{color:var(--ink-3)}
     <button onClick="{{ goMessages }}" style="{{ navMsgStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>{{ t.navMessages }}</button>
     <button onClick="{{ goNotifications }}" style="{{ navNotifStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span style="flex:1">{{ t.navNotif }}</span><sc-if value="{{ unreadDot }}" hint-placeholder-val="{{ false }}"><span style="min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--maybe);color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ unreadText }}</span></sc-if></button>
     <button onClick="{{ goLeaderboard }}" style="{{ navLeaderStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M9 20h6M12 13v7"/></svg>{{ t.navLeader }}</button>
-    <button onClick="{{ goCharity }}" style="{{ navCharityStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-9.5-9A4.5 4.5 0 0 1 12 6a4.5 4.5 0 0 1 9.5 5c-2.5 4.5-9.5 9-9.5 9z"/></svg>{{ t.navCharity }}</button>
     <button onClick="{{ goAdmin }}" style="{{ navAdminStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>{{ t.navAdmin }}</button>
   </nav>
   <div style="flex:1"></div>
@@ -710,26 +709,6 @@ input::placeholder{color:var(--ink-3)}
 </div>
 </sc-if>
 
-<sc-if value="{{ isCharity }}" hint-placeholder-val="{{ false }}">
-<div style="{{ pageStyle }}">
-  <div style="{{ containerWide }}">
-    <div style="padding:24px 0 48px;animation:erik-fade var(--t-base) var(--ease-out)">
-      <h1 style="font-family:var(--fd);font-weight:600;font-size:28px;letter-spacing:-.02em;margin:0 0 18px">{{ t.charityTitle }}</h1>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
-        <sc-for list="{{ charityObjs }}" as="c" hint-placeholder-count="4">
-        <div style="display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface)">
-          <div><div style="font-family:var(--fd);font-weight:600;font-size:17px;color:var(--ink);margin-bottom:2px">{{ c.title }}</div><div style="font-size:13px;color:var(--ink-3)">{{ c.org }} · {{ c.city }}</div></div>
-          <div style="height:8px;border-radius:999px;background:var(--line)"><div style="{{ c.barStyle }}"></div></div>
-          <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-family:var(--fm);font-weight:600;font-size:14px;color:var(--ink)">{{ c.raisedText }}</span><span style="font-size:12px;color:var(--ink-3)">{{ t.charityGoal }} {{ c.goalText }}</span></div>
-          <button onClick="{{ c.onHelp }}" style="height:44px;border:none;border-radius:var(--r-m);background:var(--yard);color:#fff;font-weight:500;font-size:15px;cursor:pointer;transition:filter var(--t-fast)" style-hover="filter:brightness(1.08)">{{ t.help }}</button>
-        </div>
-        </sc-for>
-      </div>
-    </div>
-  </div>
-</div>
-</sc-if>
-
 <sc-if value="{{ isMessages }}" hint-placeholder-val="{{ false }}">
 <div style="{{ pageStyle }}">
   <div style="width:100%;max-width:720px;margin:0 auto;padding:24px 20px 48px;animation:erik-fade var(--t-base) var(--ease-out)">
@@ -1092,23 +1071,6 @@ input::placeholder{color:var(--ink-3)}
 </div>
 </sc-if>
 
-<sc-if value="{{ sheetDonate }}" hint-placeholder-val="{{ false }}">
-<div onClick="{{ closeSheet }}" style="{{ backdropStyle }}">
-  <div onClick="{{ stop }}" style="{{ sheetStyle }}">
-    <div style="{{ handleStyle }}"></div>
-    <h2 style="{{ sheetTitleStyle }}">{{ t.helpTitle }}</h2>
-    <div style="font-size:14px;color:var(--ink-2);margin:-8px 0 16px">{{ donateTitle }}</div>
-    <div style="font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">{{ t.donateAmount }}</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <button onClick="{{ setDonate1 }}" style="{{ donateChip1 }};flex:1;justify-content:center;height:44px">1 000 ₸</button>
-      <button onClick="{{ setDonate2 }}" style="{{ donateChip2 }};flex:1;justify-content:center;height:44px">2 000 ₸</button>
-      <button onClick="{{ setDonate5 }}" style="{{ donateChip5 }};flex:1;justify-content:center;height:44px">5 000 ₸</button>
-    </div>
-    <button onClick="{{ confirmDonate }}" style="{{ sheetPrimaryStyle }}">{{ t.help }}</button>
-  </div>
-</div>
-</sc-if>
-
 <sc-if value="{{ sheetAuth }}" hint-placeholder-val="{{ false }}">
 <div onClick="{{ closeSheet }}" style="{{ backdropStyle }}">
   <div onClick="{{ stop }}" style="{{ sheetStyle }}">
@@ -1136,7 +1098,6 @@ input::placeholder{color:var(--ink-3)}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
       <button onClick="{{ moreMe }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:var(--yard-soft);color:var(--yard);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h11M8 12h11M8 18h11"/><circle cx="4" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.1" fill="currentColor" stroke="none"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.myGatherings }}</span></button>
       <button onClick="{{ moreLeader }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:#EDE6E8;color:#6b4550;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M9 20h6M12 13v7"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.navLeader }}</span></button>
-      <button onClick="{{ moreCharity }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:#F3E3E1;color:#9a3b34;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-9.5-9A4.5 4.5 0 0 1 12 6a4.5 4.5 0 0 1 9.5 5c-2.5 4.5-9.5 9-9.5 9z"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.navCharity }}</span></button>
       <button onClick="{{ moreNotif }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:var(--maybe-soft);color:var(--maybe);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.navNotif }}</span><sc-if value="{{ moreUnread }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:12px;right:calc(50% - 26px);min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--maybe);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ moreUnreadText }}</span></sc-if></button>
       <button onClick="{{ moreAdmin }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:#E4EAEE;color:#3d5566;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.navAdmin }}</span></button>
       <button onClick="{{ goMap }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:16px 6px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast)" style-hover="border-color:var(--ink-3)"><span style="width:42px;height:42px;border-radius:999px;background:var(--yard-soft);color:var(--yard);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span style="font-size:12px;color:var(--ink-2);text-align:center;line-height:1.2">{{ t.navMap }}</span></button>
@@ -1173,7 +1134,7 @@ class Component extends DCLogic {
       vw: (typeof window !== 'undefined' ? window.innerWidth : 1200),
       eventId: 'e1', profileId: 'me', orgId: 'o1', convoId: 'c1',
       fCity: 'all', fTheme: 'all', fFormat: 'all',
-      msgDraft: '', donateAmt: 2000, donateId: 'ch1', role: null, followed: {},
+      msgDraft: '', role: null, followed: {},
       leaderTab: 'vol', notifRead: {},
       sheet: null,
       toast: null,
@@ -1278,13 +1239,7 @@ class Component extends DCLogic {
       {id:'c3',name:'Лапа помощи',role:'НКО',msgs:[{me:false,txt:'Напоминаем: выгул собак в 9:00',t:'2 дн'}]},
       {id:'c4',name:'Серебряный возраст',role:'НКО',msgs:[{me:false,txt:'Апа передаёт вам огромное спасибо ❤',t:'3 дн'}]}
     ];
-    const charity=[
-      {id:'ch1',titleRu:'Инвентарь для субботников',titleKz:'Сенбілікке құрал-жабдық',org:'o1',cityId:'pet',kind:'money',goal:150000,raised:98000,unit:'₸'},
-      {id:'ch2',titleRu:'Тёплые вещи для приюта',titleKz:'Баспанаға жылы киім',org:'o2',cityId:'alm',kind:'items',goal:200,raised:134,unit:'вещей'},
-      {id:'ch3',titleRu:'Корм для приюта «Лапа»',titleKz:'«Лапа» баспанасына жем',org:'o3',cityId:'alm',kind:'money',goal:90000,raised:71500,unit:'₸'},
-      {id:'ch4',titleRu:'Учебники сельским школам',titleKz:'Ауыл мектептеріне оқулық',org:'o5',cityId:'shy',kind:'items',goal:500,raised:210,unit:'книг'}
-    ];
-    return { T, cities, orgs, events, volunteers, me, badges, notifs, convos, charity };
+    return { T, cities, orgs, events, volunteers, me, badges, notifs, convos };
   }
 
   // ---------- data ----------
@@ -1369,19 +1324,19 @@ class Component extends DCLogic {
         confirmFinishTitle:'Завершить сбор?', confirmFinishBody:'После завершения ответы и отметки больше нельзя изменить.',
         barStyleLabel:'Полоса явки', barCompose:'Состав', barDots:'Люди', barRange:'Диапазон',
         done:'Готово', gatheringDone:'Сбор состоялся', of:'из',
-        navFeed:'Лента', navMap:'Карта', navMessages:'Сообщения', navNotif:'Уведомления', navLeader:'Рейтинг', navCharity:'Помощь', navProfile:'Профиль', navCreate:'Создать', navAdmin:'Модерация', navMore:'Ещё', logout:'Выйти', loginWord:'Войти', moreMenuTitle:'Меню',
+        navFeed:'Лента', navMap:'Карта', navMessages:'Сообщения', navNotif:'Уведомления', navLeader:'Рейтинг', navProfile:'Профиль', navCreate:'Создать', navAdmin:'Модерация', navMore:'Ещё', logout:'Выйти', loginWord:'Войти', moreMenuTitle:'Меню',
         feedTitle:'Рядом с вами', feedSub:'Инициативы и сборы, куда можно прийти', impactLine:'волонтёрское движение Казахстана в одном месте',
         orgsWord:'организаций', volWord:'волонтёров', citiesWord:'городов', quickLinks:'Быстрый доступ',
         register:'Записаться', youRegistered:'Вы записались', changeAnswer:'Изменить ответ', aboutEvent:'Описание', organizer:'Организатор', going:'идут', openCoordDash:'Открыть дашборд координатора', thisIsYou:'Это вы',
         profileHours:'часов', profileEvents:'событий', profileRel:'надёжность', skillsTitle:'Навыки', badgesTitle:'Достижения', historyTitle:'История участия', editProfile:'Редактировать',
         orgEventsTitle:'События организации', verifiedLabel:'Проверенная НКО',
         leaderTitle:'Рейтинг', leaderVol:'Волонтёры', leaderCity:'Города', leaderOrg:'НКО', leaderNote:'За всё время',
-        charityTitle:'Нужна помощь', charityRaised:'собрано', charityGoal:'цель', help:'Помочь',
+
         messagesTitle:'Сообщения', typeMessage:'Сообщение…',
         notifTitle:'Уведомления', markAllReadLabel:'Прочитать все', emptyNotif:'Пока пусто',
         onboardTitle:'Кто вы на erik?', onboardSub:'Роль можно поменять в любой момент', roleVol:'Волонтёр', roleVolDesc:'Нахожу сборы рядом и участвую', roleCoord:'Координатор', roleCoordDesc:'Организую сборы и вижу прогноз явки', roleOrg:'НКО / организация', roleOrgDesc:'Веду волонтёров и события', continueWord:'Продолжить',
         adminTitle:'Модерация', adminVerify:'Заявки на верификацию', adminReports:'Жалобы', approve:'Одобрить', reject:'Отклонить', adminStats:'За сегодня',
-        registerTitle:'Ваш ответ', helpTitle:'Помочь', donateAmount:'Сумма', mapTitle:'Карта сборов', mapActive:'активных сборов', openInCity:'Смотреть сборы',
+        registerTitle:'Ваш ответ', mapTitle:'Карта сборов', mapActive:'активных сборов', openInCity:'Смотреть сборы',
         mHeroTitle:'Всё волонтёрство Казахстана — в одном месте', mHeroSub:'Находите сборы рядом, приходите помогать и ведите свои инициативы с честным прогнозом явки.',
         mStart:'Создать аккаунт', mBrowse:'Посмотреть сборы', mLogin:'Войти', mNavFeat:'Возможности', mNavHow:'Как это работает', mNavCities:'Города',
         mValuesTitle:'Одна платформа для всего движения', mValuesSub:'От разового субботника до постоянной НКО.',
@@ -1416,19 +1371,19 @@ class Component extends DCLogic {
         confirmFinishTitle:'Жиынды аяқтау?', confirmFinishBody:'Аяқтағаннан кейін жауаптар мен белгілерді өзгерту мүмкін емес.',
         barStyleLabel:'Келу жолағы', barCompose:'Құрам', barDots:'Адамдар', barRange:'Диапазон',
         done:'Дайын', gatheringDone:'Жиын өтті', of:'ішінен',
-        navFeed:'Лента', navMap:'Карта', navMessages:'Хабарлар', navNotif:'Хабарландыру', navLeader:'Рейтинг', navCharity:'Көмек', navProfile:'Профиль', navCreate:'Құру', navAdmin:'Модерация', navMore:'Тағы', logout:'Шығу', loginWord:'Кіру', moreMenuTitle:'Мәзір',
+        navFeed:'Лента', navMap:'Карта', navMessages:'Хабарлар', navNotif:'Хабарландыру', navLeader:'Рейтинг', navProfile:'Профиль', navCreate:'Құру', navAdmin:'Модерация', navMore:'Тағы', logout:'Шығу', loginWord:'Кіру', moreMenuTitle:'Мәзір',
         feedTitle:'Жаныңызда', feedSub:'Қатысуға болатын бастамалар мен жиындар', impactLine:'Қазақстанның волонтёрлік қозғалысы бір жерде',
         orgsWord:'ұйым', volWord:'волонтёр', citiesWord:'қала', quickLinks:'Жылдам қатынау',
         register:'Тіркелу', youRegistered:'Тіркелдіңіз', changeAnswer:'Жауапты өзгерту', aboutEvent:'Сипаттама', organizer:'Ұйымдастырушы', going:'келеді', openCoordDash:'Үйлестіруші дашбордын ашу', thisIsYou:'Бұл сіз',
         profileHours:'сағат', profileEvents:'іс-шара', profileRel:'сенімділік', skillsTitle:'Дағдылар', badgesTitle:'Жетістіктер', historyTitle:'Қатысу тарихы', editProfile:'Өңдеу',
         orgEventsTitle:'Ұйым іс-шаралары', verifiedLabel:'Тексерілген ҮЕҰ',
         leaderTitle:'Рейтинг', leaderVol:'Волонтёрлер', leaderCity:'Қалалар', leaderOrg:'ҮЕҰ', leaderNote:'Барлық уақыт',
-        charityTitle:'Көмек керек', charityRaised:'жиналды', charityGoal:'мақсат', help:'Көмектесу',
+
         messagesTitle:'Хабарлар', typeMessage:'Хабарлама…',
         notifTitle:'Хабарландыру', markAllReadLabel:'Барлығын оқу', emptyNotif:'Әзірге бос',
         onboardTitle:'erik-те кімсіз?', onboardSub:'Рөлді кез келген уақытта өзгертуге болады', roleVol:'Волонтёр', roleVolDesc:'Жиындарды тауып қатысамын', roleCoord:'Үйлестіруші', roleCoordDesc:'Жиын ұйымдастырамын, болжам көремін', roleOrg:'ҮЕҰ / ұйым', roleOrgDesc:'Волонтёрлер мен іс-шараларды басқарамын', continueWord:'Жалғастыру',
         adminTitle:'Модерация', adminVerify:'Верификация өтінімдері', adminReports:'Шағымдар', approve:'Мақұлдау', reject:'Қабылдамау', adminStats:'Бүгін',
-        registerTitle:'Жауабыңыз', helpTitle:'Көмектесу', donateAmount:'Сома', mapTitle:'Жиындар картасы', mapActive:'белсенді жиын', openInCity:'Жиындарды қарау',
+        registerTitle:'Жауабыңыз', mapTitle:'Жиындар картасы', mapActive:'белсенді жиын', openInCity:'Жиындарды қарау',
         mHeroTitle:'Қазақстанның бүкіл волонтёрлігі — бір жерде', mHeroSub:'Жақын жиындарды табыңыз, көмектесіңіз және өз бастамаларыңызды нақты болжаммен жүргізіңіз.',
         mStart:'Аккаунт құру', mBrowse:'Жиындарды қарау', mLogin:'Кіру', mNavFeat:'Мүмкіндіктер', mNavHow:'Қалай жұмыс істейді', mNavCities:'Қалалар',
         mValuesTitle:'Бүкіл қозғалысқа бір платформа', mValuesSub:'Бір реттік сенбіліктен тұрақты ҮЕҰ-ға дейін.',
@@ -1463,7 +1418,7 @@ class Component extends DCLogic {
 
   // ---------- helpers ----------
   go(route){ this.setState({ route, filter:null, sheet:null }); if (typeof window!=='undefined') window.scrollTo(0,0); }
-  guard(route){ const gated=['me','messages','convo','notifications','leaderboard','charity','coord','check','new','admin','profile']; if(!this.state.loggedIn && gated.includes(route)){ this.setState({sheet:'auth'}); return false; } return true; }
+  guard(route){ const gated=['me','messages','convo','notifications','leaderboard','coord','check','new','admin','profile']; if(!this.state.loggedIn && gated.includes(route)){ this.setState({sheet:'auth'}); return false; } return true; }
   navGuard(route){ if(this.guard(route)) this.go(route); }
   showToast(text){
     this.setState({ toast: text });
@@ -1648,13 +1603,12 @@ class Component extends DCLogic {
   openConvo(id){ this.setState({convoId:id, route:'convo', sheet:null}); if(typeof window!=='undefined') window.scrollTo(0,0); }
   registerEvent(a){ const id=this.state.eventId; this.setState(s=>({regs:{...(s.regs||{}),[id]:a}, sheet:null})); this.showToast(this.state.lang==='ru'?'Ответ сохранён':'Жауап сақталды'); }
   sendMsg(){ const d=(this.state.msgDraft||'').trim(); if(!d) return; this.setState(s=>({convos:s.convos.map(c=>c.id===s.convoId?{...c,msgs:[...c.msgs,{me:true,txt:d,t:'сейчас'}]}:c), msgDraft:''})); }
-  donate(){ const id=this.state.donateId, amt=this.state.donateAmt; this.setState(s=>({charity:s.charity.map(c=>c.id===id?{...c,raised:Math.min(c.goal,c.raised+(c.kind==='money'?amt:1))}:c), sheet:null})); this.showToast(this.state.lang==='ru'?'Спасибо за помощь!':'Көмегіңізге рахмет!'); }
   toggleFollow(id){ this.setState(s=>({followed:{...s.followed,[id]:!s.followed[id]}})); }
   markAllRead(){ this.setState(s=>{ const r={...s.notifRead}; s.notifs.forEach(n=>r[n.id]=true); return {notifRead:r}; }); }
 
   platformVals(st,isRu,t,desk){
     const route=st.route;
-    const APP=['feed','map','event','profile','org','leaderboard','charity','messages','convo','notifications','new','coord','check','me','notfound','admin'];
+    const APP=['feed','map','event','profile','org','leaderboard','messages','convo','notifications','new','coord','check','me','notfound','admin'];
     const inApp=APP.includes(route);
     const cityOf=(id)=>st.cities.find(c=>c.id===id)||{ru:'',kz:''};
     const cName=(id)=>{const c=cityOf(id);return isRu?c.ru:c.kz;};
@@ -1706,14 +1660,6 @@ class Component extends DCLogic {
     const cityRows=[...st.cities].sort((a,b)=>b.vol-a.vol).map((c,i)=>({rank:i+1,name:isRu?c.ru:c.kz,metric:c.vol.toLocaleString('ru-RU'),sub:c.active+(isRu?' сборов':' жиын'),medalColor:medal(i)}));
     const orgRows=[...st.orgs].sort((a,b)=>b.vol-a.vol).map((o,i)=>({rank:i+1,name:o.name,metric:o.vol+(isRu?' волонт.':' волонтёр'),sub:o.events+(isRu?' событий':' іс-шара'),medalColor:medal(i),onOpen:()=>this.openOrg(o.id)}));
 
-    // ----- charity -----
-    const charityObjs=st.charity.map(c=>{const pct=Math.min(100,Math.round(c.raised/c.goal*100));const o=orgOf(c.org);
-      return {id:c.id,title:isRu?c.titleRu:c.titleKz,org:o.name,city:cName(c.cityId),pct,
-        raisedText:c.kind==='money'?(c.raised.toLocaleString('ru-RU')+' ₸'):(c.raised+' '+c.unit),
-        goalText:c.kind==='money'?(c.goal.toLocaleString('ru-RU')+' ₸'):(c.goal+' '+c.unit),
-        kind:c.kind,barStyle:'height:8px;border-radius:999px;background:var(--yard);width:'+pct+'%;transition:width var(--t-move) var(--ease-soft)',
-        onHelp:()=>this.setState({donateId:c.id,sheet:'donate'})};});
-
     // ----- messages -----
     const convoList=st.convos.map(c=>{const a=this.avatarOf(c.name);const last=c.msgs[c.msgs.length-1];
       return {id:c.id,name:c.name,role:c.role,last:last?last.txt:'',time:last?last.t:'',
@@ -1736,16 +1682,16 @@ class Component extends DCLogic {
       inApp, isDesk:desk,
       shellContentStyle: inApp?(desk?'padding-left:248px;min-height:100dvh':'padding-bottom:calc(66px + env(safe-area-inset-bottom));min-height:100dvh'):'',
       showSidebar: inApp&&desk, showTabbar: inApp&&!desk, showMobileHeader: inApp&&!desk,
-      sheetRegister: st.sheet==='register', sheetDonate: st.sheet==='donate',
+      sheetRegister: st.sheet==='register',
       unread, unreadDot: unread>0, unreadText:String(unread),
       appStickyStyle:'position:sticky;bottom:'+(inApp&&!desk?'calc(66px + env(safe-area-inset-bottom))':'0')+';left:0;right:0;padding:14px 20px '+(inApp&&!desk?'14px':'calc(14px + env(safe-area-inset-bottom))')+';background:rgba(255,255,255,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);z-index:20',
       isFeed:route==='feed', isMap:route==='map', isEvent:route==='event', isProfile:route==='profile', isOrg:route==='org',
-      isLeader:route==='leaderboard', isCharity:route==='charity', isMessages:route==='messages', isConvo:route==='convo',
+      isLeader:route==='leaderboard', isMessages:route==='messages', isConvo:route==='convo',
       isNotif:route==='notifications', isOnboard:route==='onboarding', isAdmin:route==='admin',
       showShell:inApp,
       // nav handlers
       goFeed:()=>this.go('feed'), goMap:()=>this.go('map'), goMessages:()=>this.navGuard('messages'),
-      goNotifications:()=>this.navGuard('notifications'), goLeaderboard:()=>this.navGuard('leaderboard'), goCharity:()=>this.navGuard('charity'),
+      goNotifications:()=>this.navGuard('notifications'), goLeaderboard:()=>this.navGuard('leaderboard'),
       goAdmin:()=>this.navGuard('admin'), goOnboard:()=>this.go('onboarding'), openMe:()=>{ if(this.guard('profile')) this.openProfile('me'); }, goNewTab:()=>this.navGuard('new'),
       isHome:route==='home', loggedIn:st.loggedIn, notLoggedIn:!st.loggedIn, sheetAuth:st.sheet==='auth', showAccountCta:!st.loggedIn,
       showGuestBanner:(!st.loggedIn)&&(route==='feed'||route==='map'||route==='event'),
@@ -1756,17 +1702,16 @@ class Component extends DCLogic {
       // nav active styles
       navFeedStyle:sideItem(route==='feed'), navMapStyle:sideItem(route==='map'), navMeStyle:sideItem(route==='me'),
       navMsgStyle:sideItem(route==='messages'||route==='convo'), navNotifStyle:sideItem(route==='notifications'),
-      navLeaderStyle:sideItem(route==='leaderboard'), navCharityStyle:sideItem(route==='charity'),
+      navLeaderStyle:sideItem(route==='leaderboard'),
       navProfileStyle:sideItem(route==='profile'), navAdminStyle:sideItem(route==='admin'),
       tabFeedStyle:tabItem(route==='feed'), tabMapStyle:tabItem(route==='map'),
       tabMsgStyle:tabItem(route==='messages'||route==='convo'),
-      tabMoreStyle:tabItem(['profile','me','leaderboard','charity','notifications','admin','coord','check','org','guest'].includes(route)),
+      tabMoreStyle:tabItem(['profile','me','leaderboard','notifications','admin','coord','check','org','guest'].includes(route)),
       openMore:()=>this.setState({sheet:'more'}), sheetMore:st.sheet==='more',
       moreUnread:unread>0, moreUnreadText:String(unread),
       moreProfile:()=>{ this.setState({sheet:null}); if(this.guard('profile')) this.openProfile('me'); },
       moreMe:()=>{ this.setState({sheet:null}); this.navGuard('me'); },
       moreLeader:()=>{ this.setState({sheet:null}); this.navGuard('leaderboard'); },
-      moreCharity:()=>{ this.setState({sheet:null}); this.navGuard('charity'); },
       moreNotif:()=>{ this.setState({sheet:null}); this.navGuard('notifications'); },
       moreAdmin:()=>{ this.setState({sheet:null}); this.navGuard('admin'); },
       doLogout:()=>{ this.setState({loggedIn:false,sheet:null}); this.go('home'); this.showToast(isRu?'Вы вышли из аккаунта':'Аккаунттан шықтыңыз'); },
@@ -1813,11 +1758,6 @@ class Component extends DCLogic {
       setLeaderVol:()=>this.setState({leaderTab:'vol'}), setLeaderCity:()=>this.setState({leaderTab:'city'}), setLeaderOrg:()=>this.setState({leaderTab:'org'}),
       leaderTabVolStyle:this.segTab(st.leaderTab==='vol'), leaderTabCityStyle:this.segTab(st.leaderTab==='city'), leaderTabOrgStyle:this.segTab(st.leaderTab==='org'),
       volRows, cityRows, orgRows,
-      // charity
-      charityObjs,
-      donateAmt:st.donateAmt, setDonate1:()=>this.setState({donateAmt:1000}), setDonate2:()=>this.setState({donateAmt:2000}), setDonate5:()=>this.setState({donateAmt:5000}),
-      donateChip1:chip(st.donateAmt===1000), donateChip2:chip(st.donateAmt===2000), donateChip5:chip(st.donateAmt===5000),
-      confirmDonate:()=>this.donate(), donateTitle:(st.charity.find(c=>c.id===st.donateId)||{})[isRu?'titleRu':'titleKz'],
       // messages
       convoList, thread, convoName:cConvo.name, convoRole:cConvo.role,
       msgDraft:st.msgDraft, onMsgDraft:e=>this.setState({msgDraft:e.target.value}), sendMsg:()=>this.sendMsg(),
@@ -1843,7 +1783,7 @@ class Component extends DCLogic {
       F('Находите своё','Өзіңіздікін табыңыз','Лента и карта сборов по всему Казахстану — по теме, городу и дате.','Бүкіл Қазақстан бойынша жиындар — тақырып, қала, күн бойынша.'),
       F('Прогноз явки','Келу болжамы','Координатор видит честное число за 24 часа до сбора, а не поток «+» в чате.','Үйлестіруші чаттағы «+» ағыны емес, нақты санды 24 сағат бұрын көреді.'),
       F('Часы и бейджи','Сағат пен бейдж','История участия, подтверждённые часы и достижения — ваш волонтёрский профиль.','Қатысу тарихы, расталған сағаттар мен жетістіктер — сіздің профиліңіз.'),
-      F('НКО и сообщества','ҮЕҰ мен қауымдар','Организации ведут волонтёров, события и сбор помощи в одном месте.','Ұйымдар волонтёрлерді, іс-шаралар мен көмекті бір жерде жүргізеді.')
+      F('НКО и сообщества','ҮЕҰ мен қауымдар','Организации ведут волонтёров и события в одном месте.','Ұйымдар волонтёрлер мен іс-шараларды бір жерде жүргізеді.')
     ];
     const homeSteps=[
       F('Найдите сбор','Жиын табыңыз','Откройте ленту или карту и выберите, куда прийти.','Лента не картаны ашып, қайда баратыныңызды таңдаңыз.'),

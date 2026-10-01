@@ -1,5 +1,5 @@
 """P2a: соц-платформа — каталог (города/темы/бейджи), лента событий, НКО,
-благотворительность, рейтинг, подписки. Читаемое — публично; мутации — под сессией.
+рейтинг, подписки. Читаемое — публично; мутации — под сессией.
 """
 from datetime import datetime, timezone
 
@@ -8,14 +8,14 @@ from flask_jwt_extended import jwt_required
 
 from models import (
     db, User, Theme, City, Badge, Gathering, GatheringCoordinator, Participant,
-    Org, CharityRequest, Donation, Follow, ANSWERS, ORGANIZER_ROLES, RoleRequest,
+    Org, Follow, ANSWERS, ORGANIZER_ROLES, RoleRequest,
     Conversation, ConversationMember, Message, Report,
 )
 from services.identity import current_user
 from utils.decorators import profiled_required, rate_limit
 from services.roles import sync_participant_role
 from utils.serializers import (
-    serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
+    serialize_event_card, serialize_org, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
     serialize_conversation, serialize_roles, serialize_role_request,
 )
@@ -525,81 +525,21 @@ def my_follows():
     return jsonify({'follows': [f.org_id for f in rows]})
 
 
-# ── благотворительность ──
-@platform_bp.route('/charity', methods=['GET'])
-def charity_list():
-    q = CharityRequest.query
-    city = request.args.get('city')
-    kind = request.args.get('kind')
-    if city and city != 'all':
-        q = q.filter(CharityRequest.city_id == city)
-    if kind and kind != 'all':
-        q = q.filter(CharityRequest.kind == kind)
-    return jsonify({'charity': [serialize_charity(c) for c in q.all()]})
+# Старые клиенты получают явный ответ об удалённом разделе. Обработчик не читает
+# архивные таблицы и не проверяет сессию: раздел закрыт для всех пользователей.
+_RETIRED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 
-@platform_bp.route('/charity', methods=['POST'])
-@profiled_required
-def create_charity_request():
-    """НКО создаёт сбор помощи (деньги/вещи). Только роль 'org'; привязываем к её организации."""
-    if g.user.role != 'org':
-        return jsonify({'error': 'Сборы помощи создают только НКО'}), 403
-    data = request.get_json(silent=True) or {}
-    title = (data.get('titleRu') or data.get('title') or '').strip()
-    if not title:
-        return jsonify({'error': 'Укажите название'}), 400
-    kind = data.get('kind') if data.get('kind') in ('money', 'items') else 'money'
-    try:
-        goal = max(0, int(data.get('goal', 0) or 0))
-    except (TypeError, ValueError):
-        goal = 0
-    # Цель обязана быть > 0: иначе donate делает raised=min(0,…)=0 (пожертвования
-    # никогда не растут), а прогресс на фронте = raised/goal = 0/0 = NaN.
-    if goal <= 0:
-        return jsonify({'error': 'Укажите цель больше нуля'}), 400
-    org = Org.query.filter_by(owner_id=g.user.id).first()
-    c = CharityRequest(
-        title_ru=title,
-        title_kz=(data.get('titleKz') or title).strip(),
-        org_id=org.id if org else None,
-        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
-        kind=kind,
-        unit=((data.get('unit') or ('₸' if kind == 'money' else 'шт')).strip() or '₸')[:16],
-        goal=goal,
-        raised=0,
-    )
-    db.session.add(c)
-    db.session.commit()
-    return jsonify({'charity': serialize_charity(c)}), 201
-
-
-@platform_bp.route('/charity/<int:id>', methods=['GET'])
-def charity_detail(id):
-    c = db.session.get(CharityRequest, id)
-    if c is None:
-        return jsonify({'error': 'Сбор не найден'}), 404
-    return jsonify({'charity': serialize_charity(c)})
-
-
-@platform_bp.route('/charity/<int:id>/donate', methods=['POST'])
-@rate_limit(20, 60)
-@profiled_required
-def donate(id):
-    c = db.session.get(CharityRequest, id)
-    if c is None:
-        return jsonify({'error': 'Сбор не найден'}), 404
-    data = request.get_json(silent=True) or {}
-    if c.kind == 'money':
-        amt = int(data.get('amount', 0) or 0)
-    else:
-        amt = int(data.get('quantity', data.get('amount', 1)) or 1)
-    if amt <= 0:
-        return jsonify({'error': 'Некорректная сумма'}), 400
-    c.raised = min(c.goal, (c.raised or 0) + amt)
-    d = Donation(charity_id=c.id, user_id=g.user.id, amount=amt)
-    db.session.add(d)
-    db.session.commit()
-    return jsonify({'raised': c.raised, 'donationId': d.id})
+@platform_bp.route('/charity', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/charity/<path:legacy_path>', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/admin/charity', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/admin/charity/<path:legacy_path>', methods=_RETIRED_METHODS, strict_slashes=False)
+def charity_retired(legacy_path=None):
+    return jsonify({
+        'error': 'Раздел «Помощь» и сборы денег или вещей удалены.',
+        'errorKz': '«Көмек» бөлімі және ақша немесе зат жинау алынып тасталды.',
+        'code': 'charity_retired',
+    }), 410
 
 
 # ── жалобы (пользовательская модерация) ──

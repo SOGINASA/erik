@@ -10,12 +10,12 @@ from datetime import datetime, timezone, timedelta
 from models import (
     db, User, Theme, City, Gathering, GatheringCoordinator, GatheringRole, Participant,
     ForecastParams, Badge, Application,
-    Org, CharityRequest, Donation, Follow, AttendanceRecord, Notification, Reminder, BadgeAward,
+    Org, LegacyCharityRequest, LegacyDonation, Follow, AttendanceRecord, Notification, Reminder, BadgeAward,
     Conversation, ConversationMember, Message, Report,
 )
 
 # ── Обложки: локальные файлы фронта, по одному на тему (см. COVERS ниже).
-# Чтобы поставить конкретную картинку, верните готовый URL из _theme_image/_img
+# Чтобы поставить конкретную картинку, верните готовый URL из _theme_image
 # или задайте image_url явно прямо в вызове конструктора.
 THEME_KW = {
     'eco': 'cleanup,park', 'elderly': 'elderly,care', 'animals': 'animal,shelter',
@@ -29,19 +29,6 @@ THEME_KW = {
 # домена. Ни внешних сервисов, ни рейт-лимитов: картинка либо есть в репозитории, либо
 # карточка показывает тематический тинт. THEME_KW выше — ключевики, по которым файлы подбирались.
 COVERS = '/assets/covers'
-
-# ключевик запроса помощи -> имя файла обложки
-CHARITY_IMG = {
-    'cleanup,tools': 'charity-tools',
-    'warm,clothes': 'charity-clothes',
-    'pet,food': 'charity-petfood',
-    'books,school': 'charity-books',
-}
-
-
-def _img(keywords):
-    return f'{COVERS}/{CHARITY_IMG.get(keywords, "eco")}.jpg'
-
 
 def _theme_image(theme, code):
     # code больше не влияет на выбор: на каждую тему один файл.
@@ -110,14 +97,6 @@ COMMUNITY_EVENTS = [
      'Центральный парк, сцена', 'Орталық саябақ, сахна', 2026, 7, 25, 12, 0, 'one', 15, 9),
     ('ITD26', 'Цифровая грамотность для пожилых', 'Қарттарға цифрлық сауаттылық', 'kar', 'it',
      'Библиотека им. Гоголя', 'Гоголь атындағы кітапхана', 2026, 7, 26, 14, 0, 'reg', 12, 7),
-]
-
-# Благотворительность: (titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw)
-CHARITY = [
-    ('Инвентарь для субботников', 'Сенбілікке құрал-жабдық', 1, 'pet', 'money', 150000, 98000, '₸', 'cleanup,tools'),
-    ('Тёплые вещи для приюта', 'Баспанаға жылы киім', 2, 'alm', 'items', 200, 134, 'вещей', 'warm,clothes'),
-    ('Корм для приюта «Лапа»', '«Лапа» баспанасына жем', 3, 'alm', 'money', 90000, 71500, '₸', 'pet,food'),
-    ('Учебники сельским школам', 'Ауыл мектептеріне оқулық', 5, 'shy', 'items', 500, 210, 'книг', 'books,school'),
 ]
 
 # Волонтёры-лидеры: (name, city_id, hours, events, rel)
@@ -251,7 +230,7 @@ def build_participants():
 
 def seed_demo(reset=False):
     if reset:
-        # ⚠️ reset ПОЛНОСТЬЮ очищает доменные таблицы (все сборы/НКО/помощь/уведомления),
+        # ⚠️ reset ПОЛНОСТЬЮ очищает действующие доменные таблицы (сборы/НКО/уведомления),
         # а не только demo-строки. Аккаунты email/пароль (напр. админ) сохраняются.
         # Это команда пересборки ДЕМО-базы — не запускать на данных, которые нужно сохранить.
         # Порядок FK-безопасный: дети раньше родителей. Participant ссылается на
@@ -259,10 +238,16 @@ def seed_demo(reset=False):
         # Application тут раньше не было вовсе — заявки переживали reset и висели
         # на удалённых сборах (штаб организатора показывал их на пустоту).
         for M in (Message, ConversationMember, Conversation, Report,
-                  Donation, CharityRequest, Follow, Notification, Reminder, BadgeAward,
+                  Follow, Notification, Reminder, BadgeAward,
                   AttendanceRecord, Application, Participant, GatheringRole,
                   GatheringCoordinator, Gathering):
             M.query.delete()
+        # Закрытый раздел не пересоздаём и не очищаем. Снимаем только FK-ссылки
+        # на НКО/демо-пользователей, которых сейчас удаляет явный --reset.
+        LegacyCharityRequest.query.update({'org_id': None})
+        demo_ids = db.session.query(User.id).filter(User.device_id.like('demo-%'))
+        LegacyDonation.query.filter(LegacyDonation.user_id.in_(demo_ids)).update(
+            {'user_id': None}, synchronize_session=False)
         Org.query.delete()
         User.query.filter(User.device_id.like('demo-%')).delete()
         db.session.commit()
@@ -282,7 +267,7 @@ def seed_demo(reset=False):
 
     # У ОБОИХ админов role='vol'. Админство живёт в user_type, а role — это продуктовая
     # роль в приложении, и ставить админу 'org' или 'coord' значит подмешать ему чужой
-    # кабинет: сайдбар нарисует «Создать помощь» и «Моя НКО» (Shell.jsx) организации,
+    # кабинет: сайдбар нарисует «Моя НКО» (Shell.jsx) организации,
     # которой у него нет, а штаб координатора откроется пустым. При 'vol' навигация
     # админа чистая — обычное приложение плюс пункт «Админка», — потому что
     # волонтёрские пункты и так скрыты под !isAdmin.
@@ -444,7 +429,7 @@ def seed_demo(reset=False):
     print(f"PARK18 засеян: 45 участников (14 yes / 24 maybe / 7 no)")
     print(f"Прогноз: E={f['E']}  ±{f['sigma']}  [{f['lo']}..{f['hi']}]  ctx={gathering.ctx}")
     print(f"Платформа: {Org.query.count()} НКО, {Gathering.query.count()} событий, "
-          f"{CharityRequest.query.count()} сборов помощи, {User.query.filter(User.device_id.like('demo-v%')).count()} волонтёров")
+          f"{User.query.filter(User.device_id.like('demo-v%')).count()} волонтёров")
 
 
 # ── прошедшие сборы: история явки, на которой считается бэктест точности ──
@@ -553,7 +538,7 @@ def _seed_history(coord):
 
 
 def _seed_platform():
-    """НКО, события ленты e2–e8, благотворительность, волонтёры-лидеры."""
+    """НКО, события ленты e2–e8 и волонтёры-лидеры."""
     # НКО + их владельцы
     for oid, name, cat, city, verified, aboutRu, aboutKz in ORGS:
         owner = _demo_user(f'demo-org{oid}', full_name=name, role='org',
@@ -591,12 +576,6 @@ def _seed_platform():
             db.session.add(g)
             db.session.flush()
             db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=coord.id, role='owner'))
-
-    # благотворительность
-    for titleRu, titleKz, org_id, city, kind, goal, raised, unit, img_kw in CHARITY:
-        db.session.add(CharityRequest(title_ru=titleRu, title_kz=titleKz, org_id=org_id,
-                                      city_id=city, kind=kind, goal=goal, raised=raised, unit=unit,
-                                      image_url=_img(img_kw)))
 
     # волонтёры-лидеры
     for i, (name, city, hours, events, rel) in enumerate(VOLUNTEERS):

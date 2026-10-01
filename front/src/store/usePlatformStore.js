@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES, CHARITY } from '../lib/data';
+import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES } from '../lib/data';
 import { api } from '../lib/api';
 import { useUiStore } from './useUiStore';
 import { useSessionStore } from './useSessionStore';
@@ -18,20 +18,19 @@ const rel = (iso) => {
 };
 
 // API отдаёт целочисленные id; фронт-экраны и роутинг ждут строковые id с мок-префиксом
-// ('e1','o1','ch1','c1','r1') — они идут в React-ключи и в URL. map-функции добавляют
+// ('e1','o1','c1','r1') — они идут в React-ключи и в URL. map-функции добавляют
 // префикс, но РЯДОМ кладут sid — серверный id ВЕРБАТИМ. Мутации шлют в API именно sid,
 // снятия префикса (replace) больше нет. У демо-записей из lib/data поля sid нет — это и
 // есть явный признак источника (как source:'demo' в useOrganizerStore): по таким записям
-// мутации в сеть НЕ уходят, чтобы демо-'o1'/'ch1' не попали в ЧУЖОЙ реальный объект №1.
+// мутации в сеть НЕ уходят, чтобы демо-'o1' не попали в ЧУЖОЙ реальный объект №1.
 const mapEvent = (e) => ({ ...e, id: 'e' + e.id, orgId: e.orgId != null ? 'o' + e.orgId : null });
 const mapOrg = (o) => ({ ...o, id: 'o' + o.id, sid: o.id });
-const mapCharity = (c) => ({ ...c, id: 'ch' + c.id, sid: c.id, org: c.org != null ? 'o' + c.org : null });
 const mapConvo = (c) => ({
   id: 'c' + c.id, sid: c.id, name: c.name, role: c.role,
   msgs: (c.msgs || []).map((m) => ({ me: m.me, txt: m.txt, t: rel(m.created_at) })),
 });
 
-// Данные платформы (лента, карта, НКО, рейтинг, помощь, сообщения, уведомления)
+// Данные платформы (лента, карта, НКО, рейтинг, сообщения, уведомления)
 // и их интерактивное состояние.
 export const usePlatformStore = create((set, get) => ({
   cities: CITIES,
@@ -45,7 +44,6 @@ export const usePlatformStore = create((set, get) => ({
   notifs: [],
   serverUnread: 0,   // авторитетный полный счётчик непрочитанного с бэка (res.unread); список отдаёт только первую страницу
   convos: [],
-  charity: CHARITY,
   reports: [], // жалобы приходят только из API (loadReports); без выдуманных записей
   pendingEvents: [],   // сборы, ожидающие модерации админом (для AdminModeration)
   roleRequests: [],    // заявки на роль организатора, ожидающие решения админа
@@ -57,14 +55,10 @@ export const usePlatformStore = create((set, get) => ({
   fTheme: 'all',
   fFormat: 'all',
   leaderTab: 'vol',
-  donateId: 'ch1',
-  donateAmt: 2000,
   msgDraft: '',
 
   setFeedFilter: (patch) => set(patch),
   setLeaderTab: (leaderTab) => set({ leaderTab }),
-  setDonateAmt: (donateAmt) => set({ donateAmt }),
-  setDonateId: (donateId) => set({ donateId }),
   setMsgDraft: (msgDraft) => set({ msgDraft }),
 
   // Обновить счётчик «идут» у события ленты после RSVP (оптимистично / по ответу сервера).
@@ -89,7 +83,6 @@ export const usePlatformStore = create((set, get) => ({
       ['orgs', api.getOrgs(), 'orgs', mapOrg],
       ['events', api.getEvents(), 'events', mapEvent],
       ['volunteers', api.leaderboardVolunteers(), 'volunteers', null],
-      ['charity', api.getCharity(), 'charity', mapCharity],
       ['badges', api.getBadges(), 'badges', null],
     ];
     await Promise.allSettled(
@@ -315,20 +308,6 @@ export const usePlatformStore = create((set, get) => ({
     }
   },
 
-  // Закрыть благотворительную кампанию (админ). Модель без статуса → отмечаем достигнутой.
-  closeCharity: async (charityId) => {
-    const item = get().charity.find((c) => c.id === charityId);
-    const prev = item ? { ...item } : null;
-    set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? { ...c, raised: c.goal, closed: true } : c)) }));
-    toast(isRu() ? 'Кампания закрыта' : 'Науқан жабылды');
-    if (item && item.sid != null) {
-      try { await api.closeCharity(item.sid); } catch (_) {
-        if (prev) set((s) => ({ charity: s.charity.map((c) => (c.id === charityId ? prev : c)) }));
-        toast(isRu() ? 'Не удалось закрыть — попробуйте снова' : 'Жабу мүмкін болмады — қайталаңыз');
-      }
-    }
-  },
-
   // Реальные уведомления из API; пусто/офлайн — остаёмся на демо-моках.
   loadNotifications: async () => {
     try {
@@ -423,44 +402,4 @@ export const usePlatformStore = create((set, get) => ({
     if (convo && convo.sid != null) api.sendConversationMessage(convo.sid, d).catch(() => {});
   },
 
-  // НКО создаёт сбор помощи — на бэк и в начало списка (карточки на странице «Помощь»).
-  createCharity: async (form) => {
-    try {
-      const res = await api.createCharity(form);
-      if (res && res.charity) {
-        const c = mapCharity(res.charity);
-        set((s) => ({ charity: [c, ...s.charity] }));
-        return c;
-      }
-    } catch (_) {
-      toast(isRu() ? 'Не удалось создать сбор помощи' : 'Көмек жинағын құру мүмкін болмады');
-    }
-    return null;
-  },
-
-  // Пожертвование: для денег donateAmt — сумма в ₸, для вещей — количество единиц
-  // (DonateSheet выставляет donateAmt под тип сбора). Не глотаем ошибку и не тостим
-  // «Спасибо» заранее: двигаем прогресс и благодарим ТОЛЬКО по ответу сервера (raised
-  // берём авторитетно с бэка), при отказе — честный тост.
-  donate: async () => {
-    const { donateId, donateAmt } = get();
-    const item = get().charity.find((c) => c.id === donateId);
-    if (!item) return;
-    const qty = Math.max(1, donateAmt || 1);
-    const body = item.kind === 'money' ? { amount: qty } : { quantity: qty };
-    // Демо-сбор (без sid) в сеть не шлём — двигаем локально и благодарим.
-    if (item.sid == null) {
-      set((s) => ({ charity: s.charity.map((c) => (c.id === donateId ? { ...c, raised: Math.min(c.goal || Infinity, (c.raised || 0) + qty) } : c)) }));
-      toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
-      return;
-    }
-    try {
-      const res = await api.donateCharity(item.sid, body);
-      const raised = res && typeof res.raised === 'number' ? res.raised : null;
-      set((s) => ({ charity: s.charity.map((c) => (c.id === donateId ? { ...c, raised: raised != null ? raised : (c.raised || 0) + qty } : c)) }));
-      toast(isRu() ? 'Спасибо за помощь!' : 'Көмегіңізге рахмет!');
-    } catch (_) {
-      toast(isRu() ? 'Не удалось отправить пожертвование' : 'Қайырымдылықты жіберу мүмкін болмады');
-    }
-  },
 }));

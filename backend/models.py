@@ -516,9 +516,8 @@ class BadgeAward(db.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  P2a: Соц-платформа — НКО, помощь, подписки
+#  P2a: Соц-платформа — НКО и подписки
 # ─────────────────────────────────────────────────────────────────────────────
-CHARITY_KINDS = ('money', 'items')
 CONVO_ROLES = ('nko', 'coordinator')
 
 
@@ -535,7 +534,10 @@ class Org(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
 
-class CharityRequest(db.Model):
+# Закрытый раздел «Помощь». Только описание исторической схемы: оно сохраняет
+# совместимость миграций и позволяет отвязать архив от удаляемых НКО/демо-юзеров.
+# Новые кампании/взносы не создаются; публичных и административных use-case нет.
+class LegacyCharityRequest(db.Model):
     __tablename__ = 'charity_requests'
     id = db.Column(db.Integer, primary_key=True)
     title_ru = db.Column(db.String(200))
@@ -550,7 +552,7 @@ class CharityRequest(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
 
-class Donation(db.Model):
+class LegacyDonation(db.Model):
     __tablename__ = 'donations'
     id = db.Column(db.Integer, primary_key=True)
     charity_id = db.Column(db.Integer, db.ForeignKey('charity_requests.id'), index=True)

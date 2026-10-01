@@ -73,7 +73,7 @@ def create_app(config_object=None):
     app.register_blueprint(gatherings_bp, url_prefix='/api/gatherings')
     app.register_blueprint(guest_bp, url_prefix='/api')            # /api/g/<code>, /api/gatherings/by-code
     app.register_blueprint(notifications_bp, url_prefix='/api')    # /api/notifications*
-    app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /charity, /leaderboard, /cities…
+    app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /leaderboard, /cities…
     app.register_blueprint(organizer_bp, url_prefix='/api')        # /api/me/org/*, /events/<id>/applications, /applications/*
 
     # Безопасность целостности БД: при исключении в запросе откатываем сессию,

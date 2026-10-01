@@ -22,7 +22,6 @@ struct AdminView: View {
                         statTile("\(s.verifiedOrgs ?? 0)", session.tr("НКО проверено", "ҮЕҰ тексерілді"))
                         statTile("\(s.openReports ?? 0)", session.tr("Открытых жалоб", "Ашық шағым"))
                         statTile("\(s.hoursTotal ?? 0)", session.tr("Часов волонтёрства", "Волонтёр сағаты"))
-                        statTile("\(s.raised ?? 0) ₸", session.tr("Собрано помощи", "Жиналған көмек"))
                     }
                 }
 

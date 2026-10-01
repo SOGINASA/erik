@@ -67,7 +67,7 @@ backend/
 │   ├── session.py      # device-вход, /me, /logout
 │   ├── gatherings.py   # сборы координатора: create / forecast / check-in / finalize
 │   ├── guest.py        # участник по коду: просмотр + RSVP
-│   ├── platform.py     # лента событий, НКО, charity, рейтинг, города
+│   ├── platform.py     # лента событий, НКО, рейтинг, города
 │   ├── organizer.py    # штаб: заявки волонтёров, база волонтёров
 │   ├── notifications.py# уведомления
 │   └── admin.py        # администрирование пользователей
@@ -95,7 +95,7 @@ device-личность — в `X-Device-Id`.
 | **auth** | `/api/auth/*` | аккаунты email/пароль: register, login, refresh, me, profile, смена пароля |
 | **gatherings** | `/api/gatherings/*` | создание сбора, просмотр владельцем, **прогноз**, поллинг, ростер, **отметка явки** (в т.ч. офлайн-синк), финализация |
 | **guest** | `/api/g/<code>`, `/api/gatherings/by-code` | участник по коду: просмотр и **RSVP** без регистрации |
-| **platform** | `/api/events`, `/orgs`, `/charity`, `/leaderboard`, `/cities` | лента, НКО, помощь, рейтинг, справочники |
+| **platform** | `/api/events`, `/orgs`, `/leaderboard`, `/cities` | лента, НКО, рейтинг, справочники |
 | **organizer** | `/api/me/org/*`, `/api/events/<id>/applications`, `/api/applications/*` | штаб: заявки волонтёров и база |
 | **notifications** | `/api/notifications*` | список и отметка прочитанного |
 | **admin** | `/api/admin/users*` | список/смена статуса пользователей (только admin) |
@@ -165,3 +165,16 @@ flask db upgrade
 Новые аккаунты требуют явных подтверждений и опубликованных реквизитов оператора.
 Перед запуском заполните `LEGAL_*` в `.env` и примените миграцию.
 Порядок настройки, требования к размещению и ограничения: [legal/README.md](legal/README.md).
+
+
+Раздел «Помощь» (сборы денег и вещей) удалён. Старые `/api/charity` и
+`/api/admin/charity` вместе с вложенными URL возвращают HTTP `410` и код
+`charity_retired`, без чтения архива и без приёма взносов. Счётчик `raised`
+исключён из `/api/admin/stats`; демо-сид больше не создаёт кампании.
+
+Исторические таблицы `charity_requests` и `donations` и прежние миграции сохранены:
+обновление не удаляет старые записи. Классы `LegacyCharityRequest` и `LegacyDonation`
+описывают только этот архив для совместимости схемы и очистки внешних ключей при
+удалении НКО или явном `seed-demo --reset`. Отдельного API доступа к архиву нет.
+Волонтёрские события (`Gathering`, `/api/events`, `/api/gatherings`), запись,
+прогнозы и учёт явки продолжают работать.

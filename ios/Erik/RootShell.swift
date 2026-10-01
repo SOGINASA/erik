@@ -12,9 +12,6 @@ struct RootShell: View {
             NavigationStack { MapCitiesView() }
                 .tabItem { Label(session.tr("Карта", "Карта"), systemImage: "map") }
 
-            NavigationStack { CharityView() }
-                .tabItem { Label(session.tr("Помощь", "Көмек"), systemImage: "heart") }
-
             NavigationStack { LeaderboardView() }
                 .tabItem { Label(session.tr("Рейтинг", "Рейтинг"), systemImage: "trophy") }
 

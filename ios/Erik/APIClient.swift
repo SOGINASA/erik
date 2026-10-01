@@ -171,7 +171,6 @@ final class APIClient {
     }
     func orgs() async throws -> [Org] { (try await request("/orgs") as OrgsResponse).orgs }
     func org(_ id: Int) async throws -> Org { (try await request("/orgs/\(id)") as OrgResponse).org }
-    func charity() async throws -> [Charity] { (try await request("/charity") as CharityResponse).charity }
     func leaderboard() async throws -> [LeaderVolunteer] {
         (try await request("/leaderboard/volunteers") as LeaderboardResponse).volunteers
     }
@@ -196,10 +195,6 @@ final class APIClient {
 
     func followOrg(_ id: Int) async throws { let _: EmptyResponse = try await request("/orgs/\(id)/follow", method: "POST") }
     func unfollowOrg(_ id: Int) async throws { let _: EmptyResponse = try await request("/orgs/\(id)/follow", method: "DELETE") }
-    func donate(_ id: Int, amount: Int) async throws {
-        let _: EmptyResponse = try await request("/charity/\(id)/donate", method: "POST",
-                                                 body: AnyEncodable(["amount": amount]))
-    }
 
     // MARK: - Уведомления
 

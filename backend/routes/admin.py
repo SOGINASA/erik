@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
-from models import (db, User, Org, Report, Gathering, CharityRequest, Follow,
+from models import (db, User, Org, Report, Gathering, LegacyCharityRequest, Follow,
                     RoleRequest, USER_ROLES, ORGANIZER_ROLES)
 from utils.decorators import admin_required
 from utils.serializers import serialize_org, serialize_role_request
@@ -101,7 +101,7 @@ def update_user(user_id):
 @admin_required
 def moderation_stats():
     """Метрики под карточки AdminOverview. pendingOrgs/openReports сохранены (обратная совместимость)."""
-    from models import Gathering, CharityRequest
+    from models import Gathering
 
     pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
     verified_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(True)).scalar() or 0
@@ -121,8 +121,6 @@ def moderation_stats():
     pending_events = db.session.query(db.func.count(Gathering.id)).filter(
         Gathering.status == 'pending').scalar() or 0
     hours_total = db.session.query(db.func.coalesce(db.func.sum(User.hours_total), 0)).scalar() or 0
-    raised = db.session.query(db.func.coalesce(db.func.sum(CharityRequest.raised), 0)).filter(
-        CharityRequest.kind == 'money').scalar() or 0
     avg_rel = db.session.query(db.func.avg(User.reliability)).filter(User.events_attended > 0).scalar()
 
     # среднее время реакции модерации: created_at → resolved_at по закрытым жалобам (в часах)
@@ -152,7 +150,6 @@ def moderation_stats():
         'activeEvents': active_events,
         'pendingEvents': pending_events,
         'hoursTotal': int(hours_total),
-        'raised': int(raised),
         'avgReliability': int(round(avg_rel)) if avg_rel is not None else 0,
         'avgReactionHours': avg_reaction_hours,   # null, если ещё нет закрытых жалоб
     })
@@ -162,7 +159,7 @@ def moderation_stats():
 @admin_required
 def admin_analytics():
     """Аналитика для AdminAnalytics: рост, явка, разрезы по городам/темам. Реальные данные вместо демо."""
-    from models import Gathering, Participant, City, CharityRequest
+    from models import Gathering, Participant, City
 
     # явка: пришло / ответило 'yes'|'maybe'|'no' по завершённым сборам
     done_ids = [r[0] for r in db.session.query(Gathering.id).filter(
@@ -347,21 +344,6 @@ def reject_event(eid):
                     'rejectReason': gathering.reject_reason})
 
 
-# ── Помощь (charity) ──
-@admin_bp.route('/charity/<int:cid>/close', methods=['POST'])
-@admin_required
-def close_charity(cid):
-    """Закрыть кампанию. Модель без статуса → отмечаем достигнутой (raised=goal)."""
-    from models import CharityRequest
-
-    c = db.session.get(CharityRequest, cid)
-    if c is None:
-        return jsonify({'error': 'Кампания не найдена'}), 404
-    c.raised = c.goal
-    db.session.commit()
-    return jsonify({'ok': True, 'id': cid, 'raised': c.raised, 'goal': c.goal})
-
-
 @admin_bp.route('/orgs', methods=['GET'])
 @admin_required
 def admin_orgs():
@@ -395,7 +377,8 @@ def reject_org(oid):
     # Открепляем зависимые записи (FK nullable) и снимаем подписки, чтобы не осталось
     # висячих ссылок на удалённую организацию.
     Gathering.query.filter_by(org_id=org.id).update({'org_id': None})
-    CharityRequest.query.filter_by(org_id=org.id).update({'org_id': None})
+    # Закрытый раздел: сохраняем архивные записи при удалении связанной НКО.
+    LegacyCharityRequest.query.filter_by(org_id=org.id).update({'org_id': None})
     Follow.query.filter_by(org_id=org.id).delete()
     db.session.delete(org)
     db.session.commit()

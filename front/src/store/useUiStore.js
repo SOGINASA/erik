@@ -5,7 +5,7 @@ import { create } from 'zustand';
 let toastTimer = null;
 
 export const useUiStore = create((set) => ({
-  sheet: null,          // 'code'|'share'|'person'|'remind'|'settings'|'guest'|'confirm'|'auth'|'register'|'donate'|'more'|null
+  sheet: null,          // 'code'|'share'|'person'|'remind'|'settings'|'guest'|'confirm'|'auth'|'register'|'more'|null
   sheetPayload: null,
   toast: null,
   filter: null,         // выбранный сегмент полосы явки: 'yes'|'maybe'|'no'|null

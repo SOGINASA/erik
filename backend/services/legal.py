@@ -14,7 +14,7 @@ from flask import current_app, jsonify
 
 from models import db, LegalConsent
 
-LEGAL_VERSION = '2026-09-28.1'
+LEGAL_VERSION = '2026-10-01.1'
 LEGAL_DOCUMENT_PATH = Path(__file__).resolve().parents[1] / 'legal' / f'{LEGAL_VERSION}.json'
 ACCEPTANCE_FIELDS = ('termsAccepted', 'privacyAccepted', 'consentAccepted', 'adultConfirmed')
 
