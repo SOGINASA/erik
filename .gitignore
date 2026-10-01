@@ -12,6 +12,7 @@ __pycache__/
 
 # Окружение
 /backend/.env
+/backend/.env.production*
 
 # База данных
 /backend/database/*.db

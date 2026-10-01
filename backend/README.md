@@ -1,3 +1,5 @@
+Production rollout and changed auth contracts: [DEPLOYMENT.md](DEPLOYMENT.md).
+
 # erik · backend
 
 REST API волонтёрской платформы **erik** (Tech Vision 2026 · Community Engagement).

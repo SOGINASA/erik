@@ -19,7 +19,8 @@ guest_bp = Blueprint('guest', __name__)
 
 
 def _find_open(code):
-    return Gathering.query.filter(
+    from services.transactions import gathering_query
+    return gathering_query().filter(
         db.func.upper(Gathering.code) == (code or '').upper(),
         Gathering.status != 'deleted',
     ).first()

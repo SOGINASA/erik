@@ -6,6 +6,7 @@ import { useSessionStore } from './useSessionStore';
 
 const isRu = () => useSessionStore.getState().lang === 'ru';
 const toast = (text) => useUiStore.getState().showToast(text);
+let feedRequestId = 0;
 
 // Грубое относительное время из ISO (для карточек уведомлений).
 const rel = (iso) => {
@@ -36,6 +37,8 @@ export const usePlatformStore = create((set, get) => ({
   cities: CITIES,
   orgs: ORGS,
   events: EVENTS,
+  eventsTotal: 0,
+  eventsLoading: false,
   volunteers: VOLUNTEERS,
   me: ME,
   badges: BADGES,
@@ -81,7 +84,6 @@ export const usePlatformStore = create((set, get) => ({
     const jobs = [
       ['cities', api.getCities(), 'cities', null],
       ['orgs', api.getOrgs(), 'orgs', mapOrg],
-      ['events', api.getEvents(), 'events', mapEvent],
       ['volunteers', api.leaderboardVolunteers(), 'volunteers', null],
       ['badges', api.getBadges(), 'badges', null],
     ];
@@ -97,6 +99,7 @@ export const usePlatformStore = create((set, get) => ({
         }
       })
     );
+    await get().loadEvents();
   },
 
   loadFollows: async () => {
@@ -154,11 +157,24 @@ export const usePlatformStore = create((set, get) => ({
   },
 
   // Пересобрать ленту событий из API (после одобрения сбора — чтобы он сразу появился).
-  loadEvents: async () => {
+  loadEvents: async (append = false) => {
+    if (append && get().eventsLoading) return;
+    const requestId = ++feedRequestId;
+    const { fTheme, fCity, events } = get();
+    const offset = append ? events.length : 0;
+    const query = new URLSearchParams({ limit: '50', offset: String(offset) });
+    if (fTheme && fTheme !== 'all') query.set('theme', fTheme);
+    if (fCity && fCity !== 'all') query.set('city', fCity);
+    set({ eventsLoading: true });
     try {
-      const res = await api.getEvents();
-      if (Array.isArray(res.events)) set({ events: res.events.map(mapEvent) });
+      const res = await api.getEvents('?' + query.toString());
+      if (requestId === feedRequestId && Array.isArray(res.events)) {
+        const rows = res.events.map(mapEvent);
+        set({ events: append ? [...events, ...rows.filter(e => !events.some(old => old.id === e.id))] : rows,
+          eventsTotal: res.total ?? rows.length });
+      }
     } catch (_) { /* офлайн — оставляем как есть */ }
+    finally { if (requestId === feedRequestId) set({ eventsLoading: false }); }
   },
 
   // Отклонение сбора живёт в AdminModeration.doReject (спрашивает причину и шлёт её в тело

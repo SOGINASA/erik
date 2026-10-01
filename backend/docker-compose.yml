@@ -1,28 +1,59 @@
 services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: erik
+      POSTGRES_USER: erik
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong database password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erik -d erik"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
   backend:
     build:
-      # Контекст — корень репозитория: в образ должен попасть и ml/ с моделью.
       context: ..
       dockerfile: backend/Dockerfile
-    container_name: backend
     ports:
-      - "6752:6752"
-    env_file:
-      - .env
+      - "127.0.0.1:6752:6752"
+    env_file: .env
     environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-me}
-      - DATABASE_URL=sqlite:////app/database/database.db
-      # Домен фронта — без него в проде разрешён только localhost и браузер заблокирует запросы.
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://erik-hazel.vercel.app}
-      - FRONTEND_URL=${FRONTEND_URL:-https://erik-hazel.vercel.app}
-    volumes:
-      - ./database:/app/database
+      FLASK_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?Set a random secret of at least 32 characters}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set a random JWT secret of at least 32 characters}
+      DATABASE_URL: ${DATABASE_URL:?Set postgresql+psycopg://erik:encoded-password@postgres:5432/erik}
+      REDIS_URL: redis://redis:6379/0
+      ERIK_SEED_DEMO: "0"
+      ALLOW_DEMO_LOGIN: "${ALLOW_DEMO_LOGIN:-1}"
+      SKIP_DB_CREATE: "1"
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set the frontend origin}
+      FRONTEND_URL: ${FRONTEND_URL:?Set the frontend URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6752/api"]
+      test: ["CMD", "curl", "-f", "http://localhost:6752/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
+volumes:
+  postgres_data:
+  redis_data:

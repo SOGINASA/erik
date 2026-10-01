@@ -1,3 +1,4 @@
+from services.transactions import load_gathering
 """P2a: соц-платформа — каталог (города/темы/бейджи), лента событий, НКО,
 рейтинг, подписки. Читаемое — публично; мутации — под сессией.
 """
@@ -99,7 +100,7 @@ def _feed_query():
         q = q.filter(Gathering.city_id == city)
     if fmt and fmt != 'all':
         q = q.filter(Gathering.format == fmt)
-    return q.order_by(Gathering.starts_at.asc())
+    return q.order_by(Gathering.starts_at.asc(), Gathering.id.asc())
 
 
 @platform_bp.route('/events', methods=['GET'])
@@ -108,25 +109,19 @@ def events():
     u = current_user()
     viewer = u.id if u else None
     q = _feed_query()
-    # опциональная пагинация (limit/offset) — по умолчанию отдаём всё (совместимость)
+    # Ограниченная страница даже без параметров клиента.
     try:
-        limit = int(request.args.get('limit')) if request.args.get('limit') else None
+        limit = int(request.args.get('limit', 50))
     except (TypeError, ValueError):
-        limit = None
-    total = None
-    if limit is not None:
-        limit = max(1, min(200, limit))
-        try:
-            offset = max(0, int(request.args.get('offset', 0)))
-        except (TypeError, ValueError):
-            offset = 0
-        total = q.count()
-        rows = q.offset(offset).limit(limit).all()
-    else:
-        rows = q.all()
-    payload = {'events': [serialize_event_card(g, viewer) for g in rows]}
-    if total is not None:
-        payload['total'] = total
+        limit = 50
+    limit = max(1, min(200, limit))
+    try:
+        offset = max(0, int(request.args.get('offset', 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+    payload = {'events': [serialize_event_card(g, viewer) for g in rows], 'total': total}
     return jsonify(payload)
 
 
@@ -134,7 +129,7 @@ def _visible_gathering(gid, user):
     """Сбор, видимый читателю, иначе None: 'deleted' — никому, 'pending' (на модерации) —
     только владельцу по прямой ссылке. Одно правило на карточку и на ростер, чтобы
     видимость участников не разъезжалась с видимостью самого события."""
-    g_ = db.session.get(Gathering, gid)
+    g_ = load_gathering(gid)
     if g_ is None or g_.status == 'deleted':
         return None
     if g_.status == 'pending' and (user is None or user.id != g_.owner_id):
@@ -256,7 +251,7 @@ def set_registration(id):
     u = current_user()
     if u is None:
         return jsonify({'error': 'Пользователь не найден'}), 404
-    g_ = db.session.get(Gathering, id)
+    g_ = load_gathering(id)
     if g_ is None or g_.status != 'open':
         return jsonify({'error': 'Событие не найдено'}), 404
     data = request.get_json(silent=True) or {}
@@ -281,7 +276,7 @@ def set_registration(id):
     ok, err_ru, err_kz, status = sync_participant_role(g_, p, data)
     if not ok:
         db.session.rollback()
-        g_ = db.session.get(Gathering, id)
+        g_ = load_gathering(id)
         return jsonify({'error': err_ru, 'errorKz': err_kz,
                         'roles': serialize_roles(g_) if g_ else []}), status
 
@@ -304,7 +299,7 @@ def delete_registration(id):
     p = Participant.query.filter_by(gathering_id=id, user_id=g.user.id).first()
     if p is not None:
         db.session.delete(p)
-        g_ = db.session.get(Gathering, id)
+        g_ = load_gathering(id)
         if g_ is not None:
             g_.bump()
         db.session.commit()
@@ -328,7 +323,7 @@ def my_events():
              .all())
     out = []
     for p in parts:
-        gathering = db.session.get(Gathering, p.gathering_id)
+        gathering = load_gathering(p.gathering_id)
         if gathering is None or gathering.status in ('deleted', 'pending', 'rejected'):
             continue
         card = serialize_event_card(gathering, g.user.id)

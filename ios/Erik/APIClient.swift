@@ -51,6 +51,7 @@ private struct RegistrationPayload: Encodable {
 
 /// REST-клиент бэкенда erik. Личность по устройству (X-Device-Id) + Bearer-токен,
 /// с автоматическим обновлением access-токена по refresh-токену на 401.
+@MainActor
 final class APIClient {
     static let shared = APIClient()
 
@@ -61,7 +62,9 @@ final class APIClient {
     var token: String?
     var refreshToken: String?
     /// Колбэк — новый access-токен после refresh (чтобы Session его сохранил).
-    var onTokenRefresh: ((String) -> Void)?
+    var onTokenRefresh: ((String, String) -> Void)?
+
+    private var refreshTask: Task<RefreshResponse, Error>?
 
     private init() {}
 
@@ -107,10 +110,17 @@ final class APIClient {
             // Истёк access — один раз пробуем refresh и повтор.
             if http.statusCode == 401, auth, bearer == nil, !retry,
                let rt = refreshToken, path != "/auth/refresh" {
-                if let refreshed: RefreshResponse = try? await request(
-                    "/auth/refresh", method: "POST", auth: true, bearer: rt) {
+                if refreshTask == nil {
+                    refreshTask = Task { try await self.request(
+                        "/auth/refresh", method: "POST", auth: true, bearer: rt) }
+                }
+                let pending = refreshTask!
+                let result = await pending.result
+                refreshTask = nil
+                if case .success(let refreshed) = result {
                     token = refreshed.access_token
-                    onTokenRefresh?(refreshed.access_token)
+                    refreshToken = refreshed.refresh_token
+                    onTokenRefresh?(refreshed.access_token, refreshed.refresh_token)
                     return try await request(path, method: method, body: body, auth: auth, retry: true)
                 }
             }
@@ -132,7 +142,10 @@ final class APIClient {
 
     func createSession(deviceId: String, name: String?, role: String?, legal: LegalAcceptance? = nil) async throws -> SessionResponse {
         let payload = SessionPayload(deviceId: deviceId, name: name, role: role, legal: legal)
-        return try await request("/session", method: "POST", body: AnyEncodable(payload), auth: false)
+        return try await request("/session", method: "POST", body: AnyEncodable(payload), auth: true)
+    }
+    func logout() async throws {
+        let _: EmptyResponse = try await request("/logout", method: "POST")
     }
     func me() async throws -> UserProfile { (try await request("/me", auth: true) as UserResponse).user }
     func updateMe(_ patch: [String: String]) async throws -> UserProfile {
@@ -154,7 +167,7 @@ final class APIClient {
         try await request("/auth/register", method: "POST",
                           body: AnyEncodable(RegistrationPayload(identifier: identifier, password: password,
                                                                 full_name: fullName, legal: legal)),
-                          auth: false)
+                          auth: true)
     }
 
     // MARK: - Платформа (публичное)
@@ -163,7 +176,14 @@ final class APIClient {
     func themes() async throws -> [Theme] { (try await request("/themes") as ThemesResponse).themes }
     func badges() async throws -> [Badge] { (try await request("/badges") as BadgesResponse).badges }
     func events(query: String = "") async throws -> [Event] {
-        (try await request("/events" + query) as EventsResponse).events
+        // Preserve the existing store contract while requesting bounded pages.
+        var events: [Event] = []
+        let separator = query.isEmpty ? "?" : "&"
+        while true {
+            let page: EventsResponse = try await request("/events" + query + separator + "limit=100&offset=\(events.count)")
+            events.append(contentsOf: page.events)
+            if page.events.isEmpty || events.count >= (page.total ?? events.count) { return events }
+        }
     }
     func event(_ id: Int) async throws -> Event { (try await request("/events/\(id)") as EventResponse).event }
     func eventParticipants(_ id: Int, limit: Int = 7) async throws -> [Participant] {

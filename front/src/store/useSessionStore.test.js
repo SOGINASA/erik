@@ -2,11 +2,26 @@ import { useSessionStore } from './useSessionStore';
 import { api } from '../lib/api';
 
 jest.mock('../lib/api', () => ({
-  api: { register: jest.fn(), updateMe: jest.fn(), session: jest.fn(), me: jest.fn() },
+  api: { register: jest.fn(), updateMe: jest.fn(), session: jest.fn(), me: jest.fn(), logout: jest.fn() },
   setAuth: jest.fn(), onAuthRefresh: jest.fn(),
 }));
 
 const initialState = useSessionStore.getState();
+
+test('revokes on the server before clearing local credentials', async () => {
+  useSessionStore.setState({ token: 'access', refreshToken: 'refresh', loggedIn: true });
+  api.logout.mockResolvedValue(null);
+  await useSessionStore.getState().logout();
+  expect(api.logout).toHaveBeenCalledTimes(1);
+  expect(useSessionStore.getState()).toMatchObject({ token: null, refreshToken: null, loggedIn: false });
+});
+
+test('keeps credentials so failed offline logout can be retried', async () => {
+  useSessionStore.setState({ token: 'access', loggedIn: true });
+  api.logout.mockRejectedValue(new Error('offline'));
+  await expect(useSessionStore.getState().logout()).rejects.toThrow('offline');
+  expect(useSessionStore.getState().token).toBe('access');
+});
 const payload = {
   identifier: 'ivan@example.kz', password: 'password1', full_name: 'Иванов Иван',
   role: 'org', phone: '+7 700 000 00 00', cityId: 'almaty', interests: ['eco'],

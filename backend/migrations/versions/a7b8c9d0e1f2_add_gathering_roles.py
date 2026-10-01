@@ -45,7 +45,7 @@ def upgrade():
             sa.Column('title_ru', sa.String(length=60), nullable=False),
             sa.Column('title_kz', sa.String(length=60), nullable=False),
             sa.Column('capacity', sa.Integer(), nullable=True),
-            sa.Column('newbie', sa.Boolean(), nullable=True, server_default=sa.text('0')),
+            sa.Column('newbie', sa.Boolean(), nullable=True, server_default=sa.false()),
             sa.Column('preset', sa.String(length=24), nullable=True),
             sa.Column('sort', sa.Integer(), nullable=True, server_default=sa.text('0')),
             sa.Column('created_at', sa.DateTime(), nullable=True),

@@ -77,6 +77,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Аккаунт (все nullable — device-пользователь их не имеет)
+    token_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     email = db.Column(db.String(120), unique=True, nullable=True, index=True)
     nickname = db.Column(db.String(50), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(255), nullable=True)
@@ -165,6 +166,12 @@ class User(db.Model):
         return data
 
 
+class UsedRefreshToken(db.Model):
+    __tablename__ = 'used_refresh_tokens'
+    jti = db.Column(db.String(36), primary_key=True)
+    expires_at = db.Column(db.BigInteger, nullable=False, index=True)
+
+
 class LegalConsent(db.Model):
     """Append-only registration evidence; no authentication secrets or IP addresses.
 
@@ -241,6 +248,10 @@ class City(db.Model):
 # ─────────────────────────────────────────────────────────────────────────────
 class Gathering(db.Model):
     __tablename__ = 'gatherings'
+    __table_args__ = (
+        db.Index('ix_gatherings_status_starts_id', 'status', 'starts_at', 'id'),
+        db.Index('ix_gatherings_city_status_starts', 'city_id', 'status', 'starts_at'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(12), unique=True, index=True, nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)

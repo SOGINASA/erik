@@ -5,6 +5,8 @@ const mockNavigate = jest.fn();
 const mockLogin = jest.fn();
 const mockToast = jest.fn();
 const mockLocation = { search: '' };
+const mockForgot = jest.fn();
+jest.mock('../lib/api', () => ({ api: { forgotPassword: (...args) => mockForgot(...args) } }));
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -21,6 +23,31 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockLocation.search = '';
   mockLogin.mockResolvedValue({ user: {} });
+});
+
+test('demo login buttons and credentials are visible', () => {
+  render(<Login />);
+  for (const name of ['Волонтёр', 'Координатор', 'НКО', 'Войти как администратор']) {
+    expect(screen.getByRole('button', { name, exact: true })).toBeInTheDocument();
+  }
+  expect(screen.getByText(/admin123/)).toBeInTheDocument();
+});
+
+test('invalid credentials do not claim the backend is offline', async () => {
+  mockLogin.mockRejectedValueOnce({ status: 401 });
+  render(<Login />);
+  fireEvent.change(screen.getByPlaceholderText('you@example.kz'), { target: { value: 'absent@example.kz' } });
+  fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'password1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Войти', exact: true }));
+  await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('Неверный email')));
+});
+
+test('disabled email does not claim a reset email was sent', async () => {
+  mockForgot.mockRejectedValueOnce({ status: 503, data: { error: 'Отправка писем не настроена' } });
+  render(<Login />);
+  fireEvent.change(screen.getByPlaceholderText('you@example.kz'), { target: { value: 'person@example.kz' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Забыли пароль?' }));
+  await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Отправка писем не настроена'));
 });
 
 test.each([

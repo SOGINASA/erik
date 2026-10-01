@@ -28,7 +28,7 @@ COPY backend/ /app/
 COPY ml/ /ml/
 
 # ml/config.py на импорте создаёт artifacts/ и data/ — каталог должен быть записываемым.
-RUN mkdir -p /ml/data && chmod -R 777 /ml/data
+RUN mkdir -p /ml/data
 
 # Путь к ml/ задаём явно: в образе backend лежит в /app, а ml — в /ml, поэтому
 # «сосед по родителю» из attendance_ml.py здесь не сработал бы.
@@ -37,11 +37,14 @@ ENV ERIK_ML_DIR=/ml
 ENV ERIK_ML_WARMUP=1
 
 # Папка для БД с правами на запись
-RUN mkdir -p /app/database && chmod 777 /app/database
+RUN useradd --system --uid 10001 --create-home erik \
+    && mkdir -p /app/database \
+    && chown -R erik:erik /app /ml/data
 
 COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 6752
 
+USER erik
 CMD ["/entrypoint.sh"]

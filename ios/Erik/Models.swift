@@ -133,12 +133,12 @@ struct AuthResponse: Codable {
     var user: UserProfile?
 }
 
-struct RefreshResponse: Codable { var access_token: String }
+struct RefreshResponse: Codable { var access_token: String; var refresh_token: String }
 
 struct CitiesResponse: Codable { var cities: [City] }
 struct ThemesResponse: Codable { var themes: [Theme] }
 struct BadgesResponse: Codable { var badges: [Badge] }
-struct EventsResponse: Codable { var events: [Event] }
+struct EventsResponse: Codable { var events: [Event]; var total: Int? }
 struct EventResponse: Codable { var event: Event }
 struct ParticipantsResponse: Codable { var participants: [Participant] }
 struct OrgsResponse: Codable { var orgs: [Org] }

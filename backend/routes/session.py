@@ -1,10 +1,11 @@
+from sqlalchemy.exc import IntegrityError
 """Device-сессия и профиль (P0-вход без пароля/OTP).
 
 POST /api/session — bootstrap/резюме устройства и, при name+role, регистрация.
 GET/PATCH /api/me — свой профиль.  POST /api/logout — выход (stateless).
 """
-from flask import Blueprint, request, jsonify, g
-from flask_jwt_extended import jwt_required
+from flask import Blueprint, request, jsonify, g, current_app
+from flask_jwt_extended import jwt_required, verify_jwt_in_request
 
 from models import db, User, USER_ROLES
 from services.legal import legal_manifest, validate_legal_acceptance, validate_subject_name, record_legal_consent
@@ -34,6 +35,16 @@ def session():
     existed = existing is not None
     if existing is not None and not existing.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
+    demo = device_id.startswith('demo-')
+    if demo and not current_app.config.get('ALLOW_DEMO_LOGIN', False):
+        return jsonify({'error': 'Демо-вход отключён'}), 403
+    if existing is not None and not (demo and current_app.config.get('ALLOW_DEMO_LOGIN')):
+        if existing.has_account or existing.user_type == 'admin':
+            return jsonify({'error': 'Войдите по паролю'}), 401
+        verify_jwt_in_request()
+        actor = current_user()
+        if actor is None or actor.id != existing.id:
+            return jsonify({'error': 'Требуется сессия владельца устройства'}), 403
     for key in ('name', 'phone'):
         if data.get(key) is not None and not isinstance(data[key], str):
             return jsonify({'error': f'Поле {key} должно быть строкой'}), 400
@@ -67,6 +78,9 @@ def session():
                             'errorKz': 'Демо-тұлға табылмады — flask seed-demo іске қосыңыз'}), 404
         consent = record_legal_consent(user, snapshot, 'session.register') if snapshot else None
         db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Device already registered; authenticate or use a new device ID'}), 409
     except Exception:
         db.session.rollback()
         return jsonify({'error': 'Не удалось создать сессию'}), 500
@@ -120,7 +134,9 @@ def update_me():
 @session_bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    # Stateless JWT: клиент просто выбрасывает токен.
+    from services.security import revoke_user
+    revoke_user(current_user())
+    db.session.commit()
     return '', 204
 
 

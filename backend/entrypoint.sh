@@ -19,13 +19,13 @@ flask db-sync
 # эндпоинты отвечают 403/404. --if-empty смотрит на число пользователей, поэтому на
 # живой базе шаг ничего не делает и повторные старты безопасны.
 # ERIK_SEED_DEMO=0 — выключить (если база наполняется не сидом).
-if [ "${ERIK_SEED_DEMO:-1}" = "1" ]; then
+if [ "${ERIK_SEED_DEMO:-0}" = "1" ]; then
   flask seed-demo --if-empty
 else
   echo "[entrypoint] автосид отключён (ERIK_SEED_DEMO=0)"
 fi
 
 echo "[entrypoint] Starting gunicorn..."
-exec gunicorn --preload -w 4 --threads 10 -b 0.0.0.0:6752 --timeout 120 \
+exec gunicorn -w ${WEB_WORKERS:-2} --threads ${WEB_THREADS:-4} -b 0.0.0.0:6752 --timeout 120 \
   --access-logfile - --error-logfile - --log-level info --capture-output \
   app:app

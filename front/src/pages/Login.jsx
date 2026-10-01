@@ -55,7 +55,9 @@ export default function Login() {
       navigate(returnTo || '/feed');
       showToast('С возвращением!');
     } catch (err) {
-      showToast(err && err.status === 401 ? 'Неверные данные' : 'Не удалось войти');
+      showToast(err?.status === 401
+        ? 'Неверный email, никнейм или пароль. Если аккаунта ещё нет — создайте его.'
+        : err?.data?.error || (err?.status ? 'Не удалось войти. Попробуйте позже.' : 'Не удалось связаться с сервером. Проверьте соединение.'));
     } finally {
       setBusy(false);
     }
@@ -70,18 +72,19 @@ export default function Login() {
     }
     try {
       await api.forgotPassword(email);
-    } catch (_) { /* ответ намеренно неинформативен (безопасность) */ }
-    showToast('Если такой email есть — письмо для сброса отправлено');
+      showToast('Если такой email есть — письмо для сброса отправлено');
+    } catch (err) {
+      showToast(err?.data?.error || 'Не удалось запросить восстановление пароля. Попробуйте позже.');
+    }
   };
 
   // Отказ входа: 404 — бэкенд ЖИВ, но демо-личностей в базе нет (сид не запускался,
   // см. DEMO_DEVICE_PREFIX). Раньше оба случая шли под текстом «Бэкенд недоступен»,
   // и на свежем деплое это уводило чинить сеть вместо того, чтобы запустить сид.
-  const demoFail = (e) => showToast(
-    e && e.status === 404
-      ? 'Демо-данные не засеяны — выполните flask seed-demo на сервере'
-      : 'Бэкенд недоступен — запустите сервер и seed-demo',
-  );
+  const demoFail = (e) => showToast(e?.status === 403
+    ? 'Демо-вход отключён. Войдите по email и паролю или создайте аккаунт.'
+    : e?.data?.error || (e?.status === 404 ? 'Демо-профиль не найден.'
+      : e?.status ? 'Не удалось выполнить демо-вход.' : 'Не удалось связаться с сервером.'));
 
   // Демо-вход как засеянная личность (реальный токен → реальная роль/данные).
   const quick = async (p) => {
@@ -120,7 +123,7 @@ export default function Login() {
 
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <FieldLabel>Телефон или email</FieldLabel>
+              <FieldLabel>Email или никнейм</FieldLabel>
               <AuthField icon="mail" type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="you@example.kz" autoComplete="username" />
             </div>
             <div>

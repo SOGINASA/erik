@@ -76,11 +76,15 @@ def pick_role(gathering, participant, role_id):
     if role is None:
         return False, 'Роль не найдена на этом сборе', 'Бұл жиында мұндай рөл жоқ', 400
 
-    if participant.role_id == role.id:
-        return True, None, None, None
-
     if participant.answer in HOLDING_ANSWERS:
-        taken = role_counts(gathering).get(role.id, 0)
+        # Callers lock the gathering before mutating its roster. Count persisted
+        # rows rather than a previously loaded relationship; exclude this person.
+        taken = Participant.query.filter(
+            Participant.gathering_id == gathering.id,
+            Participant.role_id == role.id,
+            Participant.answer.in_(HOLDING_ANSWERS),
+            Participant.id != participant.id,
+        ).count()
         if is_full(role, taken):
             return False, 'Эту роль уже разобрали', 'Бұл рөлді алып қойды', 409
 
@@ -259,5 +263,5 @@ def sync_participant_role(gathering, participant, data, key='roleId'):
         release_role(participant)
         return True, None, None, None
     if key not in data:
-        return True, None, None, None
+        return pick_role(gathering, participant, participant.role_id)
     return pick_role(gathering, participant, data.get(key))

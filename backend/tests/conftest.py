@@ -22,7 +22,7 @@ def create_test_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = 'test-secret'
-    app.config['JWT_SECRET_KEY'] = 'test-jwt-secret'
+    app.config['JWT_SECRET_KEY'] = 'test-jwt-secret-at-least-32-characters'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=1)
 
@@ -38,7 +38,9 @@ def create_test_app():
     )
 
     _db.init_app(app)
-    JWTManager(app)
+    from services.security import configure_jwt
+    configure_jwt(JWTManager(app))
+    app.config['ALLOW_DEMO_LOGIN'] = True
 
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
                         notifications_bp, platform_bp, organizer_bp)
