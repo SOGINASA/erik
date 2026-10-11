@@ -75,7 +75,7 @@ export const usePlatformStore = create((set, get) => ({
   // без второго запроса.
   patchEventRoles: (eventId, roles, myRoleId) => set((s) => ({
     events: s.events.map((e) => (e.id === eventId
-      ? { ...e, roles, ...(myRoleId === undefined ? {} : { myRoleId }) }
+      ? { ...e, roles, ...(myRoleId === undefined ? {} : { myRoleId: Array.isArray(myRoleId) ? myRoleId[0] || null : myRoleId, myRoleIds: Array.isArray(myRoleId) ? myRoleId : (myRoleId ? [myRoleId] : []) }) }
       : e)),
   })),
 

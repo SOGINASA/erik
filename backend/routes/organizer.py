@@ -575,7 +575,8 @@ def _decide_application(application, gathering, accepted):
                 part.answer = 'no'
                 # Ответ 'no' освобождает место в роли — иначе слот остался бы занят
                 # человеком, которому только что отказали (роль показалась бы закрытой).
-                part.role_id = None
+                from services.roles import release_role
+                release_role(part)
             gathering.bump()
     from services.notifications import notify_application_decision
     notify_application_decision(application, accepted=accepted)

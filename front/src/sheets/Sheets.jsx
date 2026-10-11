@@ -6,6 +6,7 @@ import { Field, Textarea, Stepper, FieldLabel } from '../components/ui/controls'
 import AnswerButton from '../components/ui/AnswerButton';
 import Avatar from '../components/ui/Avatar';
 import Icon from '../components/Icon';
+import MessageParticipantButton from '../components/MessageParticipantButton';
 import { useT, useLang } from '../i18n';
 import { useUiStore } from '../store/useUiStore';
 import { useSessionStore } from '../store/useSessionStore';
@@ -18,6 +19,7 @@ import { RelChip, SkillTags } from '../components/manage/parts';
 import { useGuardedNav, isOrganizerRole, profileHref } from '../lib/nav';
 import { copyToClipboard } from '../lib/share';
 import { api } from '../lib/api';
+import ImageUpload from '../components/ImageUpload';
 import { commit } from '../lib/optimistic';
 
 // Единый диспетчер листов/модалок по ui.sheet.
@@ -334,6 +336,7 @@ function PersonSheet() {
 
   return (
     <Sheet open onClose={close} title={p.name || ''}>
+      <MessageParticipantButton userId={p.userId} />
       {profile ? (
         <button
           type="button"
@@ -512,6 +515,7 @@ function SettingsSheet() {
           <option value="">{isRu ? 'Без НКО' : 'ҮЕҰ жоқ'}</option>
           {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </SheetSelect>
+        <ImageUpload onUploaded={setImage} />
         <Field label={isRu ? 'Обложка (ссылка)' : 'Мұқаба (сілтеме)'} value={g.image || ''} onChange={(e) => setImage(e.target.value)} placeholder="https://…" />
         <div>
           <FieldLabel>{t.fNeeded}</FieldLabel>
@@ -920,16 +924,16 @@ function PickRoleSheet() {
   // прошла — свежий список из ответа сервера точнее: в нём уже учтён наш собственный слот.
   const ev = events.find((e) => e.id === payload.eventId) || {};
   const roles = payload.roles || ev.roles || [];
-  const myRoleId = ev.myRoleId || null;
+  const [selected, setSelected] = useState(ev.myRoleIds || (ev.myRoleId ? [ev.myRoleId] : []));
   const isNewbie = !me || !me.eventsAttended;
   const ordered = sortRolesForViewer(roles, isNewbie);
 
   const pick = async (roleId) => {
     if (busy) return;
     setBusy(true);
-    const r = await pickEventRole(payload.eventId, roleId);
+    const r = await pickEventRole(payload.eventId, selected.includes(roleId) ? selected.filter((id) => id !== roleId) : [...selected, roleId]);
     setBusy(false);
-    if (r.ok) { close(); return; }
+    if (r.ok) { setSelected(r.data.roleIds || []); return; }
     // 409: место заняли, пока человек выбирал. Стор уже перерисовал остатки — шторку
     // НЕ закрываем, показываем правду и даём выбрать другую роль.
     if (r.error && r.error.status === 409) {
@@ -941,8 +945,8 @@ function PickRoleSheet() {
     <Sheet open onClose={close} title={isRu ? 'Чем поможешь?' : 'Немен көмектесесің?'} maxWidth={420}>
       <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 16px' }}>
         {isRu
-          ? 'Ты уже записан. Роль можно выбрать сейчас или потом.'
-          : 'Сен тіркелдің. Рөлді қазір де, кейін де таңдауға болады.'}
+          ? 'Ты уже записан. Можно выбрать несколько ролей. Изменения сохраняются сразу.'
+          : 'Сен тіркелдің. Бірнеше рөлді таңдауға болады. Өзгерістер бірден сақталады.'}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {ordered.map((r) => (
@@ -950,14 +954,14 @@ function PickRoleSheet() {
             key={r.id}
             role={r}
             isRu={isRu}
-            selected={r.id === myRoleId}
-            disabled={busy || (r.free === 0 && r.id !== myRoleId)}
+            selected={selected.includes(r.id)}
+            disabled={busy || (r.free === 0 && !selected.includes(r.id))}
             onClick={() => pick(r.id)}
           />
         ))}
       </div>
       <Button full variant="ghost" style={{ marginTop: 14 }} onClick={close}>
-        {isRu ? 'Пока не знаю — поставьте, куда нужно' : 'Әзірге білмеймін — қажет жерге қойыңыз'}
+        {isRu ? 'Готово' : 'Дайын'}
       </Button>
     </Sheet>
   );

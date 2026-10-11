@@ -153,6 +153,11 @@ export const api = {
   myRoleRequest: () => request('/me/role-request'),
   createRoleRequest: (body = {}) => request('/me/role-request', { method: 'POST', body }), // {role?, message?}
   myEvents: () => request('/me/events'),   // события, на которые волонтёр записался («Мои мероприятия»)
+  uploadImage: (data) => request('/uploads/images', { method: 'POST', body: { data } }),
+  getOrgReviews: (id) => request(`/orgs/${id}/reviews`),
+  postOrgReview: (id, body) => request(`/orgs/${id}/reviews`, { method: 'POST', body }),
+  getEventRegistration: (id) => request(`/events/${id}/registration`),
+  confirmParticipation: (id) => request(`/events/${id}/confirm`, { method: 'POST' }),
   getOrgs: () => request('/orgs'),
   createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
   getOrg: (id) => request(`/orgs/${id}`),

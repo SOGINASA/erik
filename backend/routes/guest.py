@@ -63,6 +63,7 @@ def get_rsvp(code):
     # roleId — иначе, вернувшись по ссылке, человек не увидит уже выбранную роль
     # и ему снова покажут пустой список.
     return jsonify({'answer': mine.answer if mine else None,
+                    'roleIds': (mine.role_ids if mine.role_ids is not None else ([mine.role_id] if mine.role_id else [])) if mine else [],
                     'roleId': mine.role_id if mine else None})
 
 
@@ -157,4 +158,4 @@ def put_rsvp(code):
 
     coming = sum(1 for p in gathering.participants if p.answer == 'yes')
     return jsonify({'answer': answer, 'comingCount': coming,
-                    'roleId': part.role_id, 'roles': serialize_roles(gathering)})
+                    'roleIds': part.role_ids or [], 'roleId': part.role_id, 'roles': serialize_roles(gathering)})

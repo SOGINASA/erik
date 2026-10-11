@@ -8,6 +8,7 @@ import { Container } from '../components/Container';
 import { Field, Textarea, FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import OrgProfileFields, { orgProfileDefaults } from '../components/OrgProfileFields';
 import { Skeleton } from '../components/ui/feedback';
 
 // Выпадающий список: в controls.jsx селекта нет — те же 48px/рамка/радиус, что у Field
@@ -48,7 +49,7 @@ export default function ManageOrg() {
   const [orgs, setOrgs] = useState([]);
   const [themes, setThemes] = useState([]);
   const [cities, setCities] = useState([]);
-  const [form, setForm] = useState({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '' });
+  const [form, setForm] = useState({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '', ...orgProfileDefaults() });
   const [creating, setCreating] = useState(false);
 
   // Свои организации + справочники тем/городов для селектов. Справочники не критичны:
@@ -93,6 +94,7 @@ export default function ManageOrg() {
     try {
       // Пустые поля не шлём — undefined выпадает при JSON.stringify (как в create сбора).
       const res = await api.createOrg({
+        ...form,
         name: form.name.trim(),
         cat: form.cat || undefined,
         cityId: form.cityId || undefined,
@@ -149,6 +151,7 @@ export default function ManageOrg() {
               <Select label={t.orgFCity} placeholder={t.orgFCityPh} value={form.cityId} onChange={upCreate('cityId')} options={cityOptions} />
               <Textarea label={t.orgFAboutRu} value={form.aboutRu} onChange={upCreate('aboutRu')} placeholder={t.orgFAboutPh} />
               <Textarea label={t.orgFAboutKz} value={form.aboutKz} onChange={upCreate('aboutKz')} placeholder={t.orgFAboutPh} />
+              <OrgProfileFields value={form} onChange={setForm} />
               <Button icon="plus" loading={creating} onClick={submitCreate} style={{ alignSelf: 'flex-start' }}>{t.orgCreateCta}</Button>
             </div>
           </>
@@ -176,6 +179,7 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
   const t = useT();
   const showToast = useUiStore((s) => s.showToast);
   const [f, setF] = useState({
+    ...orgProfileDefaults(org),
     name: org.name || '', cat: org.cat || '', cityId: org.cityId || '',
     aboutRu: org.aboutRu || '', aboutKz: org.aboutKz || '',
   });
@@ -188,6 +192,7 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
     setSaving(true);
     try {
       const res = await api.patchOrg(org.id, {
+        ...f,
         name: f.name.trim(),
         cat: f.cat || null,
         cityId: f.cityId || null,
@@ -219,6 +224,7 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
         <Textarea label={t.orgFAboutRu} value={f.aboutRu} onChange={up('aboutRu')} placeholder={t.orgFAboutPh} />
         <Textarea label={t.orgFAboutKz} value={f.aboutKz} onChange={up('aboutKz')} placeholder={t.orgFAboutPh} />
         <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.45 }}>{t.orgVerHint}</div>
+        <OrgProfileFields value={f} onChange={setF} />
         <Button loading={saving} onClick={save} style={{ alignSelf: 'flex-start' }}>{t.orgSaveCta}</Button>
       </div>
     </div>

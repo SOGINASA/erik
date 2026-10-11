@@ -357,6 +357,9 @@ class Participant(db.Model):
     role_id = db.Column(db.Integer, db.ForeignKey('gathering_roles.id', ondelete='SET NULL'),
                         nullable=True, index=True)
 
+    role_ids = db.Column(db.JSON, nullable=True)
+    confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # snapshot истории на момент RSVP (для воспроизводимости и гостей без user)
     hist_total_at_rsvp = db.Column(db.Integer, default=0)
     hist_came_at_rsvp = db.Column(db.Integer, default=0)
@@ -541,6 +544,11 @@ class Org(db.Model):
     verified = db.Column(db.Boolean, default=False)
     about_ru = db.Column(db.Text)
     about_kz = db.Column(db.Text)
+    contacts = db.Column(db.JSON, nullable=True)
+    office_address = db.Column(db.String(500), nullable=True)
+    map_url = db.Column(db.String(500), nullable=True)
+    photos = db.Column(db.JSON, nullable=True)
+    coordinators_public = db.Column(db.JSON, nullable=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=_now)
 
@@ -677,3 +685,22 @@ class Application(db.Model):
     __table_args__ = (
         db.UniqueConstraint('gathering_id', 'applicant_id', name='uq_application'),
     )
+
+
+class OrgReview(db.Model):
+    __tablename__ = 'org_reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    text = db.Column(db.String(2000), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+    __table_args__ = (db.UniqueConstraint('org_id', 'user_id', name='uq_org_review'),)
+
+
+class UploadedImage(db.Model):
+    __tablename__ = 'uploaded_images'
+    id = db.Column(db.String(32), primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    mime = db.Column(db.String(30), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)

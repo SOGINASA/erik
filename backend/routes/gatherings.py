@@ -402,11 +402,13 @@ def set_participant_role(id, pid):
     raw = data.get('roleId')
     if raw in (None, '', 0):
         part.role_id = None
+        part.role_ids = []
     else:
         role = find_role(g.gathering, raw)
         if role is None:
             return jsonify({'error': 'Роль не найдена на этом сборе'}), 400
         part.role_id = role.id
+        part.role_ids = [role.id]
     g.gathering.bump()
     db.session.commit()
     return jsonify({
@@ -516,6 +518,8 @@ def set_participant_answer(id, pid):
     if answer not in ANSWERS:
         return jsonify({'error': 'answer ∈ yes|maybe|no'}), 400
     part.answer = answer
+    if answer != 'yes':
+        part.confirmed_at = None
     # «Не придёт» освобождает место в роли: держать слот за человеком, который уже сказал,
     # что не будет, значит показывать координатору закрытую роль вместо свободной.
     if answer == 'no':
@@ -527,6 +531,7 @@ def set_participant_answer(id, pid):
         if data.get('roleId') and role is None:
             return jsonify({'error': 'Роль не найдена на этом сборе'}), 400
         part.role_id = role.id if role is not None else None
+        part.role_ids = [role.id] if role is not None else []
     g.gathering.bump()
     db.session.commit()
     return jsonify({

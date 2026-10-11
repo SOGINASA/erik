@@ -39,8 +39,9 @@ def role_counts(gathering):
     он разъехался бы с ростером при первом же remove_participant."""
     out = {}
     for p in gathering.participants:
-        if p.role_id and p.answer in HOLDING_ANSWERS:
-            out[p.role_id] = out.get(p.role_id, 0) + 1
+        if p.answer in HOLDING_ANSWERS:
+            for rid in participant_role_ids(p):
+                out[rid] = out.get(rid, 0) + 1
     return out
 
 
@@ -62,40 +63,41 @@ def find_role(gathering, role_id):
     return None
 
 
-def pick_role(gathering, participant, role_id):
-    """Поставить участника в роль. → (ok, err_ru, err_kz, status).
+def participant_role_ids(participant):
+    return participant.role_ids if participant.role_ids is not None else ([participant.role_id] if participant.role_id else [])
 
-    role_id None/'' → снять роль. Роль чужого сбора → 400. Мест нет → 409 (свою текущую
-    роль в занятость не считаем, иначе смена «Фотограф → Фотограф» упрётся сама в себя).
-    """
-    if role_id in (None, '', 0):
-        participant.role_id = None
-        return True, None, None, None
 
-    role = find_role(gathering, role_id)
-    if role is None:
-        return False, 'Роль не найдена на этом сборе', 'Бұл жиында мұндай рөл жоқ', 400
-
-    if participant.answer in HOLDING_ANSWERS:
-        # Callers lock the gathering before mutating its roster. Count persisted
-        # rows rather than a previously loaded relationship; exclude this person.
-        taken = Participant.query.filter(
-            Participant.gathering_id == gathering.id,
-            Participant.role_id == role.id,
-            Participant.answer.in_(HOLDING_ANSWERS),
-            Participant.id != participant.id,
-        ).count()
-        if is_full(role, taken):
+def pick_roles(gathering, participant, ids):
+    if not isinstance(ids, list) or len(ids) > GATHERING_ROLE_MAX or any(type(i) is not int for i in ids):
+        return False, 'Нужен список идентификаторов ролей', 'Рөлдер тізімі қажет', 400
+    ids = list(dict.fromkeys(ids))
+    for rid in ids:
+        role = find_role(gathering, rid)
+        if role is None:
+            return False, 'Роль не найдена на этом сборе', 'Бұл жиында мұндай рөл жоқ', 400
+        taken = sum(1 for p in Participant.query.filter(
+            Participant.gathering_id == gathering.id, Participant.id != participant.id,
+            Participant.answer.in_(HOLDING_ANSWERS)).all() if rid in participant_role_ids(p))
+        if participant.answer in HOLDING_ANSWERS and is_full(role, taken):
             return False, 'Эту роль уже разобрали', 'Бұл рөлді алып қойды', 409
-
-    participant.role_id = role.id
+    participant.role_ids = ids
+    participant.role_id = ids[0] if ids else None
     return True, None, None, None
 
 
+def pick_role(gathering, participant, role_id):
+    if role_id in (None, '', 0):
+        return pick_roles(gathering, participant, [])
+    role = find_role(gathering, role_id)
+    if role is None:
+        return False, 'Роль не найдена на этом сборе', 'Бұл жиында мұндай рөл жоқ', 400
+    return pick_roles(gathering, participant, [role.id])
+
+
 def release_role(participant):
-    """Освободить место. Зовётся везде, где ответ становится 'no' — иначе место держит
-    человек, который уже сказал, что не придёт."""
     participant.role_id = None
+    participant.role_ids = []
+    participant.confirmed_at = None
 
 
 def drop_role_links(gathering, role_ids):
@@ -109,8 +111,11 @@ def drop_role_links(gathering, role_ids):
         return 0
     freed = 0
     for p in gathering.participants:
-        if p.role_id in role_ids:
-            p.role_id = None
+        current = participant_role_ids(p)
+        kept = [rid for rid in current if rid not in role_ids]
+        if current != kept:
+            p.role_ids = kept
+            p.role_id = kept[0] if kept else None
             freed += 1
     return freed
 
@@ -262,6 +267,10 @@ def sync_participant_role(gathering, participant, data, key='roleId'):
     if participant.answer == 'no':
         release_role(participant)
         return True, None, None, None
+    if participant.answer != 'yes':
+        participant.confirmed_at = None
+    if 'roleIds' in data:
+        return pick_roles(gathering, participant, data['roleIds'])
     if key not in data:
-        return pick_role(gathering, participant, participant.role_id)
+        return pick_roles(gathering, participant, participant_role_ids(participant))
     return pick_role(gathering, participant, data.get(key))

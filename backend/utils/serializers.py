@@ -38,6 +38,8 @@ def _base_gathering(g):
     return {
         'id': g.id,
         'code': g.code,
+        'organizerUserId': g.owner_id,
+        'organizerName': g.owner.full_name if g.owner else None,
         'titleRu': g.title_ru,
         'titleKz': g.title_kz,
         'placeRu': g.place_ru,
@@ -47,6 +49,8 @@ def _base_gathering(g):
         'dateKz': date_kz,
         'time': time,
         'needed': g.needed,
+        'confirmedCount': sum(1 for p in g.participants if p.answer == 'yes' and p.confirmed_at),
+        'remainingNeeded': max(0, (g.needed or 0) - sum(1 for p in g.participants if p.answer == 'yes' and p.confirmed_at)),
         'status': g.status,
         'theme': g.theme,
         'cityId': g.city_id,
@@ -97,6 +101,8 @@ def serialize_participant(p, coordinator=False, p_value=None, roles_by_id=None):
         'answer': p.answer,
         'presence': p.presence,
         'isGuest': p.is_guest,
+        'roleIds': p.role_ids if p.role_ids is not None else ([p.role_id] if p.role_id else []),
+        'confirmed': bool(p.confirmed_at and p.answer == 'yes'),
         'roleId': None,
         'roleTitleRu': None,
         'roleTitleKz': None,
@@ -173,6 +179,8 @@ def serialize_gathering_public(g, my_answer=None, mine=None):
     d['myAnswer'] = my_answer
     d['roles'] = serialize_roles(g)
     d['myRoleId'] = mine.role_id if mine is not None else None
+    d['myRoleIds'] = (mine.role_ids if mine.role_ids is not None else ([mine.role_id] if mine.role_id else [])) if mine else []
+    d['myConfirmed'] = bool(mine and mine.confirmed_at and mine.answer == 'yes')
     return d
 
 
@@ -215,6 +223,8 @@ def serialize_event_card(g, viewer_id=None):
     d['roles'] = serialize_roles(g)
     mine = next((p for p in g.participants if viewer_id is not None and p.user_id == viewer_id), None)
     d['myRoleId'] = mine.role_id if mine is not None else None
+    d['myRoleIds'] = (mine.role_ids if mine.role_ids is not None else ([mine.role_id] if mine.role_id else [])) if mine else []
+    d['myConfirmed'] = bool(mine and mine.confirmed_at and mine.answer == 'yes')
     return d
 
 
@@ -230,6 +240,9 @@ def serialize_org(org, following=None):
         'id': org.id, 'name': org.name, 'cat': org.cat, 'cityId': org.city_id,
         'city': city.name_ru if city else None, 'verified': org.verified,
         'aboutRu': org.about_ru, 'aboutKz': org.about_kz,
+        'contacts': org.contacts or {}, 'officeAddress': org.office_address or '',
+        'mapUrl': org.map_url or '', 'photos': org.photos or [],
+        'coordinators': org.coordinators_public or [],
         'events': events_count, 'vol': vol_count,
     }
     if following is not None:
