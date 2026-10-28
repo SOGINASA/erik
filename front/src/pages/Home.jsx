@@ -110,6 +110,12 @@ export default function Home() {
 
         <section className="eh-faq-band" id="faq"><div className="eh-container eh-faq"><SectionHeading number="03" label={c.faqLabel} title={c.faqTitle} /><div className="eh-questions">{c.questions.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true"><Icon name="plus" size={20} /></span></summary><p>{answer}</p></details>)}</div></div></section>
 
+        <section className="eh-container eh-partners" aria-labelledby="partners-title">
+          <div className="eh-partners-copy"><p className="eh-eyebrow">{c.partnersLabel}</p><h2 id="partners-title">{c.partnersTitle}</h2><p>{c.partnersDescription}</p></div>
+          <div className="eh-partner"><div className="eh-partner-logo"><img className="eh-partner-aitu" src="/assets/partners/aitu-logo.png" alt="" width="600" height="315" loading="lazy" decoding="async" /></div><h3>Astana IT University</h3></div>
+          <div className="eh-partner"><div className="eh-partner-logo"><img className="eh-partner-network" src="/assets/partners/national-volunteer-network.jpg" alt="" width="350" height="171" loading="lazy" decoding="async" /></div><h3>{c.volunteerNetwork}</h3></div>
+        </section>
+
         <section className="eh-container eh-final"><h2>{c.finalTitle}<span>{c.finalAccent}</span></h2><Link className="eh-button" to="/feed" onClick={() => browse()}>{c.find}<Arrow /></Link><span className="eh-final-note">{c.guestNote}</span></section>
       </main>
 

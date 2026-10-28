@@ -59,6 +59,16 @@
 .eh-principle>svg { color:var(--eh-green); flex:none; }
 .eh-principle h2 { font-size:14px; font-weight:500; letter-spacing:-.01em; line-height:1.5; }
 .eh-principle p { margin-top:3px; font-size:12px; color:var(--eh-muted); }
+.eh-partners { display:grid; grid-template-columns:.85fr 1fr 1fr; align-items:center; gap:24px; padding-top:64px; }
+.eh-partners-copy .eh-eyebrow { margin-bottom:14px; }
+.eh-partners-copy h2 { font-size:32px; line-height:1.2; }
+.eh-partners-copy>p:last-child { margin-top:13px; color:var(--eh-muted); font-size:14px; line-height:1.7; }
+.eh-partner { align-self:stretch; display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:0; padding:20px 24px 22px; border:1px solid var(--eh-line); border-radius:12px; background:#fff; text-align:center; }
+.eh-partner-logo { width:100%; height:128px; display:flex; align-items:center; justify-content:center; }
+.eh-partner-logo img { display:block; height:auto; max-width:100%; max-height:100%; object-fit:contain; }
+.eh-partner-aitu { width:250px; }
+.eh-partner-network { width:320px; }
+.eh-partner h3 { margin-top:12px; font-size:13px; font-weight:500; line-height:1.6; letter-spacing:0; }
 .eh-section { padding-block:105px; }
 .eh-section-heading .eh-eyebrow { margin-bottom:21px; }
 .eh-section-heading>p:not(.eh-eyebrow) { max-width:485px; color:var(--eh-muted); font-size:15px; line-height:1.8; margin-top:20px; }
@@ -177,6 +187,8 @@
   .eh-principle h2 { font-size:13px; }
   .eh-principle p { font-size:11px; }
   .eh-principle>svg { width:22px; }
+  .eh-partners { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; padding-top:48px; }
+  .eh-partners-copy { grid-column:1 / -1; }
   .eh-section { padding-block:75px; }
   .eh-directions { gap:17px; }
   .eh-direction h3 { font-size:17px; }
@@ -222,6 +234,11 @@
   .eh-principle>svg { width:24px; }
   .eh-principle h2 { font-size:14px; }
   .eh-principle p { font-size:12px; }
+  .eh-partners { grid-template-columns:1fr; gap:16px; padding-top:44px; }
+  .eh-partners-copy { margin-bottom:8px; }
+  .eh-partners-copy h2 { font-size:30px; }
+  .eh-partner { padding-block:16px 20px; }
+  .eh-partner-logo { height:112px; }
   .eh-section { padding-block:64px; }
   .eh-heading-row { flex-direction:column; gap:19px; align-items:flex-start; margin-bottom:28px; }
   .eh-section-heading .eh-eyebrow { font-size:10px; margin-bottom:17px; }

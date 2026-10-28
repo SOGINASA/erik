@@ -5,6 +5,7 @@ export const homeContent = {
     eyebrow: 'Волонтёрство в Казахстане', heroTitle: 'Добрые дела.', heroAccent: 'Начинаются рядом.', heroDescription: 'Помогать проще, когда есть с кем. Находите близкие вам инициативы, знакомьтесь с людьми и меняйте жизнь вокруг.',
     find: 'Найти своё дело', howLink: 'Как это работает', guestNote: 'Можно просто посмотреть. Без регистрации.', heroFootLeft: 'Место добрых встреч', heroFootRight: 'Люди. Сообщества. Общее дело.', scroll: 'Перейти к направлениям',
     principles: [['pin', 'Рядом с вами', 'Инициативы в вашем городе'], ['users', 'Вместе с людьми', 'Команда с общими ценностями'], ['heart', 'Каждый вклад важен', 'Ваше время становится помощью']],
+    partnersLabel: 'Сотрудничество', partnersTitle: 'Наши партнёры', partnersDescription: 'Вместе развиваем волонтёрство.', volunteerNetwork: 'Национальная волонтёрская сеть',
     opportunitiesLabel: 'Найдите своё', opportunitiesTitle: 'Кому вы хотите помочь?', opportunitiesDescription: 'Выберите то, что вам близко.', allDirections: 'Все направления',
     directions: [
       { theme: 'eco', tag: 'Природа', title: 'Сделать город зеленее', description: 'Уборка парков, забота о дворах и природе.', image: '/assets/covers/eco.jpg' },
@@ -36,6 +37,7 @@ export const homeContent = {
     eyebrow: 'Қазақстандағы волонтёрлік', heroTitle: 'Игі істер.', heroAccent: 'Жақыннан басталады.', heroDescription: 'Бірге көмектесу оңай. Өзіңізге жақын бастамаларды табыңыз, адамдармен танысыңыз және айналаңыздағы өмірді өзгертіңіз.',
     find: 'Өз ісімді табу', howLink: 'Қалай жұмыс істейді', guestNote: 'Тіркелмей-ақ қарап шығуға болады.', heroFootLeft: 'Игі кездесулер мекені', heroFootRight: 'Адамдар. Қауымдастық. Ортақ іс.', scroll: 'Бағыттарға өту',
     principles: [['pin', 'Жаныңызда', 'Қалаңыздағы бастамалар'], ['users', 'Адамдармен бірге', 'Құндылықтары ортақ команда'], ['heart', 'Әр үлес маңызды', 'Уақытыңыз көмекке айналады']],
+    partnersLabel: 'Ынтымақтастық', partnersTitle: 'Біздің серіктестер', partnersDescription: 'Волонтёрлікті бірге дамытамыз.', volunteerNetwork: 'Ұлттық волонтерлік желі',
     opportunitiesLabel: 'Өзіңізге жақынын табыңыз', opportunitiesTitle: 'Кімге көмектескіңіз келеді?', opportunitiesDescription: 'Өзіңізге жақын бағытты таңдаңыз.', allDirections: 'Барлық бағыт',
     directions: [
       { theme: 'eco', tag: 'Табиғат', title: 'Қаланы көгалдандыру', description: 'Саябақтар, аулалар мен табиғатқа қамқорлық.', image: '/assets/covers/eco.jpg' },
