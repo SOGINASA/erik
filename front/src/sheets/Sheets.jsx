@@ -163,8 +163,8 @@ function CodeSheet() {
   const [code, setCode] = useState('');
   return (
     <Sheet open onClose={close} title={t.codeTitle} maxWidth={400}>
-      <Field value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoFocus placeholder="PARK18" inputStyle={{ fontFamily: 'var(--fm)', letterSpacing: '.15em', textAlign: 'center', fontSize: 20 }} />
-      <Button full size="lg" style={{ marginTop: 16 }} onClick={() => { close(); navigate(`/g/${code || 'PARK18'}`); }}>{t.open}</Button>
+      <Field value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoFocus placeholder="ABC123" inputStyle={{ fontFamily: 'var(--fm)', letterSpacing: '.15em', textAlign: 'center', fontSize: 20 }} />
+      <Button full size="lg" disabled={!code.trim()} style={{ marginTop: 16 }} onClick={() => { close(); navigate(`/g/${encodeURIComponent(code.trim())}`); }}>{t.open}</Button>
     </Sheet>
   );
 }

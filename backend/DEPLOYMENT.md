@@ -40,13 +40,11 @@ Copy `.env.example` to `.env` and set actual values. Never commit `.env`.
   password recovery returns `503 email_unavailable` without creating reset tokens.
   When enabling SMTP, set `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, credentials
   and `MAIL_FROM`. Production never logs undelivered messages or their tokens.
-- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo seeding and
-  sets `SKIP_DB_CREATE=1`. Demo login defaults to enabled for compatibility.
-- For a demo deployment, set `ALLOW_DEMO_LOGIN=1` in `.env` and rebuild/recreate
-  the backend: `docker compose up -d --build --force-recreate --no-deps backend`.
-  This enables existing demo accounts, including real administrator access and
-  the seeded admin password. It does not seed or reset data; preserve the restored
-  `DATABASE_URL`. Set the flag back to `0` to disable new demo logins.
+- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo login and seeding,
+  and sets `SKIP_DB_CREATE=1`. Startup seeds reference catalogs only.
+- Demo identities cannot log in or reuse old JWTs in production, even if a stale
+  environment contains `ALLOW_DEMO_LOGIN=1`. Password administrator creation
+  remains available through `flask create-admin`.
 - For exactly one trusted reverse proxy, set `TRUSTED_PROXY_HOPS=1` and configure
   that proxy to overwrite forwarded headers. Default 0 trusts none. Do not expose
   the backend directly when trusting proxy headers.
@@ -176,3 +174,23 @@ the complete Linux image, including Gunicorn and ML libraries, before release.
 Local validation does not establish production TLS, backup reliability, legal
 compliance, actual PostgreSQL throughput, or iOS build compatibility. Those require
 the deployment environment and an Xcode build.
+
+## Remove legacy demo data
+
+Stop API writers and take a custom-format PostgreSQL dump of the database named
+in the running container's DATABASE_URL (a restored database may have a different
+name from POSTGRES_DB). Verify the dump by restoring it to an isolated database.
+Keep the current DATABASE_URL and credentials; do not replace the host env with a
+local example or delete Docker volumes.
+
+`flask purge-demo` previews row counts. `flask purge-demo --apply` deletes users
+whose device_id starts with demo- and their dependent records in one transaction.
+Real accounts, password administrators, catalogs and primary-key sequences survive.
+If an administrator still uses the old public demo password, supply a protected
+file via `--admin-password-file /path/to/password`. The command refuses to proceed
+without an active password administrator and a replacement for a weak password.
+Admin sessions are invalidated. Cleanup is never run automatically on startup.
+
+Rebuild/recreate only the backend, then check health, empty event/organization
+lists, rejection of demo session requests and password admin login. Deploy the web
+client separately to remove its old demo controls and offline synthetic fallback.

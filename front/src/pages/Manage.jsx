@@ -36,11 +36,11 @@ export default function Manage() {
   useEffect(() => { load().then(loadAnalytics); }, [load, loadAnalytics]);
 
   // Первая загрузка: показывать моки как свои цифры нельзя, вместо них скелетон.
-  const booting = status === 'loading' && source === 'demo';
+  const booting = status === 'loading' && source !== 'server';
   const notice = orgNotice(source, status, isRu, loggedIn);
   // На демо-данных прогноза нет вовсе: сборы придуманы, и число рядом с ними было бы
   // выдумкой. Показываем только пометку «демо-данные».
-  const demoData = source === 'demo';
+  const demoData = source !== 'server';
 
   // Дробное «21,3» само по себе отличает прогноз от счётчика людей (тот всегда целый).
   const dec = (v) => (v == null ? '—' : String(v).replace('.', ','));

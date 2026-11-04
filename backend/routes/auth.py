@@ -232,11 +232,8 @@ def login():
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     import os
-    demo_password_allowed = (current_app.config.get('ALLOW_DEMO_LOGIN', False)
-                             and user.device_id == 'demo-admin'
-                             and user.email == 'admin@erik.kz')
     if (os.environ.get('FLASK_ENV') == 'production' and user.user_type == 'admin'
-            and password == 'admin123' and not demo_password_allowed):
+            and password == 'admin123'):
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     try:

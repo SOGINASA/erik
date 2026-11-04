@@ -1,5 +1,6 @@
 """Persistent JWT invalidation and single-use refresh tokens."""
-from flask import jsonify
+import os
+from flask import jsonify, current_app
 from sqlalchemy import update
 from models import db, User
 
@@ -16,7 +17,9 @@ def configure_jwt(jwt):
             user = db.session.get(User, int(payload['sub']))
         except (ValueError, TypeError, KeyError):
             return True
-        return user is None or not user.is_active or payload.get('ver') != user.token_version
+        demo = user is not None and (user.device_id or '').startswith('demo-')
+        demo_blocked = demo and (not current_app.testing or os.environ.get('FLASK_ENV') == 'production')
+        return user is None or not user.is_active or demo_blocked or payload.get('ver') != user.token_version
 
     @jwt.revoked_token_loader
     def revoked_response(_header, _payload):

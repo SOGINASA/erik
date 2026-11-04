@@ -33,7 +33,7 @@ export default function ManageRequests() {
   useEffect(() => { load(); }, [load]);
 
   // Пока идёт первая загрузка — скелетон: выдавать демо-заявки за настоящие нельзя.
-  const booting = status === 'loading' && source === 'demo';
+  const booting = status === 'loading' && source !== 'server';
   const notice = orgNotice(source, status, isRu, loggedIn);
 
   const eventTitle = (id) => {

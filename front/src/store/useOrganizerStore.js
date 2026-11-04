@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { buildOrgEvents, buildApplications, buildOrgVolunteers, plural, EVENTS } from '../lib/data';
+import { plural, EVENTS } from '../lib/data';
 import { fromServer } from '../lib/forecastView';
 import { api } from '../lib/api';
 import { commit } from '../lib/optimistic';
@@ -69,7 +69,7 @@ async function decide(set, get, id, action) {
 
   // Демо: за 'a1' нет серверной заявки. Раньше id резался до '1' и решение уходило
   // POST /applications/1/<action> — по ЧУЖОЙ настоящей заявке. Меняем только локально.
-  if (get().source === 'demo') {
+  if (get().source === 'empty') {
     apply();
     toast(isRu() ? d.okRu : d.okKz);
     return { ok: true };
@@ -83,42 +83,31 @@ async function decide(set, get, id, action) {
 }
 
 // Честная пометка источника для экранов штаба. null — показывать нечего.
-// Гостю не показываем: он смотрит демо-витрину, для него это норма.
+// Guests have no organizer workspace.
 export function orgNotice(source, status, isRuLang, loggedIn) {
   if (!loggedIn) return null;
   if (status === 'error') {
     return {
       tone: 'error',
-      text: source === 'demo'
-        ? (isRuLang ? 'Не удалось загрузить данные штаба — на экране демо-данные' : 'Штаб деректерін жүктеу мүмкін болмады — экранда демо-деректер')
+      text: source === 'empty'
+        ? (isRuLang ? 'Не удалось загрузить данные штаба — попробуйте ещё раз' : 'Штаб деректерін жүктеу мүмкін болмады — қайта көріңіз')
         : (isRuLang ? 'Не удалось обновить данные — на экране последние загруженные' : 'Деректерді жаңарту мүмкін болмады — экранда соңғы жүктелгені'),
       retry: true,
-    };
-  }
-  if (source === 'demo' && status !== 'loading') {
-    return {
-      tone: 'demo',
-      text: isRuLang
-        ? 'Демо-данные: сборы, заявки и волонтёры придуманы для показа'
-        : 'Демо-деректер: жиындар, өтінімдер мен волонтёрлер көрсетілім үшін ойдан шығарылған',
-      retry: false,
     };
   }
   return null;
 }
 
 // Штаб организатора: его сборы, входящие заявки волонтёров и база волонтёров.
-// Источник данных явный: source='demo' — встроенная синтетика lib/data,
-// source='server' — ответ API. Мутации по демо-данным НИКОГДА не уходят в сеть,
-// мутации по серверным идут с id ВЕРБАТИМ — снятия мок-префиксов здесь нет.
+// Empty until an API response; mutations require server data.
 export const useOrganizerStore = create((set, get) => ({
-  events: buildOrgEvents(),
-  applications: buildApplications(),
-  volunteers: buildOrgVolunteers(),
+  events: [],
+  applications: [],
+  volunteers: [],
   // Признак один на все три коллекции: они грузятся одним load() и ссылаются друг на
   // друга (заявка → eventId сбора). Смесь реальных заявок с демо-сборами дала бы
   // битые заголовки и правку счётчиков не того сбора.
-  source: 'demo',            // 'demo' | 'server'
+  source: 'empty',            // 'empty' | 'server'
   status: 'idle',            // 'idle' | 'loading' | 'ready' | 'error'
   error: null,
   analytics: null,           // ответ /me/org/analytics: настоящие часы и точность прогноза
@@ -243,7 +232,7 @@ export const useOrganizerStore = create((set, get) => ({
     const rollback = () => mutate(allIds, false);
 
     // Демо: серверных заявок за этими id нет — меняем только локально, как decide().
-    if (get().source === 'demo') {
+    if (get().source === 'empty') {
       apply();
       toast(isRu() ? d.okRu : d.okKz);
       return { updated: [...allIds], failed: [] };
@@ -283,7 +272,7 @@ export const useOrganizerStore = create((set, get) => ({
   // навигацию делает экран, стор о роутере не знает.
   openConversationWith: async (v) => {
     // Демо: 'ov1' резался до '1' и открывал чат со СЛУЧАЙНЫМ настоящим юзером.
-    if (get().source === 'demo') {
+    if (get().source === 'empty') {
       toast(isRu()
         ? 'Это демо-данные — чат с этим волонтёром не открыть'
         : 'Бұл демо-деректер — бұл волонтёрмен чат ашылмайды');
@@ -308,7 +297,7 @@ export const useOrganizerStore = create((set, get) => ({
   // поэтому сначала грузим туда сбор, потом открываем шторку. Раньше кнопка только
   // уводила на /c/<id>, а обещанную шторку не открывала.
   remindFor: async (eventId) => {
-    if (get().source === 'demo') {
+    if (get().source === 'empty') {
       toast(isRu()
         ? 'Это демо-сбор — напоминание отправляется только по настоящему'
         : 'Бұл демо-жиын — еске салу тек нақты жиын бойынша жіберіледі');
@@ -331,7 +320,7 @@ export const useOrganizerStore = create((set, get) => ({
     const prev = get().events.find((e) => e.id === id);
     if (!prev) return { ok: false };
     // Демо: за таким сбором сервера нет — как в remindFor/openConversationWith.
-    if (get().source === 'demo') {
+    if (get().source === 'empty') {
       toast(isRu()
         ? 'Это демо-сбор — пересдать можно только настоящий'
         : 'Бұл демо-жиын — тек нақты жиынды қайта тапсыруға болады');
@@ -375,10 +364,10 @@ export const useOrganizerStore = create((set, get) => ({
   // возвращает null. Возвращаем ровно начальное состояние — дальше mount /manage
   // вызовет load(), и на время загрузки снова будет честный скелетон.
   reset: () => set({
-    events: buildOrgEvents(),
-    applications: buildApplications(),
-    volunteers: buildOrgVolunteers(),
-    source: 'demo', status: 'idle', error: null,
+    events: [],
+    applications: [],
+    volunteers: [],
+    source: 'empty', status: 'idle', error: null,
     analytics: null, analyticsStatus: 'idle',
   }),
 }));

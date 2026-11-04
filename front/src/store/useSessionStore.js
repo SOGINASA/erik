@@ -115,24 +115,6 @@ export const useSessionStore = create(
         set((s) => ({ loggedIn: true, role: s.role || 'vol' }));
       },
 
-      // Демо-вход как конкретная засеянная личность (по её deviceId): demo-coord (админ+
-      // координатор), demo-v0 (волонтёр), demo-org1 (НКО). Токен — этой личности, поэтому
-      // роль/user_type/имя приходят с бэка настоящими (в т.ч. admin для demo-coord).
-      // deviceId устройства НЕ подменяем (остаётся в persist) — переопределяем лишь тело сессии.
-      loginAsDevice: async (deviceId) => {
-        const res = await api.session({ deviceId });
-        setAuth({ token: res.token, refreshToken: res.refreshToken || null });
-        set({
-          token: res.token,
-          refreshToken: res.refreshToken || null,
-          loggedIn: true,
-          userType: res.user.user_type || 'user',
-          role: res.user.role || 'vol',
-          name: res.user.full_name || null,
-        });
-        return res;
-      },
-
       // Вход по паролю (аккаунт). Бросает при 401 — Login.submit ловит и тостит.
       // deviceId остаётся (X-Device-Id), сверху ставим account-токен.
       loginWithPassword: async ({ identifier, password }) => {
