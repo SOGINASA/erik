@@ -18,6 +18,7 @@ import NewGathering from './pages/NewGathering';
 import GuestGathering from './pages/GuestGathering';
 import CoordGathering from './pages/CoordGathering';
 import CheckIn from './pages/CheckIn';
+import AttendanceConfirm from './pages/AttendanceConfirm';
 import MyGatherings from './pages/MyGatherings';
 import MyEvents from './pages/MyEvents';
 import Manage from './pages/Manage';
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="/charity/*" element={<Navigate to="/feed" replace />} />
         <Route path="/admin/charity/*" element={<Navigate to="/admin" replace />} />
         <Route path="/g/:code" element={<GuestGathering />} />
+        <Route path="/attendance/:id" element={<AttendanceConfirm />} />
         <Route element={<Shell />}>
           <Route path="/feed" element={<Feed />} />
           <Route path="/map" element={<MapPage />} />

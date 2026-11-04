@@ -78,6 +78,9 @@ export const api = {
   // сборы (координатор)
   createGathering: (body) => request('/gatherings', { method: 'POST', body }),
   getGathering: (id) => request(`/gatherings/${id}`),
+  attendanceQr: (id) => request(`/gatherings/${id}/checkin/qr`, { method: 'POST' }),
+  previewAttendance: (id, token) => request(`/gatherings/${id}/checkin/preview`, { method: 'POST', body: { token } }),
+  confirmAttendance: (id, token) => request(`/gatherings/${id}/checkin/confirm`, { method: 'POST', body: { token } }),
   // Прогноз явки. Источник — обученная модель, формула включается только при её
   // недоступности (и тогда это видно в поле source). ?source=formula — принудительно
   // фолбэком, чтобы показать разницу на одних и тех же данных.

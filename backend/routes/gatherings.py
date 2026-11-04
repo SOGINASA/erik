@@ -1,7 +1,7 @@
 """Сбор координатора: создание, просмотр, прогноз, поллинг, редактирование,
 управление ростером, отметка явки (в т.ч. офлайн-синк), финализация.
 
-Все эндпоинты — coordinator-owner, кроме POST / (создание) и by-code.
+Права coordinator-owner, кроме создания, by-code и подтверждения собственной явки по QR.
 """
 from datetime import datetime, timezone
 
@@ -594,6 +594,67 @@ def participant_history(id, pid):
 
 
 # ── отметка явки (owner) ──
+@gatherings_bp.route('/<int:id>/checkin/qr', methods=['POST'])
+@gathering_owner_required
+def attendance_qr(id):
+    from services.attendance_qr import issue_qr
+    if g.gathering.status != 'open':
+        return jsonify({'error': 'Отметка доступна только для открытого сбора', 'code': 'closed'}), 409
+    response = jsonify(issue_qr(g.gathering))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@gatherings_bp.route('/<int:id>/checkin/preview', methods=['POST'], defaults={'confirm': False})
+@gatherings_bp.route('/<int:id>/checkin/confirm', methods=['POST'], defaults={'confirm': True})
+@jwt_required()
+def attendance_from_qr(id, confirm):
+    from itsdangerous import BadData, SignatureExpired
+    from services.attendance_qr import verify_qr
+    from services.transactions import load_gathering
+
+    user = current_user()
+    if user is None or not user.is_active:
+        return jsonify({'error': 'Войдите в свой аккаунт', 'code': 'login_required'}), 403
+    data = request.get_json(silent=True)
+    token = data.get('token') if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token or len(token) > 1024:
+        return jsonify({'error': 'Некорректный QR-код', 'code': 'invalid_qr'}), 400
+    gathering = load_gathering(id)
+    if gathering is None or gathering.status == 'deleted':
+        return jsonify({'error': 'Сбор не найден', 'code': 'not_found'}), 404
+    if gathering.status != 'open':
+        return jsonify({'error': 'Сбор закрыт для отметки явки', 'code': 'closed'}), 409
+    try:
+        valid = verify_qr(token, gathering)
+    except SignatureExpired:
+        return jsonify({'error': 'QR-код истёк. Отсканируйте новый код у организатора', 'code': 'expired_qr'}), 410
+    except BadData:
+        valid = False
+    if not valid:
+        return jsonify({'error': 'QR-код недействителен для этого сбора', 'code': 'invalid_qr'}), 400
+    part = Participant.query.filter_by(gathering_id=id, user_id=user.id).first()
+    if part is None or part.answer not in ('yes', 'maybe'):
+        return jsonify({'error': 'Вы не записаны на этот сбор. Обратитесь к организатору', 'code': 'not_registered'}), 403
+    # Same gathering lock as finalization/RSVP. A retry preserves the first timestamp.
+    already_present = part.presence == 'came'
+    if confirm and not already_present:
+        part.presence = 'came'
+        part.checked_in_at = datetime.now(timezone.utc)
+        gathering.bump()
+    result = {
+        'title': gathering.title_ru, 'titleKz': gathering.title_kz,
+        'participantName': part.name or user.full_name,
+        'presence': part.presence, 'alreadyPresent': already_present,
+        'checkedInAt': part.checked_in_at.replace(tzinfo=timezone.utc).isoformat() if part.checked_in_at else None,
+        'revision': gathering.revision,
+    }
+    db.session.commit()
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @gatherings_bp.route('/<int:id>/checkin', methods=['GET'])
 @gathering_owner_required
 def checkin_pool(id):
