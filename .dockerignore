@@ -16,6 +16,8 @@ front/node_modules/
 front/build/
 
 # Секреты и локальные данные
+keypair
+deploy/keypair
 backend/.env*
 backend/database/*.db
 backend/database/*.sqlite
