@@ -53,11 +53,17 @@ export default function Profile() {
   }
 
   const person = isSelf ? me : other;
-  const roleLabel = isSelf && {
+  const roleLabels = {
     vol: isRu ? 'Волонтёр' : 'Ерікті',
     coord: isRu ? 'Координатор' : 'Үйлестіруші',
     org: isRu ? 'НКО / организация' : 'ҮЕҰ / ұйым',
-  }[role || person.role];
+  };
+  const currentRole = role || person.role;
+  const roleRequest = isSelf && person.roleRequest;
+  const displayedRole = currentRole === 'vol' && roleLabels[roleRequest?.role] ? roleRequest.role : currentRole;
+  const roleLabel = isSelf && roleLabels[displayedRole];
+  const needsApproval = displayedRole === 'coord' || displayedRole === 'org';
+  const roleConfirmed = currentRole === displayedRole && needsApproval;
 
   // Заголовок секции (капс, приглушённый).
   const secTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)' };
@@ -82,7 +88,16 @@ export default function Profile() {
               )}
             </div>
             <div style={{ fontSize: 14, color: 'var(--ink-2)', marginTop: 2 }}>{person.city}</div>
-            {roleLabel && <div style={{ fontSize: 14, color: 'var(--yard)', marginTop: 6 }}>{isRu ? 'Роль' : 'Рөл'}: {roleLabel}</div>}
+            {roleLabel && <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 14, marginTop: 6 }}>
+              <span>{isRu ? 'Роль' : 'Рөл'}: {roleLabel}</span>
+              {needsApproval && <span style={{ padding: '3px 9px', borderRadius: 999, fontSize: 12, fontWeight: 500,
+                background: roleConfirmed ? 'var(--yard-soft)' : 'var(--maybe-soft)',
+                color: roleConfirmed ? 'var(--yard)' : 'var(--maybe)' }}>
+                {roleConfirmed ? (isRu ? 'Подтверждено' : 'Расталған') : (isRu ? 'Не подтверждено' : 'Расталмаған')}
+              </span>}
+            </div>}
+            {roleLabel && needsApproval && !roleConfirmed && roleRequest?.status === 'declined' &&
+              <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 6 }}>{isRu ? 'Заявка отклонена' : 'Өтінім қабылданбады'}</div>}
           </div>
         </div>
 

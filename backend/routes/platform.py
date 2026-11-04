@@ -47,7 +47,12 @@ def user_me():
     u = current_user()
     if u is None or not u.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
-    return jsonify({'user': {**serialize_user_public(u), 'role': u.role}})
+    role_request = (RoleRequest.query.filter_by(user_id=u.id)
+                    .order_by(RoleRequest.created_at.desc(), RoleRequest.id.desc()).first())
+    return jsonify({'user': {
+        **serialize_user_public(u), 'role': u.role,
+        'roleRequest': serialize_role_request(role_request, u) if role_request else None,
+    }})
 
 
 @platform_bp.route('/users/<int:uid>', methods=['GET'])

@@ -94,6 +94,25 @@ test('sends explicit consent and the loaded version, then navigates only after s
   expect(mockToast).toHaveBeenCalledWith('Аккаунт создан. Добро пожаловать в erik!');
 });
 
+test.each([[/Координатор/, 'coord'], [/НКО \/ организация/, 'org']])('opens the request status while %s awaits approval', async (label, role) => {
+  mockRegisterAccount.mockResolvedValueOnce({ user: { role: 'vol' }, roleRequest: { role, status: 'pending' } });
+  await fillRegistration(label);
+  acceptAll();
+  fireEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/me'));
+  expect(mockNavigate).not.toHaveBeenCalledWith('/manage');
+  expect(mockToast).toHaveBeenCalledWith('Аккаунт создан. Заявка на роль организатора отправлена администрации.');
+});
+
+test('pending approval preserves an attendance invitation after registration', async () => {
+  mockLocation.search = '?returnTo=' + encodeURIComponent('/attendance/7#signed.token');
+  mockRegisterAccount.mockResolvedValueOnce({ user: { role: 'vol' }, roleRequest: { role: 'coord', status: 'pending' } });
+  await fillRegistration(/Координатор/);
+  acceptAll();
+  fireEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/attendance/7#signed.token'));
+});
+
 test.each([
   ['/g/PARK18', '/g/PARK18'],
   ['https://outside.example/phish', '/feed'],

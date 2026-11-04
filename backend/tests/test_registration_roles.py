@@ -1,11 +1,11 @@
-"""Выбранная при регистрации роль сохраняется и определяет создание сборов."""
+"""Регистрация сохраняет выбранную роль в заявке, одобрение даёт права организатора."""
 import pytest
 
 from models import db, City, Gathering, GatheringCoordinator, Org, Theme, User
 
 
 @pytest.mark.parametrize('role', ['vol', 'coord', 'org'])
-def test_registration_profile_login_and_event_creation(client, legal_acceptance, role):
+def test_registration_profile_login_and_event_creation(client, legal_acceptance, admin_headers, role):
     db.session.add(City(id='ast', name_ru='Астана'))
     db.session.add(Theme(id='eco', label_ru='Экология'))
     db.session.commit()
@@ -17,8 +17,22 @@ def test_registration_profile_login_and_event_creation(client, legal_acceptance,
     assert registration.status_code == 201
     account = registration.get_json()
     user_id = account['user']['id']
-    assert account['user']['role'] == role
-    assert db.session.get(User, user_id).role == role
+    assert account['user']['role'] == 'vol'
+    assert db.session.get(User, user_id).role == 'vol'
+    headers = {'Authorization': 'Bearer ' + account['access_token']}
+    profile = client.get('/api/users/me', headers=headers).get_json()['user']
+    assert profile['role'] == 'vol'
+    if role == 'vol':
+        assert profile['roleRequest'] is None
+        assert account['roleRequest'] is None
+    else:
+        assert account['roleRequest']['role'] == role
+        assert profile['roleRequest']['role'] == role
+        assert profile['roleRequest']['status'] == 'pending'
+        assert client.post('/api/gatherings', headers=headers, json={'what': 'До одобрения'}).status_code == 403
+        assert client.post(
+            f"/api/admin/role-requests/{account['roleRequest']['id']}/approve",
+            headers=admin_headers).status_code == 200
 
     org_id = None
     if role == 'org':
@@ -27,7 +41,7 @@ def test_registration_profile_login_and_event_creation(client, legal_acceptance,
         db.session.commit()
         org_id = org.id
 
-    # И сразу после регистрации, и после повторного входа права одинаковы.
+    # После одобрения работают и прежний токен, и повторный вход.
     for index in range(2):
         if index:
             login = client.post('/api/auth/login', json={

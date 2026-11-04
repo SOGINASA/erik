@@ -116,7 +116,7 @@ export default function Register() {
         legal: { ...consents, version: legal.version },
       });
       showToast(result?.roleRequest ? 'Аккаунт создан. Заявка на роль организатора отправлена администрации.' : 'Аккаунт создан. Добро пожаловать в erik!');
-      navigate(returnTo || (form.role === 'vol' ? '/feed' : '/manage'));
+      navigate(returnTo || (result?.roleRequest ? '/me' : form.role === 'vol' ? '/feed' : '/manage'));
     } catch (err) {
       if (err?.data?.code === 'legal_version_mismatch') {
         setError('Условия обновились. Прочитайте документы ещё раз и подтвердите новую редакцию.');
