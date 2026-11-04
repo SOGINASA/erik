@@ -51,26 +51,28 @@ export const useSessionStore = create(
       },
 
       // Поднять сессию. Безопасно к офлайну — на моках работаем и так.
-      // Персистнутый токен на первом boot() (booted=false) рехайдрируем через GET /me:
+      // Любую сессию с токеном восстанавливаем через GET /me:
       // кто мы — решает JWT. POST /session нашёл бы юзера по deviceId и подменил бы
       // аккаунт-вход device-личностью: /auth/login device_id к аккаунту не привязывает
       // (routes/auth.py, только register), так что это была бы другая строка User.
       // Гостевая сессия не отправляет имя/роль из локального хранилища:
       // создание профиля требует явных подтверждений при регистрации.
       boot: async () => {
-        const { deviceId, name, role, token, booted } = get();
+        const { deviceId, name, role, token } = get();
         setAuth({ deviceId });
         if (!token && !name) {
           set({ loggedIn: false, booted: true });
           return null;
         }
-        if (!booted && token) {
+        if (token) {
           try {
             const res = await api.me();
             set({
               name: res.user.full_name || name,
               role: res.user.role || role || 'vol',
               userType: res.user.user_type || null,   // вернули из токена, а не из deviceId
+              loggedIn: !!res.user.full_name,
+              roleDirty: false,
               booted: true,
             });
             return res;

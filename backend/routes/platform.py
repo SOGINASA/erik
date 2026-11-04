@@ -47,7 +47,7 @@ def user_me():
     u = current_user()
     if u is None or not u.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
-    return jsonify({'user': serialize_user_public(u)})
+    return jsonify({'user': {**serialize_user_public(u), 'role': u.role}})
 
 
 @platform_bp.route('/users/<int:uid>', methods=['GET'])

@@ -120,6 +120,7 @@ export const usePlatformStore = create((set, get) => ({
       const res = await api.userMe();
       if (res.user && res.user.name) {
         set({ me: { ...res.user, historyRu: res.user.history || [] } });
+        if (res.user.role) useSessionStore.setState({ role: res.user.role, roleDirty: false });
       }
     } catch (_) {
       /* keep mock */

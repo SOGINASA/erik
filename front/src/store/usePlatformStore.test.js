@@ -1,10 +1,11 @@
 import { usePlatformStore } from './usePlatformStore';
 import { api } from '../lib/api';
+import { useSessionStore } from './useSessionStore';
 
 jest.mock('../lib/api', () => ({
   api: {
     getCities: jest.fn(), getOrgs: jest.fn(), getEvents: jest.fn(),
-    leaderboardVolunteers: jest.fn(), getBadges: jest.fn(), getCharity: jest.fn(),
+    leaderboardVolunteers: jest.fn(), getBadges: jest.fn(), getCharity: jest.fn(), userMe: jest.fn(),
   },
   setAuth: jest.fn(), onAuthRefresh: jest.fn(),
 }));
@@ -19,4 +20,12 @@ test('platform loading fetches volunteer events without contacting the retired c
   expect(api.getCharity).not.toHaveBeenCalled();
   expect(usePlatformStore.getState().events).toEqual([{ id: 'e42', titleRu: 'Волонтёрское мероприятие', orgId: 'o3' }]);
   expect(usePlatformStore.getState()).not.toHaveProperty('charity');
+});
+
+test.each(['coord', 'org'])('profile loading synchronizes the %s role used by event creation', async (role) => {
+  useSessionStore.setState({ role: 'vol' });
+  api.userMe.mockResolvedValue({ user: { id: 42, name: 'Иван Тестовый', role } });
+  await usePlatformStore.getState().loadMe();
+  expect(usePlatformStore.getState().me).toMatchObject({ id: 42, role });
+  expect(useSessionStore.getState().role).toBe(role);
 });

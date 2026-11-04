@@ -142,7 +142,7 @@ export function routeAccess(route, { loggedIn, role, isAdmin, resolved }) {
 // нечего). Отказ штаба такому организатору чинился бы только полной перезагрузкой
 // (boot() перечитает роль).
 // Поэтому перед отказом ОДИН раз перечитываем свою роль у бэка. Именно GET /me: он только
-// читает, тогда как boot() (POST /session) переписал бы токен и userType аккаунт-сессии.
+// читает и не создаёт новую device-сессию.
 // setState, а не setRole: роль пришла ОТ бэка, и roleDirty («выбрана в онбординге, ещё не
 // доехала до бэка», useSessionStore.js:27) тут был бы враньём — POST /session её затрёт.
 // Молчащий бэк подвешивать экран не должен: на ошибке решаем по тому, что есть.
@@ -152,7 +152,7 @@ function useRefetchedRole(needed) {
     if (!needed) { setDone(false); return undefined; } // ушли с роута — следующий отказ снова перепроверим
     let alive = true;
     api.me().then(
-      (r) => { if (r && r.user && r.user.role) useSessionStore.setState({ role: r.user.role }); },
+      (r) => { if (r && r.user && r.user.role) useSessionStore.setState({ role: r.user.role, roleDirty: false }); },
       () => { /* офлайн — роль оставляем как есть */ },
     ).then(() => { if (alive) setDone(true); });
     return () => { alive = false; };
@@ -196,11 +196,25 @@ export function useGuardedNav() {
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
   const isRu = useLang() === 'ru';
-  return (path, route) => {
-    const verdict = routeAccess(route, { loggedIn, role, isAdmin, resolved });
+  return async (path, route) => {
+    let verdict = routeAccess(route, { loggedIn, role, isAdmin, resolved });
     if (verdict === 'guest') {
       openSheet('auth');
       return;
+    }
+    // При клике действует та же перепроверка, что и при прямом открытии URL.
+    // Иначе устаревшая vol блокирует координатора ещё до входа в Shell.
+    if (verdict === 'role') {
+      const token = useSessionStore.getState().token;
+      try {
+        const res = await api.me();
+        const session = useSessionStore.getState();
+        if (!session.loggedIn || session.token !== token) return;
+        if (res?.user?.role) useSessionStore.setState({ role: res.user.role, roleDirty: false });
+      } catch (_) { /* на ошибке решаем по известной роли */ }
+      const session = useSessionStore.getState();
+      if (!session.loggedIn || session.token !== token) return;
+      verdict = routeAccess(route, { loggedIn: session.loggedIn, role: session.role, isAdmin: session.isAdmin(), resolved });
     }
     if (verdict === 'role' || verdict === 'admin') {
       showToast(accessDeniedText(verdict, isRu));

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { usePlatformStore } from '../store/usePlatformStore';
+import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { api } from '../lib/api';
 import { Container } from '../components/Container';
@@ -16,6 +17,7 @@ export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const me = usePlatformStore((s) => s.me);
+  const role = useSessionStore((s) => s.role);
   const badges = usePlatformStore((s) => s.badges);
   const openSheet = useUiStore((s) => s.openSheet);
   const [other, setOther] = useState(null);
@@ -51,6 +53,11 @@ export default function Profile() {
   }
 
   const person = isSelf ? me : other;
+  const roleLabel = isSelf && {
+    vol: isRu ? 'Волонтёр' : 'Ерікті',
+    coord: isRu ? 'Координатор' : 'Үйлестіруші',
+    org: isRu ? 'НКО / организация' : 'ҮЕҰ / ұйым',
+  }[role || person.role];
 
   // Заголовок секции (капс, приглушённый).
   const secTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)' };
@@ -75,6 +82,7 @@ export default function Profile() {
               )}
             </div>
             <div style={{ fontSize: 14, color: 'var(--ink-2)', marginTop: 2 }}>{person.city}</div>
+            {roleLabel && <div style={{ fontSize: 14, color: 'var(--yard)', marginTop: 6 }}>{isRu ? 'Роль' : 'Рөл'}: {roleLabel}</div>}
           </div>
         </div>
 

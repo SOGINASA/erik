@@ -2,7 +2,7 @@ import { useSessionStore } from './useSessionStore';
 import { api } from '../lib/api';
 
 jest.mock('../lib/api', () => ({
-  api: { register: jest.fn(), updateMe: jest.fn(), session: jest.fn(), me: jest.fn(), logout: jest.fn() },
+  api: { register: jest.fn(), login: jest.fn(), updateMe: jest.fn(), session: jest.fn(), me: jest.fn(), logout: jest.fn() },
   setAuth: jest.fn(), onAuthRefresh: jest.fn(),
 }));
 
@@ -72,4 +72,16 @@ test('legacy device restoration never submits a stored name as a new profile', a
   await useSessionStore.getState().boot();
   expect(api.session).toHaveBeenCalledWith({ deviceId: useSessionStore.getState().deviceId });
   expect(useSessionStore.getState()).toMatchObject({ name: null, loggedIn: false });
+});
+
+test.each(['coord', 'org'])('keeps the %s account on repeated boot after registration', async (role) => {
+  const user = { full_name: payload.full_name, role, user_type: 'user' };
+  api.register.mockResolvedValue({ access_token: 'account-token', refresh_token: 'refresh', user });
+  api.me.mockResolvedValue({ user });
+  await useSessionStore.getState().registerAccount({ ...payload, role });
+  await useSessionStore.getState().boot();
+  await useSessionStore.getState().boot();
+  expect(api.session).not.toHaveBeenCalled();
+  expect(api.me).toHaveBeenCalledTimes(2);
+  expect(useSessionStore.getState()).toMatchObject({ role, token: 'account-token', loggedIn: true });
 });
