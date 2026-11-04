@@ -1,3 +1,6 @@
+# Keep this stack separate from other repositories with a backend/ directory.
+name: erik
+
 services:
   postgres:
     image: postgres:17

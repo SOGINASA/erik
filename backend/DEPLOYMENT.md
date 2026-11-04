@@ -55,6 +55,55 @@ Compose binds the API to host loopback. Terminate HTTPS at the reverse proxy.
 PostgreSQL and Redis have no published host ports. Containers run the API as a
 non-root user. `/api/health` checks the database and Redis without revealing errors.
 
+## Compose project name and existing host migration
+
+The Compose project is explicitly named `erik`. With Docker Compose v2, the
+containers are `erik-backend-1`, `erik-postgres-1` and `erik-redis-1`, the built
+API image is `erik-backend`, and the network is `erik_default`. Service DNS names
+remain `postgres` and `redis`; existing connection URLs do not need changes.
+Remove an old `COMPOSE_PROJECT_NAME=backend` setting or `-p backend` launch flag:
+these override the name in the file. Other projects must use their own names.
+
+For a fresh installation, run `docker compose up -d --build` from `backend/`.
+For an existing host, changing the project name also changes the default volume
+names. **Complete the following migration before starting the renamed stack**
+to keep the existing PostgreSQL and Redis data:
+
+1. Identify the three existing Erik containers with `docker ps -a`. Verify their
+   Compose working-directory labels and mounts, rather than relying on generic
+   container names. Inspect each relevant container with:
+   `docker inspect --format '{{json .Config.Labels}} {{json .Mounts}}' CONTAINER_ID`.
+   Record the volume names mounted at `/var/lib/postgresql/data` and `/data`.
+2. Take a verified database backup. Create `backend/docker-compose.override.yml`
+   on the host using the exact existing volume names (the names below are only
+   examples; verify that these volumes actually belong to Erik):
+
+   ```yaml
+   volumes:
+     postgres_data:
+       external: true
+       name: backend_postgres_data
+     redis_data:
+       external: true
+       name: backend_redis_data
+   ```
+
+   Keep this host-specific file for subsequent deployments. Compose loads it
+   automatically when run from `backend/` without `-f`. If deployment commands
+   use `-f`, include both files explicitly. External volumes must already exist;
+   a mistyped name fails instead of silently creating an empty database.
+3. Run `docker compose config --quiet` from `backend/`. Stop only the three
+   verified old Erik containers with `docker stop ID_API ID_POSTGRES ID_REDIS`.
+   Do not run project-wide cleanup against the shared old `backend` project or
+   delete volumes. Never run two PostgreSQL containers against the same volume.
+4. Run `docker compose up -d --build`, then `docker compose ps` and
+   `curl --fail http://127.0.0.1:6752/api/health`. Verify existing accounts/data.
+   After verification, remove only the stopped old containers with
+   `docker rm ID_API ID_POSTGRES ID_REDIS` (without `-v`).
+
+The API still binds to `127.0.0.1:6752`. A second simultaneous Erik instance needs
+both a different project name and a different host port, plus separate volumes.
+
 ## Rehearsal and cutover
 
 1. Freeze writes to the old deployment and take a consistent SQLite backup using

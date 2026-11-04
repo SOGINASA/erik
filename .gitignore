@@ -13,6 +13,7 @@ __pycache__/
 # Окружение
 /backend/.env
 /backend/.env.production*
+/backend/docker-compose.override.yml
 
 # База данных
 /backend/database/*.db
