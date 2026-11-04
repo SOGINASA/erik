@@ -38,6 +38,7 @@ pip install -r requirements.txt
 
 copy .env.example .env                # заполнить SECRET_KEY / JWT_SECRET_KEY / CORS_ORIGINS
 
+flask db-sync                         # обновить схему, сохранив существующие данные
 flask seed-demo                       # детерминированная демо-синтетика (сбор PARK18 + участники)
 python app.py                         # → http://localhost:5000/api
 
@@ -50,7 +51,11 @@ Docker:
 docker compose up --build
 ```
 
-Полезные CLI-команды: `flask seed-demo [--reset]`, `flask create-admin`, `flask init_db`.
+Полезные CLI-команды: `flask db-sync`, `flask seed-demo [--reset]`, `flask create-admin`, `flask init_db`.
+
+После обновления кода выполните `flask db-sync` перед локальным запуском: `create_all()`
+не добавляет новые колонки в существующие таблицы. Повторно засеивать или сбрасывать
+БД для обновления схемы не требуется.
 
 > Для разработки схема поднимается через `db.create_all()` (zero-config). В проде —
 > миграции (`flask db upgrade`) и запуск с `SKIP_DB_CREATE=1`, через WSGI (gunicorn),

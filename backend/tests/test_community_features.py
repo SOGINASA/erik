@@ -49,6 +49,37 @@ def test_confirmation_idempotent_and_cleared_on_maybe(client, user1, user2):
     assert client.get(url + '/registration', headers=h).get_json()['confirmed'] is False
 
 
+def test_multiple_roles_and_participation_confirmation_survive_qr_checkin(client, user1, user2):
+    """QR records actual arrival without replacing the pre-event commitment or roles."""
+    g = event(user1)
+    roles = [GatheringRole(gathering_id=g.id, title_ru=title, title_kz=title, capacity=2)
+             for title in ('Фотограф', 'Помощник')]
+    db.session.add_all(roles)
+    db.session.commit()
+    ids = [role.id for role in roles]
+    volunteer = headers(user2)
+    url = f'/api/events/{g.id}'
+    assert client.put(url + '/registration', headers=volunteer,
+                      json={'answer': 'yes', 'roleIds': ids}).status_code == 200
+    assert client.post(url + '/confirm', headers=volunteer).status_code == 200
+    part = Participant.query.filter_by(gathering_id=g.id, user_id=user2.id).one()
+    commitment_time = part.confirmed_at
+    assert part.presence is None
+    issued = client.post(f'/api/gatherings/{g.id}/checkin/qr', headers=headers(user1))
+    assert issued.status_code == 200
+    for _ in range(2):
+        response = client.post(f'/api/gatherings/{g.id}/checkin/confirm', headers=volunteer,
+                               json={'token': issued.get_json()['token']})
+        assert response.status_code == 200
+    db.session.refresh(part)
+    assert part.presence == 'came'
+    assert part.confirmed_at == commitment_time
+    detail = client.get(url, headers=volunteer).get_json()['event']
+    assert detail['myRoleIds'] == ids
+    assert detail['confirmedCount'] == 1 and detail['remainingNeeded'] == 1
+    assert [role['taken'] for role in detail['roles']] == [1, 1]
+
+
 def test_org_profile_permissions_validation_reviews(client, user1, user2):
     h = headers(user1)
     data = {'name': 'НКО', 'contacts': {'telegram': '@help', 'phone': '+77770000000'},
@@ -68,6 +99,11 @@ def test_org_profile_permissions_validation_reviews(client, user1, user2):
         assert client.post(url + '/reviews', headers=headers(user2), json={'rating': rating, 'text': 'Спасибо'}).status_code == 200
     reviews = client.get(url + '/reviews').get_json()['reviews']
     assert len(reviews) == 1 and reviews[0]['rating'] == 5
+    public = client.get(url + '/reviews').get_json()
+    assert public['count'] == 1 and public['averageRating'] == 5
+    assert public['ownReview'] is None
+    own = client.get(url + '/reviews', headers=headers(user2)).get_json()['ownReview']
+    assert own['text'] == 'Спасибо' and own['rating'] == 5
 
 
 def test_upload_image_roundtrip_and_reject_svg(client, user1):
@@ -102,3 +138,23 @@ def test_community_migration_preserves_existing_data(tmp_path):
         downgrade(directory=directory, revision='d0e1f2a3b4c5')
         upgrade(directory=directory)
         assert inspect(db.engine).has_table('uploaded_images')
+
+
+def test_photo_upload_over_default_body_limit_and_max_size(client, app, user1):
+    import struct
+    import zlib
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=')
+    # A valid ancillary PNG text chunk makes a real image exceed the default 1 MiB body limit.
+    chunk = b'tEXt' + b'comment\0' + b'a' * (1024 * 1024)
+    large = png[:-12] + struct.pack('>I', len(chunk) - 4) + chunk + struct.pack('>I', zlib.crc32(chunk)) + png[-12:]
+    previous = app.config.get('MAX_CONTENT_LENGTH')
+    app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
+    try:
+        response = client.post('/api/uploads/images', headers=headers(user1), json={'data': base64.b64encode(large).decode()})
+        assert response.status_code == 201
+        assert client.get(response.get_json()['url']).data == large
+        assert app.config['MAX_CONTENT_LENGTH'] == 1024 * 1024
+        too_large = png[:8] + b'a' * (5 * 1024 * 1024)
+        assert client.post('/api/uploads/images', headers=headers(user1), json={'data': base64.b64encode(too_large).decode()}).status_code == 400
+    finally:
+        app.config['MAX_CONTENT_LENGTH'] = previous

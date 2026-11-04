@@ -352,9 +352,8 @@ def my_role_request():
 def create_role_request():
     """Подать заявку на роль организатора: {role?: 'coord'|'org', message?}.
 
-    Единственный путь vol → coord после того, как создание сбора перестало повышать роль
-    молча. Решает АДМИН (routes/admin.py), поэтому здесь заявка только создаётся —
-    никаких изменений User.role.
+    Решает АДМИН (routes/admin.py); здесь только создаётся заявка.
+    Выбор роли при регистрации использует ту же очередь модерации.
 
     Повторная подача при незакрытой заявке — не ошибка, а второй тап по кнопке: отдаём
     ту же строку (идиома add_coordinator/create_conversation), иначе очередь админа
@@ -365,15 +364,17 @@ def create_role_request():
                         'errorKz': 'Сіз әлдеқашан ұйымдастырушысыз'}), 409
 
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or (data.get('message') is not None and not isinstance(data['message'], str)):
+        return jsonify({'error': 'Укажите текст заявки'}), 400
     role = data.get('role') if data.get('role') in ORGANIZER_ROLES else 'coord'
 
+    User.query.filter_by(id=g.user.id).with_for_update().one()
     pending = RoleRequest.query.filter_by(user_id=g.user.id, status='pending').first()
     if pending is not None:
         return jsonify({'request': serialize_role_request(pending, g.user)}), 200
 
-    row = RoleRequest(user_id=g.user.id, requested_role=role, status='pending',
-                      message=(data.get('message') or '').strip()[:1000] or None)
-    db.session.add(row)
+    from services.role_requests import request_organizer_role
+    row = request_organizer_role(g.user, role, data.get('message'))
     db.session.commit()
     return jsonify({'request': serialize_role_request(row, g.user)}), 201
 
@@ -441,8 +442,11 @@ def create_org():
             setattr(org, key, value)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
-    if g.user.role != 'org':
+    if g.user.role in ORGANIZER_ROLES:
         g.user.role = 'org'
+    else:
+        from services.role_requests import request_organizer_role
+        request_organizer_role(g.user, 'org', f'Представитель организации «{org.name}»')
     db.session.add(org)
     db.session.commit()
     return jsonify({'org': serialize_org(org)}), 201
@@ -804,9 +808,14 @@ def upload_image():
     import uuid
     from flask import url_for
     from models import UploadedImage
+    # Base64 adds roughly one third to the 5 MiB image limit. Keep the smaller
+    # default body limit for every other API endpoint.
+    request.max_content_length = 7 * 1024 * 1024
     if request.content_length and request.content_length > 7 * 1024 * 1024:
         return jsonify({'error': 'Фото должно быть не больше 5 МБ'}), 413
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({'error': 'Ожидается JSON-объект'}), 400
     encoded = body.get('data')
     if not isinstance(encoded, str) or len(encoded) > 7 * 1024 * 1024:
         return jsonify({'error': 'Некорректное фото'}), 400
@@ -841,14 +850,31 @@ def uploaded_image(image_id):
 
 
 @platform_bp.route('/orgs/<int:id>/reviews', methods=['GET'])
+@jwt_required(optional=True)
 def org_reviews(id):
     from models import OrgReview, User
     if db.session.get(Org, id) is None:
         return jsonify({'error': 'Организация не найдена'}), 404
-    rows = OrgReview.query.filter_by(org_id=id).order_by(OrgReview.created_at.desc()).limit(100).all()
-    return jsonify({'reviews': [{'id': r.id, 'userId': r.user_id,
-        'name': (db.session.get(User, r.user_id).full_name or 'Волонтёр'),
-        'rating': r.rating, 'text': r.text} for r in rows]})
+    query = OrgReview.query.filter_by(org_id=id)
+    rows = query.order_by(OrgReview.created_at.desc(), OrgReview.id.desc()).limit(100).all()
+    viewer = current_user()
+    own = query.filter_by(user_id=viewer.id).first() if viewer else None
+    user_ids = {r.user_id for r in rows}
+    if own:
+        user_ids.add(own.user_id)
+    authors = {u.id: u.full_name for u in User.query.filter(User.id.in_(user_ids)).all()}
+
+    def serialize(row):
+        return {'id': row.id, 'userId': row.user_id,
+                'name': authors.get(row.user_id) or 'Волонтёр',
+                'rating': row.rating, 'text': row.text,
+                'createdAt': row.created_at.isoformat() if row.created_at else None}
+
+    count, average = db.session.query(db.func.count(OrgReview.id), db.func.avg(OrgReview.rating)).filter(
+        OrgReview.org_id == id).one()
+    return jsonify({'reviews': [serialize(row) for row in rows],
+                    'ownReview': serialize(own) if own else None,
+                    'count': count, 'averageRating': round(float(average), 1) if average is not None else None})
 
 
 @platform_bp.route('/orgs/<int:id>/reviews', methods=['POST'])
@@ -860,7 +886,11 @@ def post_org_review(id):
         return jsonify({'error': 'Организация не найдена'}), 404
     if org.owner_id == g.user.id:
         return jsonify({'error': 'Нельзя оставить отзыв своей организации'}), 403
+    # Serialize a user's first submission and retries before checking uniqueness.
+    User.query.filter_by(id=g.user.id).with_for_update().one()
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({'error': 'Ожидается JSON-объект'}), 400
     rating, text = body.get('rating'), body.get('text')
     if type(rating) is not int or not 1 <= rating <= 5 or not isinstance(text, str) or not text.strip() or len(text) > 2000:
         return jsonify({'error': 'Укажите оценку от 1 до 5 и отзыв до 2000 символов'}), 400

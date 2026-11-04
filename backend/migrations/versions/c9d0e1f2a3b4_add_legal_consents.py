@@ -14,6 +14,9 @@ depends_on = None
 
 
 def upgrade():
+    # Preserve a table already created by the dev startup's db.create_all().
+    if sa.inspect(op.get_bind()).has_table('legal_consents'):
+        return
     op.create_table(
         'legal_consents',
         sa.Column('id', sa.Integer(), nullable=False),

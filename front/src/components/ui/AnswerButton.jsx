@@ -8,13 +8,15 @@ const KIND = {
 
 // Кнопка ответа участника (ТЗ §4.2). Не радиокнопка — самостоятельная поверхность.
 // Выбранная: заливка своим цветом + бордер в полный цвет + галочка справа.
-export default function AnswerButton({ kind, selected, label, onClick, height = 56 }) {
+export default function AnswerButton({ kind, selected, label, onClick, disabled = false, height = 56 }) {
   const [soft, full] = KIND[kind];
   return (
     <button
       type="button"
       className="erik-btn"
       onClick={onClick}
+      disabled={disabled}
+      aria-pressed={!!selected}
       style={{
         position: 'relative',
         display: 'flex',

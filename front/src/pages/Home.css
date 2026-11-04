@@ -152,6 +152,35 @@
 .eh-credits svg { width:14px; margin-left:3px; }
 .eh-demo-note { margin-top:8px !important; font-size:10px; line-height:1.7; color:var(--eh-muted); }
 
+.eh-role-guide { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px 40px; margin-top:44px; padding-top:30px; border-top:1px solid var(--eh-line); }
+.eh-role { display:flex; gap:16px; align-items:flex-start; }
+.eh-role>svg { flex:none; margin-top:4px; color:var(--eh-green); }
+.eh-role h3 { font-size:19px; }
+.eh-role p { margin-top:8px; color:var(--eh-muted); font-size:14px; line-height:1.75; }
+.eh-moderation { grid-column:1/-1; display:flex; gap:12px; align-items:flex-start; padding:18px 22px; border-radius:8px; background:var(--eh-paper); font-size:13px; line-height:1.75; color:var(--eh-muted); }
+.eh-moderation svg { flex:none; color:var(--eh-green); margin-top:2px; }
+.eh-portfolio { display:grid; grid-template-columns:1fr 1fr; gap:70px; align-items:center; }
+.eh-portfolio .eh-eyebrow { margin-bottom:22px; }
+.eh-portfolio .eh-body-large { margin:24px 0; max-width:480px; }
+.eh-volunteer-book { border:1px solid var(--eh-line); border-left:7px solid var(--eh-green); border-radius:5px 18px 18px 5px; padding:30px; background:var(--eh-paper); box-shadow:8px 8px 0 #eef2e9; }
+.eh-book-heading { display:flex; align-items:center; gap:14px; padding-bottom:25px; color:var(--eh-green); font-size:13px; }
+.eh-book-mark { font:700 34px var(--fd); letter-spacing:-.06em; }
+.eh-book-row { display:flex; align-items:center; gap:16px; padding:23px 0; border-top:1px solid var(--eh-line); }
+.eh-book-row>svg { flex:none; color:var(--eh-green); }
+.eh-book-row>div { flex:1; }
+.eh-book-row h3 { font-size:17px; }
+.eh-book-row p { margin-top:6px; font-size:12px; line-height:1.6; color:var(--eh-muted); }
+.eh-forecast-preview { background:#fff; border:1px solid #dce5d7; border-radius:12px; padding:28px; }
+.eh-forecast-signals { display:flex; gap:7px; flex-wrap:wrap; margin:18px 0 25px; }
+.eh-forecast-signals span { border:1px solid var(--eh-line); border-radius:5px; padding:7px 9px; font-size:11px; color:var(--eh-muted); }
+.eh-forecast-result { display:flex; align-items:flex-start; gap:15px; border-top:1px solid var(--eh-line); padding:22px 0; }
+.eh-forecast-result>svg { flex:none; color:var(--eh-green); }
+.eh-forecast-result h3 { font-size:19px; }
+.eh-forecast-result p { margin-top:9px; font-size:13px; line-height:1.7; color:var(--eh-muted); }
+.eh-forecast-note { font-size:11px; line-height:1.6; color:var(--eh-muted); }
+@media(max-width:900px) { .eh-portfolio { gap:30px; } .eh-volunteer-book { padding:22px; } }
+@media(max-width:700px) { .eh-role-guide,.eh-portfolio { grid-template-columns:1fr; } .eh-role-guide { gap:24px; } .eh-moderation { padding:16px; } .eh-portfolio { gap:32px; } .eh-forecast-preview { padding:22px; } }
+
 @media(min-width:1700px) { .eh-hero-inner { min-height:760px; } }
 @media(max-width:1150px) {
   .eh-container { width:calc(100% - 72px); }

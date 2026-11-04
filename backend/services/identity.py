@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity
 from sqlalchemy.exc import IntegrityError
-from models import db, User, USER_ROLES
+from models import db, User
 
 
 def make_tokens(user):
@@ -45,8 +45,6 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
         # дозаполняем то, что пришло и ещё не установлено
         if name and not (u.full_name or '').strip():
             u.full_name = name.strip()
-        if role in USER_ROLES:
-            u.role = role
         if phone and not (u.phone or '').strip():
             u.phone = phone.strip()
         if user_agent:
@@ -61,7 +59,7 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
         user = User(
             device_id=device_id,
             full_name=(name or '').strip() or None,
-            role=role if role in USER_ROLES else 'vol',
+            role='vol',
             phone=(phone or '').strip() or None,
             user_agent=user_agent,
             user_type='user',
@@ -81,6 +79,8 @@ def resolve_device_user(device_id, name=None, role=None, phone=None, user_agent=
     else:
         _fill_existing(user)
 
+    from services.role_requests import request_organizer_role
+    request_organizer_role(user, role)
     user.last_seen_at = now
     user.last_login = now
     if commit:

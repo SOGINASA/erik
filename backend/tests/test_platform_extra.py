@@ -84,7 +84,9 @@ def test_create_org(client, sc):
     assert r.status_code == 201
     org = r.get_json()['org']
     assert org['verified'] is False and org['name'] == 'Новая НКО'
-    assert db.session.get(User, sc['vol'].id).role == 'org'
+    assert db.session.get(User, sc['vol'].id).role == 'vol'
+    from models import RoleRequest
+    assert RoleRequest.query.filter_by(user_id=sc['vol'].id, requested_role='org', status='pending').count() == 1
 
 
 # ── A20 push ──

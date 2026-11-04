@@ -16,7 +16,7 @@ SELECT по users падает 500 («no such column: users.interests»), что
 
 # Цепочка миграций и «отпечаток» каждой: объект, по наличию которого видно, что
 # ревизия накатана ((таблица, колонка); колонка None = достаточно самой таблицы).
-# Порядок = порядок цепочки, ищем с конца.
+# Порядок = порядок цепочки, проверяем до первого отсутствующего объекта.
 #
 # Отпечаток выбираем ТОЛЬКО из того, что create_all() воспроизвести не может, если
 # ревизия не накатана. Для a7b8c9d0e1f2 это participants.role_id, а НЕ таблица
@@ -60,10 +60,15 @@ def detect_revision(insp):
             cols[table] = {c['name'] for c in insp.get_columns(table)}
         return column in cols[table]
 
-    for rev, (table, column) in reversed(SCHEMA_MARKERS):
-        if has(table, column):
-            return rev
-    return None
+    revision = None
+    for rev, (table, column) in SCHEMA_MARKERS:
+        # create_all() может создать таблицы поздних миграций (role_requests,
+        # legal_consents), оставив ранние колонки interests/role_id отсутствующими.
+        # Наличие позднего маркера не позволяет перепрыгнуть этот пробел.
+        if not has(table, column):
+            break
+        revision = rev
+    return revision
 
 
 def schema_lag(insp):

@@ -114,7 +114,8 @@ def update_me():
     if 'name' in data and (data['name'] or '').strip():
         user.full_name = data['name'].strip()
     if data.get('role') in USER_ROLES:
-        user.role = data['role']
+        from services.role_requests import request_organizer_role
+        request_organizer_role(user, data['role'])
     if 'phone' in data:
         user.phone = (data['phone'] or '').strip() or None
     if 'cityId' in data:

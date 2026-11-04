@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
+import MessageParticipantButton from '../components/MessageParticipantButton';
 import { useT, useLang } from '../i18n';
 import { useOrganizerStore, orgNotice } from '../store/useOrganizerStore';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUiStore } from '../store/useUiStore';
 import { Container } from '../components/Container';
 import Icon from '../components/Icon';
-import MessageParticipantButton from '../components/MessageParticipantButton';
 import Avatar from '../components/ui/Avatar';
 import { SegTabs } from '../components/ui/controls';
 import ManageHeader from '../components/manage/ManageHeader';
@@ -189,12 +189,12 @@ export default function ManageRequests() {
                     {/* Навыки */}
                     {a.skills && a.skills.length > 0 && <div style={{ marginBottom: 12 }}><SkillTags ids={a.skills} /></div>}
 
+                    {source === 'server' && a.userId && <div style={{ margin: '12px 0' }}><MessageParticipantButton userId={a.userId} name={a.name} /></div>}
                     {/* Сообщение */}
                     {msg && (
                       <div style={{ padding: '12px 14px', borderRadius: 'var(--r-s)', background: 'var(--paper)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)', marginBottom: pending ? 14 : 0 }}>{msg}</div>
                     )}
 
-                    <MessageParticipantButton userId={a.userId} />
                     {/* Действия / статус (в режиме выбора одиночные кнопки прячем — решает нижняя панель) */}
                     {pending ? (selecting ? null : (
                       <div style={{ display: 'flex', gap: 8 }} onClick={(e) => e.stopPropagation()}>

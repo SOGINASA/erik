@@ -91,6 +91,10 @@ export default function Home() {
               <div className="eh-step-copy"><h3>{title}</h3><p>{text}</p></div>
             </li>)}
           </ol>
+          <div className="eh-role-guide">
+            {c.roles.map(([icon, title, description]) => <div className="eh-role" key={icon}><Icon name={icon} size={24} /><div><h3>{title}</h3><p>{description}</p></div></div>)}
+            <p className="eh-moderation"><Icon name="shield" size={20} />{c.moderation}</p>
+          </div>
         </section>
 
         <section className="eh-community-band" id="community"><div className="eh-container eh-community">
@@ -98,12 +102,17 @@ export default function Home() {
           <div className="eh-community-copy"><p className="eh-eyebrow">{c.communityLabel}</p><h2>{c.communityTitle}</h2><p className="eh-body-large">{c.communityDescription}</p><Link className="eh-text-link" to={loggedIn ? '/feed' : '/register'}>{loggedIn ? c.openApp : c.join}<Arrow /></Link></div>
         </div></section>
 
+        <section className="eh-container eh-section eh-portfolio" aria-labelledby="portfolio-title">
+          <div><p className="eh-eyebrow">{c.portfolioLabel}</p><h2 id="portfolio-title">{c.portfolioTitle}</h2><p className="eh-body-large">{c.portfolioDescription}</p><Link className="eh-text-link" to={loggedIn ? '/u/me' : '/register'}>{c.portfolioCta}<Arrow /></Link></div>
+          <div className="eh-volunteer-book"><div className="eh-book-heading"><span className="eh-book-mark">e.</span><span>{c.portfolioBook}</span></div>{c.portfolioRows.map(([icon, title, text]) => <div className="eh-book-row" key={icon}><Icon name={icon} size={22} /><div><h3>{title}</h3><p>{text}</p></div><Icon name="check" size={17} /></div>)}</div>
+        </section>
+
         <section className="eh-container eh-organizers" aria-labelledby="organizers-title">
           <div className="eh-organizers-copy"><p className="eh-eyebrow">{c.organizerLabel}</p><h2 id="organizers-title">{c.organizerTitle}</h2><p>{c.organizerDescription}</p>
             <ul className="eh-organizer-features">{c.organizerFeatures.map(([icon, label]) => <li key={icon}><Icon name={icon} size={17} />{label}</li>)}</ul>
-            <Link className="eh-button" to={loggedIn ? '/manage/org' : '/register'}>{c.organizerCta}<Arrow /></Link>
+            <Link className="eh-button" to={loggedIn ? '/manage' : '/register'}>{c.organizerCta}<Arrow /></Link>
           </div>
-          <div className="eh-organizer-art" aria-hidden="true"><PeopleArt name="organize-team" sizes="(max-width: 700px) 90vw, 45vw" /></div>
+          <div className="eh-forecast-preview"><p className="eh-eyebrow">{c.forecastLabel}</p><div className="eh-forecast-signals">{c.forecastSignals.map((signal) => <span key={signal}>{signal}</span>)}</div><div className="eh-forecast-result"><Icon name="users" size={26} /><div><h3>{c.forecastTitle}</h3><p>{c.forecastDescription}</p></div></div><div className="eh-forecast-result"><Icon name="check" size={26} /><div><h3>{c.confirmationTitle}</h3><p>{c.confirmationDescription}</p></div></div><p className="eh-forecast-note">{c.forecastNote}</p></div>
         </section>
 
         <section className="eh-container eh-section eh-cities" aria-labelledby="cities-title"><h2 id="cities-title">{c.citiesTitle}</h2><div className="eh-city-list">{cities.map((city) => <Link to="/feed" key={city.id} onClick={() => browse('all', city.id)}><span className="eh-dot" />{isRu ? city.ru : city.kz}<Arrow diagonal /></Link>)}</div><Link className="eh-text-link" to="/map">{c.map}<Arrow /></Link></section>

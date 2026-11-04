@@ -671,11 +671,8 @@ export const useGatheringStore = create((set, get) => ({
   setOrg: (v) => set((s) => ({ gathering: { ...s.gathering, orgId: v } })),
   setImage: (v) => set((s) => ({ gathering: { ...s.gathering, image: v } })),
 
-  // roleId (необязателен) — роль волонтёра на сборе. Обычный путь ленты его НЕ шлёт:
-  // запись остаётся одно-тапной, а роль досылается вторым вызовом уже после успеха
-  // (см. pickEventRole). Возвращаем результат commit наружу — вызывающему экрану надо
-  // знать, что запись реально прошла, прежде чем предлагать выбрать роль.
-  registerEvent: (eventId, a, roleId) => {
+  // Ответ и выбранные роли сохраняются одной транзакцией на сервере.
+  registerEvent: async (eventId, a, roleId) => {
     const numeric = serverEventId(eventId);
     if (numeric == null) {
       toast(isRu() ? 'Этот сбор недоступен для записи' : 'Бұл жиынға жазылу мүмкін емес');
@@ -684,18 +681,22 @@ export const useGatheringStore = create((set, get) => ({
       return Promise.resolve({ ok: false });
     }
     const prev = get().regs[eventId];
-    // «идут» считает только 'yes' — счётчик двигаем по переходу prev → a (оптимистично,
-    // с откатом при ошибке). Фронт и бэк считают одинаково, поэтому дельта точная.
+    // Меняем ответ после сохранения: блок подтверждения должен читать уже
+    // зафиксированные данные, включая сброс подтверждения при отказе.
     const delta = (a === 'yes' ? 1 : 0) - (prev === 'yes' ? 1 : 0);
-    return commit({
-      apply: () => { set((s) => ({ regs: withReg(s.regs, eventId, a) })); bumpGoing(eventId, delta); },
-      // Откатываем, только если наш ответ ещё стоит: пока PUT летел, пользователь мог
-      // выбрать другой (и тот уже сохранился) — иначе сотрём чужую запись насовсем.
-      rollback: () => { if (get().regs[eventId] !== a) return; bumpGoing(eventId, -delta); set((s) => ({ regs: withReg(s.regs, eventId, prev) })); },
-      call: () => api.setEventReg(numeric, a, roleId ? { roleId } : {}),
+    const result = await commit({
+      call: () => api.setEventReg(numeric, a, Array.isArray(roleId) ? { roleIds: roleId } : roleId ? { roleId } : {}),
       okRu: 'Ответ сохранён', okKz: 'Жауап сақталды',
       errRu: 'Не удалось сохранить ответ', errKz: 'Жауапты сақтау мүмкін болмады',
     });
+    if (result.ok) {
+      set((s) => ({ regs: withReg(s.regs, eventId, a) }));
+      if (result.data?.going != null) usePlatformStore.getState().setEventGoing(eventId, result.data.going);
+      else bumpGoing(eventId, delta);
+    }
+    const fresh = result.ok ? result.data?.roles : result.error?.data?.roles;
+    if (fresh) usePlatformStore.getState().patchEventRoles(eventId, fresh, result.ok ? result.data.roleIds : undefined);
+    return result;
   },
 
   // Выбор роли ПОСЛЕ записи (событие ленты). Отдельный вызов, а не часть registerEvent:
@@ -721,7 +722,7 @@ export const useGatheringStore = create((set, get) => ({
     return r;
   },
 
-  unregisterEvent: (eventId) => {
+  unregisterEvent: async (eventId) => {
     const numeric = serverEventId(eventId);
     if (numeric == null) {
       toast(isRu() ? 'Этот сбор недоступен для записи' : 'Бұл жиынға жазылу мүмкін емес');
@@ -729,15 +730,16 @@ export const useGatheringStore = create((set, get) => ({
     }
     const prev = get().regs[eventId];
     const delta = prev === 'yes' ? -1 : 0;   // снятие 'yes' уменьшает «идут»
-    return commit({
-      apply: () => { set((s) => ({ regs: withReg(s.regs, eventId, null) })); bumpGoing(eventId, delta); },
-      // Тот же guard, что в registerEvent: записи может уже не быть нашей — apply писал
-      // null, поэтому откатываем, только пока ключ так и остаётся снятым.
-      rollback: () => { if (get().regs[eventId] != null) return; bumpGoing(eventId, -delta); set((s) => ({ regs: withReg(s.regs, eventId, prev) })); },
+    const result = await commit({
       call: () => api.deleteEventReg(numeric),
       okRu: 'Запись отменена', okKz: 'Жазылу тоқтатылды',
       errRu: 'Не удалось отменить запись', errKz: 'Жазылуды тоқтату мүмкін болмады',
     });
+    if (result.ok) {
+      set((s) => ({ regs: withReg(s.regs, eventId, null) }));
+      bumpGoing(eventId, delta);
+    }
+    return result;
   },
 
   // --- анимация числа прогноза ---

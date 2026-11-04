@@ -143,8 +143,8 @@ def register():
             )
             db.session.add(user)
 
-        if role is not None:
-            user.role = role
+        from services.role_requests import request_organizer_role
+        role_request = request_organizer_role(user, role)
         if 'phone' in data:
             user.phone = (data.get('phone') or '').strip() or None
         if 'cityId' in data:
@@ -175,11 +175,13 @@ def register():
 
         access_token, refresh_token = make_tokens(user)
 
+        from utils.serializers import serialize_role_request
         return jsonify({
             'user': user.to_dict(include_sensitive=True),
             'access_token': access_token,
             'refresh_token': refresh_token,
             'legalConsent': consent.to_dict(),
+            'roleRequest': serialize_role_request(role_request, user) if role_request else None,
         }), 201
 
     except Exception as e:

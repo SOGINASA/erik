@@ -19,6 +19,9 @@ depends_on = None
 
 
 def upgrade():
+    # Dev startup may have created this table before older column migrations ran.
+    if sa.inspect(op.get_bind()).has_table('role_requests'):
+        return
     op.create_table(
         'role_requests',
         sa.Column('id', sa.Integer(), nullable=False),

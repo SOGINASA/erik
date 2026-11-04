@@ -447,6 +447,9 @@ def add_coordinator(id):
         return jsonify({'error': 'Пользователь не найден'}), 404
     if user_id == gathering.owner_id:
         return jsonify({'error': 'Владелец уже координатор сбора'}), 400
+    if user.role not in ORGANIZER_ROLES:
+        return jsonify({'error': 'Координатор должен пройти проверку администрации',
+                        'errorKz': 'Үйлестіруші әкімшілік тексеруінен өтуі керек'}), 403
 
     # повторный вызов не должен падать на uq_gcoord — отдаём существующую строку
     row = GatheringCoordinator.query.filter_by(
