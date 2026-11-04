@@ -1,0 +1,61 @@
+{
+  "generator": "Built-in image_gen",
+  "created": "2026-10-28",
+  "use": "erik landing page",
+  "assets": [
+    {
+      "name": "Glass heart and seedling",
+      "outputs": [
+        "heart-1600.webp",
+        "heart-960.webp"
+      ],
+      "prompt": "Use case: stylized-concept. Create a premium photorealistic 3D editorial hero artwork for erik, a Kazakhstan volunteering and community platform. A single elegant sculptural heart made from two broad interlocking curved ribbons of translucent deep forest-green optical glass, one softly frosted sage-green ribbon and one clear emerald ribbon. The ribbons curve towards and gently embrace each other to form a recognizable open heart silhouette, symbolizing people coming together to help. At the lower inner curve, a tiny living green seedling with two leaves adds a natural human warmth. Beautiful physically accurate glass refractions, subtle edge highlights, soft realistic contact shadows. This should feel like a sophisticated commissioned design object photographed by a premium product photographer, not a toy or a cartoon. Off-white seamless studio background #f7f8f4 with faint warm sunlight from upper left. Composition: wide landscape 3:2, the sculpture occupies the right 65 percent, left third is empty matching off-white for website copy. Entire sculpture in frame with generous space, grounded, slightly three-quarter view, no pedestal. Muted green palette, restrained silver reflections, tactile material and immaculate soft lighting. No words, no letters, no logos, no watermarks, no interface, no people, no extra objects. High detail."
+    },
+    {
+      "name": "Volunteers planting a sapling",
+      "outputs": [
+        "together-1200.webp",
+        "together-720.webp"
+      ],
+      "prompt": "Use case: photorealistic-natural. Asset type: wide editorial photograph for a minimalist volunteering website, paired with an emerald glass heart hero. A beautifully composed candid close-up of three adult volunteers working together to plant a young leafy sapling in dark rich soil in a sunlit community garden in Kazakhstan. Focus on the action and cooperation: two pairs of natural anatomically accurate hands in subtly worn cream gardening gloves and one pair of bare hands gently support the root ball. Cropped torsos only, no faces, muted sage and off-white cotton sleeves. The sapling has a graceful slender stem and beautiful small green leaves. Authentic, quiet and hopeful rather than staged charity stock photography. Soft late-afternoon side lighting, delicate film grain, subtle shallow depth of field, premium editorial photography. Landscape 3:2 composition with action occupying central and right two thirds, softly blurred cream and pale sage foliage behind, natural earthy greens, warm neutral skin tones, not oversaturated. No text, logos, watermarks, graphic overlays, illustration or 3D effect. Beautiful real textures, natural hands, no extra fingers."
+    },
+    {
+      "name": "step-discover",
+      "outputs": [
+        "step-discover-800.webp",
+        "step-discover-400.webp"
+      ],
+      "transparent_background": true,
+      "prompt": "Use case: stylized-concept. Asset type: standalone illustration for erik, a minimalist volunteering website in Kazakhstan. Style: sophisticated soft 3D editorial illustration with friendly adult human characters, slightly stylized natural proportions, small simple warm faces, sculpted matte ceramic and tactile paper-like clothing. Gentle warm studio light, very soft contact shadows. Restrained forest green #286347, sage, cream and warm natural skin tones, a tiny apricot accent only. Premium and calm, not childish, not glossy plastic, no outlines, no text or letters or numbers, no logos or watermark. Isolated on a genuinely transparent background; no backdrop or rectangular floor. Full figures and all objects in frame, 10 percent breathing room at all edges. Square composition, designed to read clearly at small website card size. Scene: one friendly young adult woman with dark hair, in a cream shirt and sage green trousers, standing and browsing a small smartphone. Beside her is one oversized sculptural forest-green location pin with a tiny leaf inset and a simple softly curved path on the ground. The visual idea is finding a nearby volunteer event. One person, one pin, minimal composition, no extra floating decorations."
+    },
+    {
+      "name": "step-join",
+      "outputs": [
+        "step-join-800.webp",
+        "step-join-400.webp"
+      ],
+      "transparent_background": true,
+      "prompt": "Use case: stylized-concept. Asset type: standalone illustration for erik, a minimalist volunteering website in Kazakhstan. Style: sophisticated soft 3D editorial illustration with friendly adult human characters, slightly stylized natural proportions, small simple warm faces, sculpted matte ceramic and tactile paper-like clothing. Gentle warm studio light, very soft contact shadows. Restrained forest green #286347, sage, cream and warm natural skin tones, a tiny apricot accent only. Premium and calm, not childish, not glossy plastic, no outlines, no text or letters or numbers, no logos or watermark. Isolated on a genuinely transparent background; no backdrop or rectangular floor. Full figures and all objects in frame, 10 percent breathing room at all edges. Square composition, designed to read clearly at small website card size. Scene: two friendly young adult volunteers, one woman with a dark bob in a sage green jacket and one man with short dark hair in a cream sweater and forest-green trousers, standing face to face and waving hello to each other. A small softly rounded translucent green checkmark floats above the space between them. The visual idea is joining a welcoming team. Their hands are apart in a simple relaxed welcoming wave, feet visible, two people only, calm balanced silhouette, no extra props."
+    },
+    {
+      "name": "step-help",
+      "outputs": [
+        "step-help-800.webp",
+        "step-help-400.webp"
+      ],
+      "transparent_background": true,
+      "prompt": "Use case: stylized-concept. Asset type: standalone illustration for erik, a minimalist volunteering website in Kazakhstan. Style: sophisticated soft 3D editorial illustration with friendly adult human characters, slightly stylized natural proportions, small simple warm faces, sculpted matte ceramic and tactile paper-like clothing. Gentle warm studio light, very soft contact shadows. Restrained forest green #286347, sage, cream and warm natural skin tones, a tiny apricot accent only. Premium and calm, not childish, not glossy plastic, no outlines, no text or letters or numbers, no logos or watermark. Isolated on a genuinely transparent background; no backdrop or rectangular floor. Full figures and all objects in frame, 10 percent breathing room at all edges. Square composition, designed to read clearly at small website card size. Scene: two friendly young adult volunteers caring for a single small leafy sapling together. A dark-haired woman in a sage green overshirt kneels next to a simple small patch of soil holding the sapling steady; a young man in a cream shirt and forest-green trousers stands beside her with a small green watering can. Warm human cooperation, natural anatomically plausible hands. The visual idea is taking part and helping. Two people, one sapling, minimal composition, no extra decorations."
+    },
+    {
+      "name": "organize-team",
+      "outputs": [
+        "organize-team-800.webp",
+        "organize-team-400.webp"
+      ],
+      "transparent_background": true,
+      "prompt": "Use case: stylized-concept. Asset type: standalone illustration for erik, a minimalist volunteering website in Kazakhstan. Style: sophisticated soft 3D editorial illustration with friendly adult human characters, slightly stylized natural proportions, small simple warm faces, sculpted matte ceramic and tactile paper-like clothing. Gentle warm studio light, very soft contact shadows. Restrained forest green #286347, sage, cream and warm natural skin tones, a tiny apricot accent only. Premium and calm, not childish, not glossy plastic, no outlines, no text or letters or numbers, no logos or watermark. Isolated on a genuinely transparent background; no backdrop or rectangular floor. Full figures and all objects in frame, 10 percent breathing room at all edges. Square composition, designed to read clearly at small website card size. Scene: a friendly adult female volunteer coordinator with dark shoulder-length hair, cream shirt and forest-green trousers holds a plain sage clipboard, standing beside an adult male volunteer in a sage overshirt. He gently carries one small unbranded cardboard donation box with a single embossed leaf symbol. Beside them a large simple cream rounded calendar tile with just a neat green checkmark, no text, no numerals. Relaxed friendly poses, clear readable silhouettes, arranging a community volunteer event. Exactly two people. All figures and objects grouped close together, fully visible."
+    }
+  ],
+  "processing": "Originals generated as PNG. Resized and encoded as responsive WebP variants using cwebp; alpha transparency preserved for the people illustrations.",
+  "note": "AI-generated illustrations; these do not document actual erik participants."
+}

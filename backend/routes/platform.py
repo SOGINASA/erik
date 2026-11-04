@@ -1,6 +1,6 @@
 from services.transactions import load_gathering
 """P2a: соц-платформа — каталог (города/темы/бейджи), лента событий, НКО,
-благотворительность, рейтинг, подписки. Читаемое — публично; мутации — под сессией.
+рейтинг, подписки. Читаемое — публично; мутации — под сессией.
 """
 from datetime import datetime, timezone
 
@@ -9,14 +9,14 @@ from flask_jwt_extended import jwt_required
 
 from models import (
     db, User, Theme, City, Badge, Gathering, GatheringCoordinator, Participant,
-    Org, CharityRequest, Donation, Follow, ANSWERS, ORGANIZER_ROLES, RoleRequest,
+    Org, Follow, ANSWERS, ORGANIZER_ROLES, RoleRequest,
     Conversation, ConversationMember, Message, Report,
 )
 from services.identity import current_user
 from utils.decorators import profiled_required, rate_limit
 from services.roles import sync_participant_role
 from utils.serializers import (
-    serialize_event_card, serialize_org, serialize_charity, serialize_volunteer,
+    serialize_event_card, serialize_org, serialize_volunteer,
     serialize_user_public, serialize_city_stats, serialize_participant,
     serialize_conversation, serialize_roles, serialize_role_request,
 )
@@ -242,7 +242,7 @@ def event_co_participants(id):
 def get_registration(id):
     u = current_user()
     p = Participant.query.filter_by(gathering_id=id, user_id=u.id).first() if u else None
-    return jsonify({'answer': p.answer if p else None, 'roleId': p.role_id if p else None})
+    return jsonify({'answer': p.answer if p else None, 'roleId': p.role_id if p else None, 'roleIds': (p.role_ids if p.role_ids is not None else ([p.role_id] if p.role_id else [])) if p else [], 'confirmed': bool(p and p.confirmed_at and p.answer == 'yes')})
 
 
 @platform_bp.route('/events/<int:id>/registration', methods=['PUT'])
@@ -289,7 +289,7 @@ def set_registration(id):
     # roles — в успешном ответе: экран события знает только id, и после записи выбирать
     # роль было бы не из чего (карточка ленты их тоже несёт, но здесь они свежее).
     return jsonify({'answer': answer, 'going': going,
-                    'roleId': p.role_id, 'roles': serialize_roles(g_)})
+                    'roleId': p.role_id, 'roleIds': p.role_ids or [], 'confirmed': bool(p.confirmed_at), 'roles': serialize_roles(g_)})
 
 
 @platform_bp.route('/events/<int:id>/registration', methods=['DELETE'])
@@ -435,6 +435,12 @@ def create_org():
         about_kz=(data.get('aboutKz') or '').strip() or None,
         owner_id=g.user.id,
     )
+    from services.org_profile import profile_fields
+    try:
+        for key, value in profile_fields(data).items():
+            setattr(org, key, value)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if g.user.role != 'org':
         g.user.role = 'org'
     db.session.add(org)
@@ -470,6 +476,13 @@ def update_org(id):
         return jsonify({'error': 'Это не ваша организация'}), 403
 
     data = request.get_json(silent=True) or {}
+    from services.org_profile import profile_fields
+    try:
+        extra = profile_fields(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    for key, value in extra.items():
+        setattr(org, key, value)
     if 'name' in data:
         name = _text(data.get('name'))
         if not name:
@@ -520,81 +533,21 @@ def my_follows():
     return jsonify({'follows': [f.org_id for f in rows]})
 
 
-# ── благотворительность ──
-@platform_bp.route('/charity', methods=['GET'])
-def charity_list():
-    q = CharityRequest.query
-    city = request.args.get('city')
-    kind = request.args.get('kind')
-    if city and city != 'all':
-        q = q.filter(CharityRequest.city_id == city)
-    if kind and kind != 'all':
-        q = q.filter(CharityRequest.kind == kind)
-    return jsonify({'charity': [serialize_charity(c) for c in q.all()]})
+# Старые клиенты получают явный ответ об удалённом разделе. Обработчик не читает
+# архивные таблицы и не проверяет сессию: раздел закрыт для всех пользователей.
+_RETIRED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 
-@platform_bp.route('/charity', methods=['POST'])
-@profiled_required
-def create_charity_request():
-    """НКО создаёт сбор помощи (деньги/вещи). Только роль 'org'; привязываем к её организации."""
-    if g.user.role != 'org':
-        return jsonify({'error': 'Сборы помощи создают только НКО'}), 403
-    data = request.get_json(silent=True) or {}
-    title = (data.get('titleRu') or data.get('title') or '').strip()
-    if not title:
-        return jsonify({'error': 'Укажите название'}), 400
-    kind = data.get('kind') if data.get('kind') in ('money', 'items') else 'money'
-    try:
-        goal = max(0, int(data.get('goal', 0) or 0))
-    except (TypeError, ValueError):
-        goal = 0
-    # Цель обязана быть > 0: иначе donate делает raised=min(0,…)=0 (пожертвования
-    # никогда не растут), а прогресс на фронте = raised/goal = 0/0 = NaN.
-    if goal <= 0:
-        return jsonify({'error': 'Укажите цель больше нуля'}), 400
-    org = Org.query.filter_by(owner_id=g.user.id).first()
-    c = CharityRequest(
-        title_ru=title,
-        title_kz=(data.get('titleKz') or title).strip(),
-        org_id=org.id if org else None,
-        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
-        kind=kind,
-        unit=((data.get('unit') or ('₸' if kind == 'money' else 'шт')).strip() or '₸')[:16],
-        goal=goal,
-        raised=0,
-    )
-    db.session.add(c)
-    db.session.commit()
-    return jsonify({'charity': serialize_charity(c)}), 201
-
-
-@platform_bp.route('/charity/<int:id>', methods=['GET'])
-def charity_detail(id):
-    c = db.session.get(CharityRequest, id)
-    if c is None:
-        return jsonify({'error': 'Сбор не найден'}), 404
-    return jsonify({'charity': serialize_charity(c)})
-
-
-@platform_bp.route('/charity/<int:id>/donate', methods=['POST'])
-@rate_limit(20, 60)
-@profiled_required
-def donate(id):
-    c = db.session.get(CharityRequest, id)
-    if c is None:
-        return jsonify({'error': 'Сбор не найден'}), 404
-    data = request.get_json(silent=True) or {}
-    if c.kind == 'money':
-        amt = int(data.get('amount', 0) or 0)
-    else:
-        amt = int(data.get('quantity', data.get('amount', 1)) or 1)
-    if amt <= 0:
-        return jsonify({'error': 'Некорректная сумма'}), 400
-    c.raised = min(c.goal, (c.raised or 0) + amt)
-    d = Donation(charity_id=c.id, user_id=g.user.id, amount=amt)
-    db.session.add(d)
-    db.session.commit()
-    return jsonify({'raised': c.raised, 'donationId': d.id})
+@platform_bp.route('/charity', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/charity/<path:legacy_path>', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/admin/charity', methods=_RETIRED_METHODS, strict_slashes=False)
+@platform_bp.route('/admin/charity/<path:legacy_path>', methods=_RETIRED_METHODS, strict_slashes=False)
+def charity_retired(legacy_path=None):
+    return jsonify({
+        'error': 'Раздел «Помощь» и сборы денег или вещей удалены.',
+        'errorKz': '«Көмек» бөлімі және ақша немесе зат жинау алынып тасталды.',
+        'code': 'charity_retired',
+    }), 410
 
 
 # ── жалобы (пользовательская модерация) ──
@@ -841,3 +794,97 @@ def forecast_quality():
             for r in importance
         ],
     })
+
+
+@platform_bp.route('/uploads/images', methods=['POST'])
+@profiled_required
+def upload_image():
+    import base64
+    import binascii
+    import uuid
+    from flask import url_for
+    from models import UploadedImage
+    if request.content_length and request.content_length > 7 * 1024 * 1024:
+        return jsonify({'error': 'Фото должно быть не больше 5 МБ'}), 413
+    body = request.get_json(silent=True) or {}
+    encoded = body.get('data')
+    if not isinstance(encoded, str) or len(encoded) > 7 * 1024 * 1024:
+        return jsonify({'error': 'Некорректное фото'}), 400
+    try:
+        raw = base64.b64decode(encoded.split(',', 1)[-1], validate=True)
+    except (ValueError, binascii.Error):
+        return jsonify({'error': 'Некорректное фото'}), 400
+    mime = None
+    if raw.startswith(b'\x89PNG\r\n\x1a\n'):
+        mime = 'image/png'
+    elif raw.startswith(b'\xff\xd8\xff') and raw.endswith(b'\xff\xd9'):
+        mime = 'image/jpeg'
+    elif raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+        mime = 'image/webp'
+    if not mime or not raw or len(raw) > 5 * 1024 * 1024:
+        return jsonify({'error': 'Выберите PNG, JPEG или WebP до 5 МБ'}), 400
+    image = UploadedImage(id=uuid.uuid4().hex, owner_id=g.user.id, mime=mime, data=raw)
+    db.session.add(image)
+    db.session.commit()
+    return jsonify({'url': url_for('platform.uploaded_image', image_id=image.id, _external=True)}), 201
+
+
+@platform_bp.route('/uploads/images/<image_id>', methods=['GET'])
+def uploaded_image(image_id):
+    from flask import Response
+    from models import UploadedImage
+    image = db.session.get(UploadedImage, image_id)
+    if image is None:
+        return jsonify({'error': 'Фото не найдено'}), 404
+    return Response(image.data, mimetype=image.mime, headers={
+        'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=31536000, immutable'})
+
+
+@platform_bp.route('/orgs/<int:id>/reviews', methods=['GET'])
+def org_reviews(id):
+    from models import OrgReview, User
+    if db.session.get(Org, id) is None:
+        return jsonify({'error': 'Организация не найдена'}), 404
+    rows = OrgReview.query.filter_by(org_id=id).order_by(OrgReview.created_at.desc()).limit(100).all()
+    return jsonify({'reviews': [{'id': r.id, 'userId': r.user_id,
+        'name': (db.session.get(User, r.user_id).full_name or 'Волонтёр'),
+        'rating': r.rating, 'text': r.text} for r in rows]})
+
+
+@platform_bp.route('/orgs/<int:id>/reviews', methods=['POST'])
+@profiled_required
+def post_org_review(id):
+    from models import OrgReview
+    org = db.session.get(Org, id)
+    if org is None:
+        return jsonify({'error': 'Организация не найдена'}), 404
+    if org.owner_id == g.user.id:
+        return jsonify({'error': 'Нельзя оставить отзыв своей организации'}), 403
+    body = request.get_json(silent=True) or {}
+    rating, text = body.get('rating'), body.get('text')
+    if type(rating) is not int or not 1 <= rating <= 5 or not isinstance(text, str) or not text.strip() or len(text) > 2000:
+        return jsonify({'error': 'Укажите оценку от 1 до 5 и отзыв до 2000 символов'}), 400
+    review = OrgReview.query.filter_by(org_id=id, user_id=g.user.id).first()
+    if review is None:
+        review = OrgReview(org_id=id, user_id=g.user.id)
+        db.session.add(review)
+    review.rating, review.text = rating, text.strip()
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@platform_bp.route('/events/<int:id>/confirm', methods=['POST'])
+@profiled_required
+def confirm_participation(id):
+    gathering = load_gathering(id)
+    if gathering is None or gathering.status != 'open':
+        return jsonify({'error': 'Событие недоступно'}), 404
+    part = Participant.query.filter_by(gathering_id=id, user_id=g.user.id).first()
+    if part is None or part.answer != 'yes':
+        return jsonify({'error': 'Сначала ответьте «Приду»'}), 400
+    if part.confirmed_at is None:
+        part.confirmed_at = datetime.now(timezone.utc)
+        gathering.bump()
+    db.session.commit()
+    count = sum(1 for p in gathering.participants if p.answer == 'yes' and p.confirmed_at)
+    return jsonify({'confirmed': True, 'confirmedCount': count, 'remainingNeeded': max(0, gathering.needed - count)})

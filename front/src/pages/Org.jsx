@@ -9,6 +9,7 @@ import { THEMES, initialOf } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import Icon from '../components/Icon';
 import EventCard from '../components/EventCard';
+import OrgPublicDetails from '../components/OrgPublicDetails';
 import { EmptyState } from '../components/ui/feedback';
 
 // Страница НКО: шапка, описание, статы, подписка и события организации.
@@ -46,7 +47,7 @@ export default function Org() {
   const [orgState, setOrgState] = useState('idle'); // idle | loading | ready | error
   const fromCache = orgs.find((o) => o.id === id);
   useEffect(() => {
-    if (fromCache) { setOrgState('ready'); return undefined; }
+    if (fromCache && fromCache.sid == null) { setOrgState('ready'); return undefined; }
     if (numericOrgId == null) { setOrgState('error'); return undefined; }
     let alive = true;
     setOrgState('loading');
@@ -57,7 +58,7 @@ export default function Org() {
     return () => { alive = false; };
   }, [id, fromCache, numericOrgId]);
 
-  const org = fromCache || fetched;
+  const org = fetched && String(fetched.sid) === numericOrgId ? fetched : fromCache;
   if (!org) {
     return (
       <Container style={{ paddingTop: 20, paddingBottom: 48 }}>
@@ -129,6 +130,8 @@ export default function Org() {
             {followed ? (isRu ? 'Вы подписаны' : 'Жазылдыңыз') : (isRu ? 'Подписаться' : 'Жазылу')}
           </button>
         )}
+
+        <OrgPublicDetails org={org} mine={mine} />
 
         {/* События организации */}
         <div style={secTitle}>{t.orgEventsTitle}</div>

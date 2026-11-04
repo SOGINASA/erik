@@ -5,7 +5,7 @@ import pytest
 from flask_jwt_extended import create_access_token
 
 from models import (db, User, City, Gathering, GatheringCoordinator, Participant,
-                    Application, CharityRequest, Notification)
+                    Application, Notification)
 
 
 def _tok(u):
@@ -19,7 +19,7 @@ def _h(u):
 
 @pytest.fixture
 def scenario():
-    """Организатор + сбор + волонтёр + благотворительная кампания."""
+    """Организатор + событие + волонтёр."""
     db.session.add(City(id='ast', name_ru='Астана', name_kz='Астана', map_x=1, map_y=1))
     owner = User(full_name='Организатор', role='coord', user_type='user', is_active=True, device_id='d-own')
     vol = User(full_name='Волонтёр Асан', role='vol', user_type='user', is_active=True,
@@ -35,10 +35,8 @@ def scenario():
     db.session.add(g)
     db.session.commit()
     db.session.add(GatheringCoordinator(gathering_id=g.id, user_id=owner.id, role='owner'))
-    ch = CharityRequest(title_ru='Инвентарь', kind='money', goal=100000, raised=40000, city_id='ast')
-    db.session.add(ch)
     db.session.commit()
-    return {'owner': owner, 'vol': vol, 'admin': admin, 'gid': g.id, 'chid': ch.id}
+    return {'owner': owner, 'vol': vol, 'admin': admin, 'gid': g.id}
 
 
 # ── заявки ──
@@ -138,8 +136,8 @@ def test_admin_stats_enriched(client, scenario):
     r = client.get('/api/admin/stats', headers=_h(scenario['admin']))
     st = r.get_json()
     assert r.status_code == 200
-    assert {'volunteers', 'raised', 'activeEvents', 'verifiedOrgs'} <= set(st)
-    assert st['raised'] == 40000
+    assert {'volunteers', 'activeEvents', 'verifiedOrgs'} <= set(st)
+    assert 'raised' not in st
 
 
 def test_admin_analytics(client, scenario):
@@ -163,12 +161,6 @@ def test_admin_events_and_unpublish(client, scenario):
     r = client.post(f'/api/admin/events/{scenario["gid"]}/unpublish', headers=_h(scenario['admin']))
     assert r.status_code == 200
     assert db.session.get(Gathering, scenario['gid']).status == 'deleted'
-
-
-def test_admin_charity_close(client, scenario):
-    r = client.post(f'/api/admin/charity/{scenario["chid"]}/close', headers=_h(scenario['admin']))
-    cl = r.get_json()
-    assert r.status_code == 200 and cl['raised'] == cl['goal']
 
 
 def test_admin_endpoints_require_admin(client, scenario):

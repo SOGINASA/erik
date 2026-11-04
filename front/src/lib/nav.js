@@ -12,7 +12,7 @@ import { useLang } from '../i18n';
 // только метрики модели на отложенном тесте, и любой должен иметь возможность
 // проверить, чем считается число, не заводя аккаунт.
 export const GATED_ROUTES = new Set([
-  'me', 'myEvents', 'messages', 'convo', 'notifications', 'leaderboard', 'charity',
+  'me', 'myEvents', 'messages', 'convo', 'notifications', 'leaderboard',
   'coord', 'check', 'new', 'admin', 'profile',
   'manage', 'manageRequests', 'manageVolunteers', 'manageOrg',
 ]);
@@ -59,7 +59,6 @@ export function routeName(pathname) {
   if (pathname.startsWith('/o/')) return 'org';
   if (pathname.startsWith('/forecast-quality')) return 'forecastQuality';
   if (pathname.startsWith('/leaderboard')) return 'leaderboard';
-  if (pathname.startsWith('/charity')) return 'charity';
   if (pathname.match(/^\/messages\/[^/]+/)) return 'convo';
   if (pathname.startsWith('/messages')) return 'messages';
   if (pathname.startsWith('/notifications')) return 'notifications';

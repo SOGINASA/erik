@@ -16,7 +16,6 @@ export default function AdminOverview() {
   const orgs = usePlatformStore((s) => s.orgs);
   const events = usePlatformStore((s) => s.events);
   const volunteers = usePlatformStore((s) => s.volunteers);
-  const charity = usePlatformStore((s) => s.charity);
   const notifs = usePlatformStore((s) => s.notifs);
   const navigate = useNavigate();
 
@@ -47,7 +46,6 @@ export default function AdminOverview() {
   const volTotal = cities.reduce((a, c) => a + c.vol, 0);
   const activeTotal = cities.reduce((a, c) => a + c.active, 0);
   const avgRel = Math.round(volunteers.reduce((a, v) => a + v.rel, 0) / (volunteers.length || 1));
-  const raisedStore = charity.filter((c) => c.kind === 'money').reduce((a, c) => a + c.raised, 0);
   const verifiedStore = orgs.filter((o) => o.verified).length;
   const pendingStore = orgs.filter((o) => !o.verified).length;
 
@@ -57,7 +55,6 @@ export default function AdminOverview() {
   const orgsN = stats?.orgs ?? orgs.length;
   const verifiedN = stats?.verifiedOrgs ?? verifiedStore;
   const avgReliabilityN = stats?.avgReliability ?? avgRel;
-  const raisedN = stats?.raised ?? raisedStore;
   const pendingN = stats?.pendingOrgs ?? pendingStore;
   const openReportsN = stats?.openReports ?? 0;
   const coordinatorsN = stats?.coordinators;
@@ -76,7 +73,6 @@ export default function AdminOverview() {
         <StatCard label="Организации" value={orgsN} sub={`${verifiedN} проверенных`} icon="shield" />
         <StatCard label="Города" value={cities.length} sub="покрытие Казахстана" icon="map" />
         <StatCard label="Средняя надёжность" value={`${avgReliabilityN}%`} sub="по волонтёрам" icon="check" />
-        <StatCard label="Собрано на помощь" value={`${raisedN.toLocaleString('ru-RU')} ₸`} sub="по кампаниям" icon="heart" accent="#9a3b34" tint="#F3E3E1" />
         <StatCard label="На модерации" value={pendingN} sub={stats ? `${openReportsN} жалоб на рассмотрении` : 'требуют внимания'} subTone="maybe" icon="filter" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Событий в ленте" value={events.length} sub="активных" icon="feed" />
       </div>

@@ -65,6 +65,7 @@ export default function CoordGathering() {
   const booting = want != null && status !== 'ready' && numericId(g.id) !== want;
 
   const c = counts(g.participants);
+  const confirmedCount = (g.participants || []).filter((p) => p.answer === 'yes' && p.confirmed).length;
   const title = isRu ? g.titleRu : g.titleKz;
   const whenPlace = `${isRu ? g.dateRu : g.dateKz} · ${g.time} · ${isRu ? g.placeRu : g.placeKz}`;
 
@@ -82,7 +83,7 @@ export default function CoordGathering() {
   // Роль под именем — ровно то, ради чего фича и нужна координатору: не «занято 3 из 5»,
   // а кто именно раздаёт мешки. Без роли — обычная строка истории, как раньше.
   const rowSub = (p) => {
-    const role = isRu ? p.roleTitleRu : p.roleTitleKz;
+    const role = (p.roleIds || (p.roleId ? [p.roleId] : [])).map((id) => (g.roles || []).find((r) => r.id === id)).filter(Boolean).map((r) => isRu ? r.titleRu : r.titleKz).join(', ');
     return role ? `${role} · ${histText(p)}` : histText(p);
   };
   const group = (kind, list, label) => (
@@ -128,6 +129,7 @@ export default function CoordGathering() {
                   <>
                     <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 30, lineHeight: 1.14, letterSpacing: '-.02em', margin: '0 0 6px', textWrap: 'balance' }}>{title}</h1>
                     <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>{whenPlace}</div>
+                    <div style={{ marginTop: 10, color: 'var(--yard)' }}>{isRu ? 'Подтвердили участие' : 'Қатысуын растады'}: {confirmedCount} · {isRu ? 'Ещё нужны волонтёры' : 'Әлі қажет еріктілер'}: {Math.max(0, (g.needed || 0) - confirmedCount)}</div>
                   </>
                 )}
               </div>

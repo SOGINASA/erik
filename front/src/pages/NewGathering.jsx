@@ -7,6 +7,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { usePlatformStore } from '../store/usePlatformStore';
 import { useIsDesktop } from '../lib/nav';
 import { api } from '../lib/api';
+import ImageUpload from '../components/ImageUpload';
 import { THEMES, todayISO } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import { Field, FieldLabel, Stepper } from '../components/ui/controls';
@@ -247,6 +248,7 @@ export default function NewGathering() {
           {/* Обложка (необязательно): ссылка на картинку + превью. Пусто → карточка ленты
               покажет тематический тинт (EventCard рисует img только при наличии image). */}
           <div>
+            <ImageUpload onUploaded={(url) => setForm((s) => ({ ...s, imageUrl: url }))} />
             <Field label={t.fCover} type="url" inputMode="url" value={form.imageUrl} onChange={up('imageUrl')} placeholder={t.fCoverPh} error={errors.imageUrl} />
             {coverOk && (
               <div style={{ marginTop: 10, height: 104, borderRadius: 'var(--r-s)', overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--paper)' }}>

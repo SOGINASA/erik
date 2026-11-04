@@ -1,3 +1,4 @@
+import ParticipationConfirmation from '../components/ParticipationConfirmation';
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
@@ -97,7 +98,7 @@ export default function GuestGathering() {
     if (!canRespond) { requireAccount(); return; }
     if (roleBusy) return;
     setRoleBusy(true);
-    const r = await pickGuestRole(code, roleId);
+    const r = await pickGuestRole(code, (g.myRoleIds || (g.myRoleId ? [g.myRoleId] : [])).includes(roleId) ? (g.myRoleIds || [g.myRoleId]).filter((id) => id !== roleId) : [...(g.myRoleIds || (g.myRoleId ? [g.myRoleId] : [])), roleId]);
     setRoleBusy(false);
     // 409 — место заняли, пока человек выбирал. Стор уже перерисовал остатки из тела
     // ответа, поэтому просто объясняем, что произошло: список рядом уже актуальный.
@@ -202,7 +203,7 @@ export default function GuestGathering() {
   // Роли сбора приезжают в публичном виде агрегатами (сколько занято из скольких) —
   // это тот же класс данных, что comingCount. Имён и прогноза здесь нет и быть не должно.
   const roles = g.roles || [];
-  const myRoleId = g.myRoleId || null;
+  const myRoleIds = g.myRoleIds || (g.myRoleId ? [g.myRoleId] : []);
   // Новичку сначала показываем роли «можно без опыта». Гость без профиля — тоже новичок.
   const orderedRoles = sortRolesForViewer(roles, !me || !me.eventsAttended);
 
@@ -242,6 +243,7 @@ export default function GuestGathering() {
           {/* Выбор роли — ИНЛАЙНОМ в блоке успеха, а не модалкой поверх него: человек
               только что увидел «ты записан», и всплывающее окно погасило бы этот момент.
               Показываем после 'yes'/'maybe'; при 'no' роль не нужна и место уже свободно. */}
+          <ParticipationConfirmation eventId={g.id} answer={answer} />
           {answer !== 'no' && roles.length > 0 && (
             <div style={{ marginTop: 16, padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
@@ -249,8 +251,8 @@ export default function GuestGathering() {
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--ink-2)', marginBottom: 12 }}>
                 {isRu
-                  ? 'Ты уже записан. Роль можно выбрать сейчас или потом.'
-                  : 'Сен тіркелдің. Рөлді қазір де, кейін де таңдауға болады.'}
+                  ? 'Ты уже записан. Можно выбрать несколько ролей.'
+                  : 'Сен тіркелдің. Бірнеше рөлді таңдауға болады.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {orderedRoles.map((r) => (
@@ -258,8 +260,8 @@ export default function GuestGathering() {
                     key={r.id}
                     role={r}
                     isRu={isRu}
-                    selected={r.id === myRoleId}
-                    disabled={roleBusy || (r.free === 0 && r.id !== myRoleId)}
+                    selected={myRoleIds.includes(r.id)}
+                    disabled={roleBusy || (r.free === 0 && !myRoleIds.includes(r.id))}
                     onClick={() => chooseRole(r.id)}
                   />
                 ))}

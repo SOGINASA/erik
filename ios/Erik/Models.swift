@@ -65,19 +65,6 @@ struct Org: Codable, Identifiable, Hashable {
     var following: Bool?
 }
 
-struct Charity: Codable, Identifiable, Hashable {
-    let id: Int
-    var org: Int?
-    var cityId: String?
-    var titleRu: String?
-    var titleKz: String?
-    var kind: String?
-    var goal: Int?
-    var raised: Int?
-    var unit: String?
-    var image: String?
-}
-
 struct LeaderVolunteer: Codable, Identifiable, Hashable {
     let id: Int
     var name: String?
@@ -156,7 +143,6 @@ struct EventResponse: Codable { var event: Event }
 struct ParticipantsResponse: Codable { var participants: [Participant] }
 struct OrgsResponse: Codable { var orgs: [Org] }
 struct OrgResponse: Codable { var org: Org }
-struct CharityResponse: Codable { var charity: [Charity] }
 struct LeaderboardResponse: Codable { var volunteers: [LeaderVolunteer] }
 struct UserResponse: Codable { var user: UserProfile }
 struct NotificationsResponse: Codable {
@@ -179,7 +165,6 @@ struct AdminStats: Codable {
     var activeEvents: Int?
     var pendingEvents: Int?
     var hoursTotal: Int?
-    var raised: Int?
     var avgReliability: Int?
 }
 

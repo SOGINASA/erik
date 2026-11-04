@@ -43,15 +43,7 @@ export const ORGS = [
 const COVERS = '/assets/covers';
 const THEMES_WITH_COVER = ['eco', 'elderly', 'animals', 'blood', 'edu', 'trees',
   'homeless', 'medical', 'disaster', 'sport', 'culture', 'it'];
-// ключевик запроса помощи -> имя файла (те же пары, что в CHARITY_IMG на бэкенде)
-const CHARITY_IMG = {
-  'cleanup,tools': 'charity-tools',
-  'warm,clothes': 'charity-clothes',
-  'pet,food': 'charity-petfood',
-  'books,school': 'charity-books',
-};
 export const themeImage = (theme) => `${COVERS}/${THEMES_WITH_COVER.includes(theme) ? theme : 'eco'}.jpg`;
-const charityImage = (kw) => `${COVERS}/${CHARITY_IMG[kw] || 'eco'}.jpg`;
 
 /* ---- Даты демо ---------------------------------------------------- *
  * Раньше здесь была константа TODAY_ISO = '2026-07-18': от неё считались
@@ -161,13 +153,6 @@ export const CONVOS = [
   { id: 'c2', name: 'Ерлан (координатор)', role: 'Координатор', msgs: [{ me: false, txt: 'Можешь взять с собой ещё пару человек?', t: 'вчера' }, { me: true, txt: 'Да, позову соседей', t: 'вчера' }] },
   { id: 'c3', name: 'Лапа помощи', role: 'НКО', msgs: [{ me: false, txt: 'Напоминаем: выгул собак в 9:00', t: '2 дн' }] },
   { id: 'c4', name: 'Серебряный возраст', role: 'НКО', msgs: [{ me: false, txt: 'Апа передаёт вам огромное спасибо ❤', t: '3 дн' }] },
-];
-
-export const CHARITY = [
-  { id: 'ch1', titleRu: 'Инвентарь для субботников', titleKz: 'Сенбілікке құрал-жабдық', org: 'o1', cityId: 'pet', kind: 'money', goal: 150000, raised: 98000, unit: '₸', image: charityImage('cleanup,tools') },
-  { id: 'ch2', titleRu: 'Тёплые вещи для приюта', titleKz: 'Баспанаға жылы киім', org: 'o2', cityId: 'alm', kind: 'items', goal: 200, raised: 134, unit: 'вещей', image: charityImage('warm,clothes') },
-  { id: 'ch3', titleRu: 'Корм для приюта «Лапа»', titleKz: '«Лапа» баспанасына жем', org: 'o3', cityId: 'alm', kind: 'money', goal: 90000, raised: 71500, unit: '₸', image: charityImage('pet,food') },
-  { id: 'ch4', titleRu: 'Учебники сельским школам', titleKz: 'Ауыл мектептеріне оқулық', org: 'o5', cityId: 'shy', kind: 'items', goal: 500, raised: 210, unit: 'книг', image: charityImage('books,school') },
 ];
 
 // Детерминированный сбор-демо: 14 «да», 24 «может», 7 «нет» с правдоподобной историей.

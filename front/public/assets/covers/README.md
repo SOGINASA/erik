@@ -28,10 +28,6 @@
 
 | файл | поисковый запрос | о чём карточка |
 |---|---|---|
-| `charity-tools.jpg` | cleaning tools rakes gloves garden | инвентарь для субботников |
-| `charity-clothes.jpg` | folded warm clothes donation box | тёплые вещи для приюта |
-| `charity-petfood.jpg` | dog food bowl animal shelter | корм для приюта «Лапа» |
-| `charity-books.jpg` | stack of school textbooks | учебники сельским школам |
 
 ## Где искать
 

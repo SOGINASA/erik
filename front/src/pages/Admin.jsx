@@ -13,14 +13,13 @@ import AdminUsers from '../components/admin/AdminUsers';
 import AdminOrgs from '../components/admin/AdminOrgs';
 import AdminEvents from '../components/admin/AdminEvents';
 import AdminModeration from '../components/admin/AdminModeration';
-import AdminCharity from '../components/admin/AdminCharity';
 import AdminCities from '../components/admin/AdminCities';
 import AdminBroadcast from '../components/admin/AdminBroadcast';
 import AdminAnalytics from '../components/admin/AdminAnalytics';
 
 const SECTION = {
   overview: AdminOverview, users: AdminUsers, orgs: AdminOrgs, events: AdminEvents,
-  moderation: AdminModeration, charity: AdminCharity, cities: AdminCities, broadcast: AdminBroadcast, analytics: AdminAnalytics,
+  moderation: AdminModeration, cities: AdminCities, broadcast: AdminBroadcast, analytics: AdminAnalytics,
 };
 
 // Админ-панель: каждый раздел — свой роут /admin/<id>. Навигация — в сайдбаре

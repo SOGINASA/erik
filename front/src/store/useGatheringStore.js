@@ -354,7 +354,7 @@ export const useGatheringStore = create((set, get) => ({
         ...s.gathering, comingCount: res.comingCount, myAnswer: answer,
         // Ответ 'no' освобождает место — сервер уже это сделал, отражаем и локально,
         // иначе блок выбора роли остался бы с чужой подписью.
-        roles: res.roles || s.gathering.roles, myRoleId: res.roleId,
+        roles: res.roles || s.gathering.roles, myRoleId: res.roleId, myRoleIds: res.roleIds,
       } } : {}));
       return { ok: true, data: res };
     } catch (err) {
@@ -371,7 +371,7 @@ export const useGatheringStore = create((set, get) => ({
   pickGuestRole: async (code, roleId) => {
     const answer = (get().gathering && get().gathering.myAnswer) || 'yes';
     const r = await commit({
-      call: () => api.putRsvp(code, answer, { roleId }),
+      call: () => api.putRsvp(code, answer, Array.isArray(roleId) ? { roleIds: roleId } : { roleId }),
       okRu: 'Роль выбрана', okKz: 'Рөл таңдалды',
       errRu: 'Не удалось выбрать роль', errKz: 'Рөлді таңдау мүмкін болмады',
       silent: (err) => err && err.status === 409,   // «роль разобрали» — экран скажет сам
@@ -381,7 +381,8 @@ export const useGatheringStore = create((set, get) => ({
     set((s) => (s.gathering ? { gathering: {
       ...s.gathering,
       roles: fresh || s.gathering.roles,
-      myRoleId: r.ok ? roleId : s.gathering.myRoleId,
+      myRoleId: r.ok ? (Array.isArray(roleId) ? roleId[0] || null : roleId) : s.gathering.myRoleId,
+      myRoleIds: r.ok ? (r.data.roleIds || []) : s.gathering.myRoleIds,
     } } : {}));
     return r;
   },
@@ -706,7 +707,7 @@ export const useGatheringStore = create((set, get) => ({
     if (numeric == null) return { ok: false };
     const answer = get().regs[eventId] || 'yes';
     const r = await commit({
-      call: () => api.setEventReg(numeric, answer, { roleId }),
+      call: () => api.setEventReg(numeric, answer, Array.isArray(roleId) ? { roleIds: roleId } : { roleId }),
       okRu: 'Роль выбрана', okKz: 'Рөл таңдалды',
       errRu: 'Не удалось выбрать роль', errKz: 'Рөлді таңдау мүмкін болмады',
       // 409 «роль уже разобрали» — не сбой связи, а гонка за место: экран покажет свой

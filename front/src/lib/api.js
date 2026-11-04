@@ -131,7 +131,7 @@ export const api = {
   readAllNotifications: () => request('/notifications/read-all', { method: 'POST' }),
   pushSubscribe: (body) => request('/push/subscribe', { method: 'POST', body }), // {endpoint, keys:{p256dh,auth}}
 
-  // платформа (P2a): каталог, лента, НКО, помощь, рейтинг, подписки
+  // платформа (P2a): каталог, лента, НКО, рейтинг, подписки
   getCities: () => request('/cities'),
   getThemes: () => request('/themes'),
   getBadges: () => request('/badges'),
@@ -153,15 +153,17 @@ export const api = {
   myRoleRequest: () => request('/me/role-request'),
   createRoleRequest: (body = {}) => request('/me/role-request', { method: 'POST', body }), // {role?, message?}
   myEvents: () => request('/me/events'),   // события, на которые волонтёр записался («Мои мероприятия»)
+  uploadImage: (data) => request('/uploads/images', { method: 'POST', body: { data } }),
+  getOrgReviews: (id) => request(`/orgs/${id}/reviews`),
+  postOrgReview: (id, body) => request(`/orgs/${id}/reviews`, { method: 'POST', body }),
+  getEventRegistration: (id) => request(`/events/${id}/registration`),
+  confirmParticipation: (id) => request(`/events/${id}/confirm`, { method: 'POST' }),
   getOrgs: () => request('/orgs'),
   createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
   getOrg: (id) => request(`/orgs/${id}`),
   followOrg: (id) => request(`/orgs/${id}/follow`, { method: 'POST' }),
   unfollowOrg: (id) => request(`/orgs/${id}/follow`, { method: 'DELETE' }),
   myFollows: () => request('/me/follows'),
-  getCharity: () => request('/charity'),
-  createCharity: (body) => request('/charity', { method: 'POST', body }),   // НКО создаёт сбор помощи
-  donateCharity: (id, body) => request(`/charity/${id}/donate`, { method: 'POST', body }),
   leaderboardVolunteers: () => request('/leaderboard/volunteers'),
   userPublic: (id) => request(`/users/${id}`),
   userMe: () => request('/users/me'),
@@ -217,7 +219,6 @@ export const api = {
   rejectEvent: (id, reason = '') => request(`/admin/events/${id}/reject`, { method: 'POST', body: { reason } }), // reason уходит в тело, пустой допустим
   sendBroadcast: (body) => request('/admin/broadcast', { method: 'POST', body }), // {segment, title, textRu, textKz, cityId?}
   adminAnalytics: () => request('/admin/analytics'),
-  closeCharity: (id) => request(`/admin/charity/${id}/close`, { method: 'POST' }),
 
   // ── аккаунт-авторизация (email/пароль) — сосуществует с device-сессией ──
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),        // {identifier, password}

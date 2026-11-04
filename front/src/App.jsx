@@ -28,7 +28,6 @@ import Profile from './pages/Profile';
 import Org from './pages/Org';
 import Leaderboard from './pages/Leaderboard';
 import ForecastQuality from './pages/ForecastQuality';
-import Charity from './pages/Charity';
 import Messages from './pages/Messages';
 import Convo from './pages/Convo';
 import Notifications from './pages/Notifications';
@@ -87,6 +86,8 @@ export default function App() {
         <Route path="/consent" element={<Legal documentKey="consent" />} />
         <Route path="/legal" element={<Navigate to="/privacy" replace />} />
         <Route path="/project-rights" element={<ProjectRights />} />
+        <Route path="/charity/*" element={<Navigate to="/feed" replace />} />
+        <Route path="/admin/charity/*" element={<Navigate to="/admin" replace />} />
         <Route path="/g/:code" element={<GuestGathering />} />
         <Route element={<Shell />}>
           <Route path="/feed" element={<Feed />} />
@@ -105,7 +106,6 @@ export default function App() {
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/forecast-quality" element={<ForecastQuality />} />
-          <Route path="/charity" element={<Charity />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/messages/:id" element={<Convo />} />
           <Route path="/notifications" element={<Notifications />} />

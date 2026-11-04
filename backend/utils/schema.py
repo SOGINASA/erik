@@ -37,6 +37,7 @@ SCHEMA_MARKERS = [
     ('b8c9d0e1f2a3', ('role_requests', None)),
     ('c9d0e1f2a3b4', ('legal_consents', None)),
     ('d0e1f2a3b4c5', ('users', 'token_version')),
+    ('e1f2a3b4c5d6', ('participants', 'confirmed_at')),
 ]
 
 SCHEMA_HEAD = SCHEMA_MARKERS[-1][0]

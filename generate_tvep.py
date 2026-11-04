@@ -430,7 +430,7 @@ def page1(c, d):
         ('Координатор', 'создание сбора, короткий код и ссылка для чата, прогноз явки с интервалом, '
                         'отметка присутствия с офлайн-синком, адресные напоминания сомневающимся.'),
         ('НКО / организатор', 'штаб с заявками волонтёров (навыки, сообщение, апрув), база волонтёров, '
-                              'аналитика, рассылка, сборы помощи и пожертвования.'),
+                              'аналитика и рассылка.'),
         ('Платформа', 'рейтинг, сообщения, уведомления, модерация сборов и жалоб в админ-панели.'),
     ], label_w=88, size=S_SMALL, gap=1.2)
 
@@ -513,8 +513,7 @@ def page2(c, d):
          'число прогноза приходит с сервера; lib/forecast.js — только фолбэк'], accent=YARD)
     box(c, ix + iw * 0.65, y - 43, iw * 0.35, 43, 'Внешние API',
         ['погодный API      -> ctx.weather_factor',
-         'платёжный сервис  -> Donation',
-         'НЕ ПОДКЛЮЧЕНЫ: интерфейсы готовы'], dashed=True, fill=PAPER, title_color=INK3)
+         'НЕ ПОДКЛЮЧЕН: интерфейс готов'], dashed=True, fill=PAPER, title_color=INK3)
 
     arrow(c, ix + iw * 0.31, y - 43, ix + iw * 0.31, y - 60)
     c.setFont(MONO, S_MONO_S)
@@ -537,7 +536,7 @@ def page2(c, d):
          'ядро: Gathering · Participant · GatheringCoordinator',
          'AttendanceRecord — неизменяемый журнал явки',
          'ForecastParams — параметры модели в БД, не в коде',
-         'соц-слой: Org · Charity · Follow · Message · Report'], accent=MAYBE)
+         'соц-слой: Org · Follow · Message · Report'], accent=MAYBE)
     box(c, ix + iw * 0.58, y - 192, iw * 0.42, 59, 'ML · пакет ml/ — ОСНОВНОЙ ИСТОЧНИК ЧИСЛА',
         ['artifacts/*.joblib — закоммичен, в образе Docker',
          'HistGradientBoosting + изотоническая калибровка',

@@ -13,6 +13,9 @@ import { profileHref } from '../lib/nav';
 import { Container, BackButton } from '../components/Container';
 import PersonRow from '../components/PersonRow';
 import Icon from '../components/Icon';
+import MessageParticipantButton from '../components/MessageParticipantButton';
+import ParticipationConfirmation from '../components/ParticipationConfirmation';
+import { OrgContacts } from '../components/OrgPublicDetails';
 
 // Лента держит демо и серверные события под одним видом id ('e'+число) — по самому id
 // реальный сбор от выдуманного не отличить. Признак — коллекция: пока events это ТА ЖЕ
@@ -288,6 +291,8 @@ export default function Event() {
           </button>
         )}
 
+        <ParticipationConfirmation eventId={!isDemoEvent ? numericId : null} answer={reg} />
+
         {/* Ссылка на событие — та же карточка, что у координатора (CoordGathering): код,
             «Скопировать» и системный «Поделиться». Своё событие показывает её и здесь:
             человек пришёл на страницу события, а не на дашборд, и гонять его туда за
@@ -370,16 +375,10 @@ export default function Event() {
           </div>
         )}
 
-        {/* Заявка организатору: навыки + сообщение (для чужих событий) */}
-        {!ev.mine && (
-          <button
-            className="erik-btn erik-btn-secondary"
-            onClick={() => (name ? openSheet('apply', ev.id) : openSheet('auth'))}
-            style={{ width: '100%', height: 48, marginTop: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-          >
-            <Icon name="send" size={17} stroke={1.7} />{t.mgApplyCta}
-          </button>
-        )}
+        {!ev.mine && <section style={{ marginTop: 24 }}>
+          <p>{isRu ? 'Хотите сотрудничать с организацией на постоянной основе? Напишите организаторам лично.' : 'Ұйыммен тұрақты жұмыс істегіңіз келе ме? Ұйымдастырушыларға жеке жазыңыз.'}</p>
+          {org.id ? <OrgContacts org={org} /> : <div><p>{ev.organizerName}</p><MessageParticipantButton userId={ev.organizerUserId} /></div>}
+        </section>}
 
         {/* Пожаловаться на событие (пользовательская модерация) */}
         {!ev.mine && (
