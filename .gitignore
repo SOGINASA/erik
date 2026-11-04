@@ -13,6 +13,9 @@ __pycache__/
 # Окружение
 /backend/.env
 /backend/.env.production*
+/backend/.env.*
+!/backend/.env.example
+/backend/docker-compose.override.yml
 
 # База данных
 /backend/database/*.db

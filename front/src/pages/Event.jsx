@@ -375,9 +375,11 @@ export default function Event() {
           </div>
         )}
 
-        {!ev.mine && <section style={{ marginTop: 24 }}>
+        {!ev.mine && <section className="community-section" style={{ marginTop: 24 }}>
+          <h3>{isRu ? 'Сотрудничать надолго' : 'Ұзақ мерзімді ынтымақтастық'}</h3>
           <p>{isRu ? 'Хотите сотрудничать с организацией на постоянной основе? Напишите организаторам лично.' : 'Ұйыммен тұрақты жұмыс істегіңіз келе ме? Ұйымдастырушыларға жеке жазыңыз.'}</p>
-          {org.id ? <OrgContacts org={org} /> : <div><p>{ev.organizerName}</p><MessageParticipantButton userId={ev.organizerUserId} /></div>}
+          {org.id ? <OrgContacts org={org} /> : <p>{ev.organizerName}</p>}
+          <div style={{ marginTop: 16 }}><MessageParticipantButton userId={ev.organizerUserId} label={isRu ? 'Написать организатору' : 'Ұйымдастырушыға жазу'} /></div>
         </section>}
 
         {/* Пожаловаться на событие (пользовательская модерация) */}

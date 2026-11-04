@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from models import db, User
+from services.identity import make_tokens
 
 
 @pytest.mark.parametrize('enabled', [False, True])
@@ -15,15 +16,15 @@ def test_production_demo_login(client, app, monkeypatch, enabled):
     user.set_password('admin123')
     db.session.add(user)
     db.session.commit()
+    access, refresh = make_tokens(user)
+    assert client.get('/api/me', headers={'Authorization': f'Bearer {access}'}).status_code == 401
+    assert client.post('/api/auth/refresh', headers={'Authorization': f'Bearer {refresh}'}).status_code == 401
 
     response = client.post('/api/session', json={'deviceId': 'demo-admin'})
-    assert response.status_code == (200 if enabled else 403)
-    if enabled:
-        assert response.json['user']['user_type'] == 'admin'
-        assert response.json['token']
+    assert response.status_code == 403
     response = client.post('/api/auth/login', json={
         'email': 'admin@erik.kz', 'password': 'admin123'})
-    assert response.status_code == (200 if enabled else 401)
+    assert response.status_code == 401
 
 
 @pytest.mark.parametrize('demo_setting', [None, '1', '0'])
@@ -41,7 +42,7 @@ def test_production_config_accepts_demo_setting(monkeypatch, demo_setting):
         monkeypatch.setenv('ALLOW_DEMO_LOGIN', demo_setting)
     monkeypatch.delenv('REQUIRE_LEGAL_CONFIGURATION', raising=False)
     config = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'config.py'))
-    assert config['ProductionConfig'].ALLOW_DEMO_LOGIN is (demo_setting != '0')
+    assert config['ProductionConfig'].ALLOW_DEMO_LOGIN is False
     assert config['ProductionConfig'].REQUIRE_LEGAL_CONFIGURATION is False
     assert config['validate_config']()
     monkeypatch.setenv('ERIK_SEED_DEMO', '1')

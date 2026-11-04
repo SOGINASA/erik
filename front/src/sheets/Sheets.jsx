@@ -163,8 +163,8 @@ function CodeSheet() {
   const [code, setCode] = useState('');
   return (
     <Sheet open onClose={close} title={t.codeTitle} maxWidth={400}>
-      <Field value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoFocus placeholder="PARK18" inputStyle={{ fontFamily: 'var(--fm)', letterSpacing: '.15em', textAlign: 'center', fontSize: 20 }} />
-      <Button full size="lg" style={{ marginTop: 16 }} onClick={() => { close(); navigate(`/g/${code || 'PARK18'}`); }}>{t.open}</Button>
+      <Field value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoFocus placeholder="ABC123" inputStyle={{ fontFamily: 'var(--fm)', letterSpacing: '.15em', textAlign: 'center', fontSize: 20 }} />
+      <Button full size="lg" disabled={!code.trim()} style={{ marginTop: 16 }} onClick={() => { close(); navigate(`/g/${encodeURIComponent(code.trim())}`); }}>{t.open}</Button>
     </Sheet>
   );
 }
@@ -336,7 +336,7 @@ function PersonSheet() {
 
   return (
     <Sheet open onClose={close} title={p.name || ''}>
-      <MessageParticipantButton userId={p.userId} />
+      <MessageParticipantButton userId={p.userId} name={p.name} onOpened={close} />
       {profile ? (
         <button
           type="button"
@@ -468,6 +468,7 @@ function SettingsSheet() {
   const cities = usePlatformStore((s) => s.cities);
   const [orgs, setOrgs] = useState([]);   // мои НКО для привязки сбора (пусто = без НКО)
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Список моих организаций для селекта привязки. Ошибку глотаем: без НКО селект
   // просто остаётся с одним пунктом «Без НКО».
@@ -482,7 +483,7 @@ function SettingsSheet() {
   // непрошедшее сохранение выглядит применённым — заголовок у координатора показывал бы
   // новый текст до следующего loadCoord.
   const save = async () => {
-    if (busy) return;
+    if (busy || uploading) return;
     setBusy(true);
     const r = await saveGathering();
     setBusy(false);
@@ -515,7 +516,7 @@ function SettingsSheet() {
           <option value="">{isRu ? 'Без НКО' : 'ҮЕҰ жоқ'}</option>
           {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </SheetSelect>
-        <ImageUpload onUploaded={setImage} />
+        <ImageUpload onUploaded={setImage} value={g.image} disabled={busy} onBusyChange={setUploading} />
         <Field label={isRu ? 'Обложка (ссылка)' : 'Мұқаба (сілтеме)'} value={g.image || ''} onChange={(e) => setImage(e.target.value)} placeholder="https://…" />
         <div>
           <FieldLabel>{t.fNeeded}</FieldLabel>
@@ -523,7 +524,7 @@ function SettingsSheet() {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
-        <Button full size="lg" loading={busy} onClick={save}>{t.save}</Button>
+        <Button full size="lg" loading={busy} disabled={uploading} onClick={save}>{t.save}</Button>
         <Button full variant="ghost" onClick={() => openSheet('confirm', 'delete')} style={{ color: 'var(--danger)' }}>{t.deleteGathering}</Button>
       </div>
     </Sheet>
@@ -544,37 +545,63 @@ function GuestSheet() {
   );
 }
 
-function RegisterSheet() {
+export function RegisterSheet() {
   const t = useT();
+  const isRu = useLang() === 'ru';
   const close = useUiStore((s) => s.closeSheet);
-  const openSheet = useUiStore((s) => s.openSheet);
   const eventId = useUiStore((s) => s.sheetPayload);
   const registerEvent = useGatheringStore((s) => s.registerEvent);
   const cur = useGatheringStore((s) => s.regs)[eventId];
   const events = usePlatformStore((s) => s.events);
   const [busy, setBusy] = useState(false);
+  const ev = events.find((e) => e.id === eventId);
+  const [answer, setAnswer] = useState(cur || 'yes');
+  const [roles, setRoles] = useState(ev?.roles || []);
+  const [selected, setSelected] = useState(ev?.myRoleIds || []);
+  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setReady(false);
+    setError('');
+    api.getEvent(String(eventId).replace(/^e/, '')).then(({ event }) => {
+      if (!alive) return;
+      setRoles(event.roles || []);
+      setSelected(event.myRoleIds || []);
+      setReady(true);
+    }).catch(() => { if (alive) setError(isRu ? 'Не удалось загрузить роли. Попробуйте ещё раз.' : 'Рөлдерді жүктеу мүмкін болмады. Қайталап көріңіз.'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [eventId, isRu, retry]);
 
-  // Запись остаётся одно-тапной: тап по ответу закрывает шторку, как и раньше. Роль
-  // предлагаем ПОСЛЕ, и только когда сервер подтвердил запись — раньше здесь стоял
-  // fire-and-forget (`registerEvent(...); close();`), и шторка ролей открылась бы даже
-  // при офлайне, когда оптимистичная запись уже откатилась.
-  const pick = async (a) => {
-    if (busy) return;
+  const submit = async () => {
+    if (busy || loading || !ready) return;
     setBusy(true);
-    const r = await registerEvent(eventId, a);
+    setError('');
+    const r = await registerEvent(eventId, answer, answer === 'no' ? [] : selected);
     setBusy(false);
-    close();
-    if (!r || !r.ok || a === 'no') return;   // 'no' роль не спрашивает: человек не придёт
-    const roles = (r.data && r.data.roles) || (events.find((e) => e.id === eventId) || {}).roles || [];
-    if (roles.length) openSheet('pickRole', { eventId, roles });
+    if (r?.ok) { close(); return; }
+    if (r?.error?.data?.roles) setRoles(r.error.data.roles);
+    setError(r?.error?.status === 409
+      ? (isRu ? 'Место в одной из ролей уже заняли. Измените выбор и отправьте ещё раз.' : 'Рөлдердің бірі алынып қойды. Таңдауды өзгертіп, қайта жіберіңіз.')
+      : (isRu ? 'Ответ не сохранён. Попробуйте ещё раз.' : 'Жауап сақталмады. Қайталап көріңіз.'));
   };
 
   return (
     <Sheet open onClose={close} title={t.registerTitle} maxWidth={420}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <AnswerButton kind="yes" label={t.ansYes} selected={cur === 'yes'} onClick={() => pick('yes')} />
-        <AnswerButton kind="maybe" label={t.ansMaybe} selected={cur === 'maybe'} onClick={() => pick('maybe')} />
-        <AnswerButton kind="no" label={t.ansNo} selected={cur === 'no'} onClick={() => pick('no')} />
+        {['yes', 'maybe', 'no'].map((kind) => <AnswerButton key={kind} kind={kind} label={kind === 'yes' ? t.ansYes : kind === 'maybe' ? t.ansMaybe : t.ansNo} selected={answer === kind} disabled={busy} onClick={() => setAnswer(kind)} />)}
+        {loading && <p role="status">{isRu ? 'Загружаем роли…' : 'Рөлдер жүктелуде…'}</p>}
+        {!loading && roles.length > 0 && answer !== 'no' && <>
+          <p>{isRu ? 'Чем поможете? Можно выбрать несколько ролей.' : 'Немен көмектесесіз? Бірнеше рөлді таңдауға болады.'}</p>
+          {roles.map((role) => <RoleRow key={role.id} role={role} isRu={isRu} selected={selected.includes(role.id)} disabled={busy || (role.free === 0 && !selected.includes(role.id))} onClick={() => setSelected((ids) => ids.includes(role.id) ? ids.filter((id) => id !== role.id) : [...ids, role.id])} />)}
+        </>}
+        {error && <p role="alert" className="community-error">{error}</p>}
+        {error && !ready && <Button variant="ghost" onClick={() => setRetry((n) => n + 1)}>{isRu ? 'Загрузить заново' : 'Қайта жүктеу'}</Button>}
+        <Button full loading={busy} disabled={loading || !ready} onClick={submit}>{isRu ? 'Сохранить ответ' : 'Жауапты сақтау'}</Button>
       </div>
     </Sheet>
   );
@@ -728,6 +755,7 @@ function ApplicantSheet() {
         </div>
       )}
 
+      <div style={{ marginBottom: 16 }}><MessageParticipantButton userId={a.userId} name={a.name} onOpened={close} /></div>
       {pending ? (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -869,6 +897,7 @@ export function RoleRow({ role, selected, disabled, isRu, onClick }) {
       type="button"
       className="erik-btn"
       disabled={disabled}
+      aria-pressed={!!selected}
       onClick={onClick}
       style={{
         position: 'relative', width: '100%', minHeight: 56, padding: '10px 46px 10px 16px',
@@ -889,7 +918,7 @@ export function RoleRow({ role, selected, disabled, isRu, onClick }) {
         )}
       </span>
       <span style={{ flex: 'none', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-        {disabled && !selected ? (isRu ? 'мест нет' : 'орын жоқ') : slots}
+        {role.free === 0 && !selected ? (isRu ? 'мест нет' : 'орын жоқ') : slots}
       </span>
       {selected && (
         <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--yard)' }}>
@@ -923,7 +952,7 @@ function PickRoleSheet() {
   // Роли берём из ленты (они приезжают в карточке события), но если запись только что
   // прошла — свежий список из ответа сервера точнее: в нём уже учтён наш собственный слот.
   const ev = events.find((e) => e.id === payload.eventId) || {};
-  const roles = payload.roles || ev.roles || [];
+  const roles = ev.roles || payload.roles || [];
   const [selected, setSelected] = useState(ev.myRoleIds || (ev.myRoleId ? [ev.myRoleId] : []));
   const isNewbie = !me || !me.eventsAttended;
   const ordered = sortRolesForViewer(roles, isNewbie);

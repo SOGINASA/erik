@@ -242,6 +242,23 @@ def seed_catalogs_cmd():
     click.echo('Reference data ready.')
 
 
+@app.cli.command('purge-demo')
+@click.option('--apply', is_flag=True, help='Apply the plan after taking a database backup')
+@click.option('--admin-password-file', type=click.Path(exists=True, dir_okay=False),
+              help='Protected UTF-8 file with a replacement for a legacy demo admin password')
+def purge_demo_cmd(apply, admin_password_file):
+    """Preview or remove legacy demo identities and related records; preserve admins."""
+    import json
+    from pathlib import Path
+    from services.demo_cleanup import purge_demo_data
+    password = Path(admin_password_file).read_text(encoding='utf-8').strip() if admin_password_file else None
+    try:
+        result = purge_demo_data(apply=apply, admin_password=password)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 @app.cli.command()
 def create_admin():
     """Создать администратора"""

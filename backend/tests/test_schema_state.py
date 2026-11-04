@@ -65,6 +65,69 @@ def test_half_upgraded_db_is_not_mistaken_for_head(tmp_path):
     assert schema_lag(insp) == 'f6a7b8c9d0e1'           # и это отставание
 
 
+def test_new_tables_do_not_hide_missing_older_columns(tmp_path):
+    path = tmp_path / 'mixed.db'
+    _make_db(path, _AT_E5F6 + [
+        'CREATE TABLE gathering_roles (id INTEGER PRIMARY KEY)',
+        'CREATE TABLE role_requests (id INTEGER PRIMARY KEY)',
+        'CREATE TABLE legal_consents (id INTEGER PRIMARY KEY)',
+        'CREATE TABLE used_refresh_tokens (jti TEXT PRIMARY KEY)',
+    ])
+    assert detect_revision(_inspect(path)) == 'e5f6a7b8c9d0'
+
+
+def test_db_sync_repairs_old_data_after_create_all(tmp_path):
+    """The normal dev startup creates new tables but leaves old columns missing."""
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    from flask import Flask
+    from flask_migrate import Migrate, upgrade
+    from sqlalchemy import text
+    from models import db
+
+    backend = Path(__file__).resolve().parents[1]
+    path = tmp_path / 'legacy.db'
+    app = Flask('legacy-db-sync')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{path}'
+    db.init_app(app)
+    Migrate(app, db, directory=str(backend / 'migrations'))
+    with app.app_context():
+        upgrade(revision='e5f6a7b8c9d0')
+        db.session.execute(text("INSERT INTO users (id, full_name, device_id, role, "
+                                "user_type, is_active) VALUES "
+                                "(1, 'Existing Demo', 'demo-v0', 'vol', 'user', 1)"))
+        db.session.execute(text('DROP TABLE alembic_version'))
+        db.session.commit()
+        db.create_all()
+        db.session.execute(text("INSERT INTO role_requests "
+                                "(id, user_id, requested_role, status) "
+                                "VALUES (1, 1, 'coord', 'pending')"))
+        db.session.commit()
+        db.session.remove()
+        db.engine.dispose()
+
+    env = dict(os.environ, DATABASE_URL=f'sqlite:///{path}',
+               SKIP_DB_CREATE='1', FLASK_ENV='development', ALLOW_DEMO_LOGIN='1')
+    result = subprocess.run(
+        [sys.executable, '-m', 'flask', '--app', 'app', 'db-sync'],
+        cwd=backend, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    with sqlite3.connect(path) as connection:
+        assert connection.execute('SELECT version_num FROM alembic_version').fetchone() == (SCHEMA_HEAD,)
+        assert connection.execute('SELECT full_name, interests, token_version FROM users').fetchall() == [
+            ('Existing Demo', None, 0),
+        ]
+        assert connection.execute('SELECT user_id, requested_role, status FROM role_requests').fetchall() == [
+            (1, 'coord', 'pending'),
+        ]
+        columns = {row[1] for row in connection.execute('PRAGMA table_info(participants)')}
+        assert {'role_id', 'role_ids', 'confirmed_at'} <= columns
+
+
 def test_current_models_are_at_head(app):
     """create_all() по текущим моделям обязан определяться как head.
 

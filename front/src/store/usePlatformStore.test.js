@@ -10,6 +10,16 @@ jest.mock('../lib/api', () => ({
   setAuth: jest.fn(), onAuthRefresh: jest.fn(),
 }));
 
+test('initial platform state contains no synthetic people or activity', () => {
+  const state = usePlatformStore.getInitialState();
+  expect(state.events).toEqual([]);
+  expect(state.orgs).toEqual([]);
+  expect(state.volunteers).toEqual([]);
+  expect(state.me.name).toBe('');
+  expect(state.me.historyRu).toEqual([]);
+  expect(state.cities.every((c) => c.active === 0 && c.vol === 0)).toBe(true);
+});
+
 test('platform loading fetches volunteer events without contacting the retired charity API', async () => {
   api.getCities.mockResolvedValue({ cities: [] });
   api.getOrgs.mockResolvedValue({ orgs: [] });

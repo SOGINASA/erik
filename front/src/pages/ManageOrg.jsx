@@ -51,6 +51,7 @@ export default function ManageOrg() {
   const [cities, setCities] = useState([]);
   const [form, setForm] = useState({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '', ...orgProfileDefaults() });
   const [creating, setCreating] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Свои организации + справочники тем/городов для селектов. Справочники не критичны:
   // если не пришли, форма всё равно работает (селект просто пустой), поэтому их ошибку глушим.
@@ -88,7 +89,7 @@ export default function ManageOrg() {
   const applySaved = (updated) => setOrgs((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
 
   const submitCreate = async () => {
-    if (creating) return;
+    if (creating || uploading) return;
     if (!form.name.trim()) { showToast(t.orgNameReq); return; }
     setCreating(true);
     try {
@@ -104,8 +105,8 @@ export default function ManageOrg() {
       setOrgs((prev) => [res.org, ...prev]);
       setForm({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '' });
       showToast(t.orgCreated);
-    } catch (_) {
-      showToast(t.orgCreateErr);
+    } catch (err) {
+      showToast(err?.data?.error || t.orgCreateErr);
     } finally {
       setCreating(false);
     }
@@ -151,8 +152,8 @@ export default function ManageOrg() {
               <Select label={t.orgFCity} placeholder={t.orgFCityPh} value={form.cityId} onChange={upCreate('cityId')} options={cityOptions} />
               <Textarea label={t.orgFAboutRu} value={form.aboutRu} onChange={upCreate('aboutRu')} placeholder={t.orgFAboutPh} />
               <Textarea label={t.orgFAboutKz} value={form.aboutKz} onChange={upCreate('aboutKz')} placeholder={t.orgFAboutPh} />
-              <OrgProfileFields value={form} onChange={setForm} />
-              <Button icon="plus" loading={creating} onClick={submitCreate} style={{ alignSelf: 'flex-start' }}>{t.orgCreateCta}</Button>
+              <OrgProfileFields value={form} onChange={setForm} disabled={creating} onBusyChange={setUploading} />
+              <Button icon="plus" loading={creating} disabled={uploading} onClick={submitCreate} style={{ alignSelf: 'flex-start' }}>{t.orgCreateCta}</Button>
             </div>
           </>
         )}
@@ -184,10 +185,11 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
     aboutRu: org.aboutRu || '', aboutKz: org.aboutKz || '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const up = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   const save = async () => {
-    if (saving) return;
+    if (saving || uploading) return;
     if (!f.name.trim()) { showToast(t.orgNameReq); return; }
     setSaving(true);
     try {
@@ -201,8 +203,8 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
       });
       onSaved(res.org);
       showToast(t.orgSaved);
-    } catch (_) {
-      showToast(t.orgSaveErr);
+    } catch (err) {
+      showToast(err?.data?.error || t.orgSaveErr);
     } finally {
       setSaving(false);
     }
@@ -224,8 +226,8 @@ function OrgCard({ org, themeOptions, cityOptions, onSaved }) {
         <Textarea label={t.orgFAboutRu} value={f.aboutRu} onChange={up('aboutRu')} placeholder={t.orgFAboutPh} />
         <Textarea label={t.orgFAboutKz} value={f.aboutKz} onChange={up('aboutKz')} placeholder={t.orgFAboutPh} />
         <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.45 }}>{t.orgVerHint}</div>
-        <OrgProfileFields value={f} onChange={setF} />
-        <Button loading={saving} onClick={save} style={{ alignSelf: 'flex-start' }}>{t.orgSaveCta}</Button>
+        <OrgProfileFields value={f} onChange={setF} disabled={saving} onBusyChange={setUploading} />
+        <Button loading={saving} disabled={uploading} onClick={save} style={{ alignSelf: 'flex-start' }}>{t.orgSaveCta}</Button>
       </div>
     </div>
   );

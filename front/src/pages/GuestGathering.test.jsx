@@ -34,6 +34,7 @@ jest.mock('../store/useUiStore', () => ({ useUiStore: (select) => select({ showT
 jest.mock('../store/usePlatformStore', () => ({ usePlatformStore: (select) => select({ me: null }) }));
 jest.mock('../components/shell/Brand', () => ({ Logo: () => <span>erik</span>, LangToggle: () => null }));
 jest.mock('../components/LegalLinks', () => () => <a href="/privacy">Политика конфиденциальности</a>);
+jest.mock('../components/ParticipationConfirmation', () => () => null);
 jest.mock('../sheets/Sheets', () => ({ RoleRow: () => null, sortRolesForViewer: (roles) => roles }));
 
 beforeEach(() => {

@@ -131,7 +131,7 @@ export default function Org() {
           </button>
         )}
 
-        <OrgPublicDetails org={org} mine={mine} />
+        <OrgPublicDetails key={org.id} org={org} mine={mine} eventPhotos={orgEvents.map((event) => event.image)} />
 
         {/* События организации */}
         <div style={secTitle}>{t.orgEventsTitle}</div>

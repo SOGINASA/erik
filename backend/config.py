@@ -50,7 +50,7 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = ({'pool_pre_ping': True, 'pool_size': 5, 'max_overflow': 5}
         if SQLALCHEMY_DATABASE_URI.startswith('postgresql') else {})
     MAX_CONTENT_LENGTH = 1024 * 1024
-    ALLOW_DEMO_LOGIN = os.environ.get('ALLOW_DEMO_LOGIN', '1') == '1'
+    ALLOW_DEMO_LOGIN = False
     REDIS_URL = os.environ.get('REDIS_URL')
     TRUSTED_PROXY_HOPS = int(os.environ.get('TRUSTED_PROXY_HOPS', '0'))
 

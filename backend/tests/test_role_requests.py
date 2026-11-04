@@ -7,7 +7,7 @@
 import pytest
 from flask_jwt_extended import create_access_token
 
-from models import db, Notification, RoleRequest
+from models import db, Notification, RoleRequest, User, Gathering
 
 
 def _headers(user):
@@ -134,3 +134,46 @@ def test_queue_is_admin_only(client, user1, pending_request):
 def test_stats_count_pending_requests(client, admin_headers, pending_request):
     assert client.get('/api/admin/stats',
                       headers=admin_headers).get_json()['pendingRoleRequests'] == 1
+
+
+@pytest.mark.parametrize('role', ['coord', 'org'])
+def test_registration_requests_role_until_admin_approval(client, legal_acceptance, admin_headers, role):
+    response = client.post('/api/auth/register', json={
+        'nickname': 'neworganizer', 'password': 'test123456', 'full_name': 'Новый Организатор',
+        'role': role, 'legal': legal_acceptance,
+    })
+    assert response.status_code == 201
+    body = response.get_json()
+    user = db.session.get(User, body['user']['id'])
+    assert user.role == body['user']['role'] == 'vol'
+    assert body['roleRequest']['role'] == role
+    assert client.post('/api/gatherings', headers=_headers(user), json={}).status_code == 403
+    assert client.post(f"/api/admin/role-requests/{body['roleRequest']['id']}/approve", headers=admin_headers).status_code == 200
+    db.session.refresh(user)
+    assert user.role == role
+
+
+def test_session_and_profile_cannot_self_grant_role(client, legal_acceptance):
+    response = client.post('/api/session', json={
+        'deviceId': 'moderation-device', 'name': 'Новый Координатор', 'role': 'coord', 'legal': legal_acceptance,
+    })
+    assert response.status_code == 201
+    user = db.session.get(User, response.get_json()['user']['id'])
+    assert user.role == 'vol'
+    assert RoleRequest.query.filter_by(user_id=user.id).count() == 1
+    assert client.patch('/api/me', headers=_headers(user), json={'role': 'org'}).status_code == 200
+    db.session.refresh(user)
+    assert user.role == 'vol'
+    assert RoleRequest.query.filter_by(user_id=user.id).count() == 1
+
+
+def test_only_approved_organizer_can_be_added_as_coordinator(client, user1, user2):
+    user1.role = 'coord'
+    gathering = Gathering(code='APPROVED', owner_id=user1.id, title_ru='Сбор', status='open')
+    db.session.add(gathering)
+    db.session.commit()
+    url = f'/api/gatherings/{gathering.id}/coordinators'
+    assert client.post(url, headers=_headers(user1), json={'userId': user2.id}).status_code == 403
+    user2.role = 'coord'
+    db.session.commit()
+    assert client.post(url, headers=_headers(user1), json={'userId': user2.id}).status_code == 201

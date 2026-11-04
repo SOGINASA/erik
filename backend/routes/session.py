@@ -1,3 +1,4 @@
+import os
 from sqlalchemy.exc import IntegrityError
 """Device-сессия и профиль (P0-вход без пароля/OTP).
 
@@ -36,9 +37,10 @@ def session():
     if existing is not None and not existing.is_active:
         return jsonify({'error': 'Пользователь не найден'}), 404
     demo = device_id.startswith('demo-')
-    if demo and not current_app.config.get('ALLOW_DEMO_LOGIN', False):
+    demo_allowed = current_app.testing and os.environ.get('FLASK_ENV') != 'production' and current_app.config.get('ALLOW_DEMO_LOGIN', False)
+    if demo and not demo_allowed:
         return jsonify({'error': 'Демо-вход отключён'}), 403
-    if existing is not None and not (demo and current_app.config.get('ALLOW_DEMO_LOGIN')):
+    if existing is not None and not (demo and demo_allowed):
         if existing.has_account or existing.user_type == 'admin':
             return jsonify({'error': 'Войдите по паролю'}), 401
         verify_jwt_in_request()
@@ -112,7 +114,8 @@ def update_me():
     if 'name' in data and (data['name'] or '').strip():
         user.full_name = data['name'].strip()
     if data.get('role') in USER_ROLES:
-        user.role = data['role']
+        from services.role_requests import request_organizer_role
+        request_organizer_role(user, data['role'])
     if 'phone' in data:
         user.phone = (data['phone'] or '').strip() or None
     if 'cityId' in data:

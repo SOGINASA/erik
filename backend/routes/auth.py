@@ -143,8 +143,8 @@ def register():
             )
             db.session.add(user)
 
-        if role is not None:
-            user.role = role
+        from services.role_requests import request_organizer_role
+        role_request = request_organizer_role(user, role)
         if 'phone' in data:
             user.phone = (data.get('phone') or '').strip() or None
         if 'cityId' in data:
@@ -175,11 +175,13 @@ def register():
 
         access_token, refresh_token = make_tokens(user)
 
+        from utils.serializers import serialize_role_request
         return jsonify({
             'user': user.to_dict(include_sensitive=True),
             'access_token': access_token,
             'refresh_token': refresh_token,
             'legalConsent': consent.to_dict(),
+            'roleRequest': serialize_role_request(role_request, user) if role_request else None,
         }), 201
 
     except Exception as e:
@@ -232,11 +234,8 @@ def login():
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     import os
-    demo_password_allowed = (current_app.config.get('ALLOW_DEMO_LOGIN', False)
-                             and user.device_id == 'demo-admin'
-                             and user.email == 'admin@erik.kz')
     if (os.environ.get('FLASK_ENV') == 'production' and user.user_type == 'admin'
-            and password == 'admin123' and not demo_password_allowed):
+            and password == 'admin123'):
         return jsonify({'error': 'Неверные данные для входа'}), 401
 
     try:

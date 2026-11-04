@@ -153,7 +153,9 @@ def test_registration_persists_exact_server_evidence_and_profile_atomically(clie
     ).encode()).hexdigest()
     assert body['legalConsent']['id'] == receipt.id
     assert body['legalConsent']['documentSha256'] == receipt.document_sha256
-    assert user.city_id == 'ast' and user.phone == '+7 700 000 00 00' and user.role == 'coord'
+    assert user.city_id == 'ast' and user.phone == '+7 700 000 00 00' and user.role == 'vol'
+    assert body['roleRequest']['role'] == 'coord'
+    assert body['roleRequest']['status'] == 'pending'
     assert user.interests == ['eco']
     assert 'secret123' not in json.dumps(receipt.document_snapshot)
     assert user.check_password('secret123')

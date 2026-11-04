@@ -9,6 +9,7 @@ import { Container } from '../components/Container';
 import Avatar from '../components/ui/Avatar';
 import Icon from '../components/Icon';
 import Button from '../components/ui/Button';
+import AttendanceQr from '../components/AttendanceQr';
 
 // Отметка явки: экран «на улице». Крупные строки, тап по всей строке. Работает офлайн.
 export default function CheckIn() {
@@ -26,6 +27,14 @@ export default function CheckIn() {
   // persist сбрасывается на buildGathering()). Поднимаем настоящий сбор и офлайн-очередь по
   // id из URL — как CoordGathering; иначе отметки шли на демо-id и молча терялись (404).
   useEffect(() => { loadCoord(id); }, [id, loadCoord]);
+  // Refresh server attendance while preserving the store's offline queue overlay.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const state = useGatheringStore.getState();
+      if (!document.hidden && state.online && !state.syncing && !state.checkinQueue.length) loadCoord(id);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [id, loadCoord]);
   const online = useGatheringStore((s) => s.online);
   const syncing = useGatheringStore((s) => s.syncing);
   const pending = useGatheringStore((s) => s.checkinQueue.length);
@@ -110,6 +119,7 @@ export default function CheckIn() {
       </div>
 
       <Container narrow style={{ flex: 1 }}>
+        <AttendanceQr key={id} gatheringId={id} online={online} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 120px' }}>
           {rows.map((p) => {
             const marked = !!marks[p.id];

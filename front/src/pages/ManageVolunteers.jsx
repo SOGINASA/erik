@@ -35,7 +35,7 @@ export default function ManageVolunteers() {
 
   // Пока идёт первая загрузка — скелетон: выдуманные волонтёры не должны
   // выглядеть базой организатора.
-  const booting = status === 'loading' && source === 'demo';
+  const booting = status === 'loading' && source !== 'server';
   const notice = orgNotice(source, status, isRu, loggedIn);
 
   const sorted = [...volunteers].sort((a, b) =>

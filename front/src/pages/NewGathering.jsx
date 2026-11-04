@@ -102,6 +102,7 @@ export default function NewGathering() {
   const [form, setForm] = useState({ what: '', where: '', date: todayISO(), time: '10:00', needed: 20, name: '', theme: '', cityId: '', orgId: '', imageUrl: '' });
   const [tried, setTried] = useState(false);   // ошибки полей показываем только после первой отправки
   const [busy, setBusy] = useState(false);     // защита от двойного сабмита
+  const [uploading, setUploading] = useState(false);
   const [failed, setFailed] = useState(null);
   const [myOrgs, setMyOrgs] = useState([]);    // мои НКО (я — owner): пусто → селект «от имени НКО» не показываем
   const up = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -141,7 +142,7 @@ export default function NewGathering() {
   const errors = tried ? validate(form, !hasName, isRu) : {};
 
   const create = async () => {
-    if (busy) return;
+    if (busy || uploading) return;
     setTried(true);
     const errs = validate(form, !hasName, isRu);
     if (Object.keys(errs).length) {
@@ -248,7 +249,7 @@ export default function NewGathering() {
           {/* Обложка (необязательно): ссылка на картинку + превью. Пусто → карточка ленты
               покажет тематический тинт (EventCard рисует img только при наличии image). */}
           <div>
-            <ImageUpload onUploaded={(url) => setForm((s) => ({ ...s, imageUrl: url }))} />
+            <ImageUpload disabled={busy} onBusyChange={setUploading} onUploaded={(url) => setForm((s) => ({ ...s, imageUrl: url }))} />
             <Field label={t.fCover} type="url" inputMode="url" value={form.imageUrl} onChange={up('imageUrl')} placeholder={t.fCoverPh} error={errors.imageUrl} />
             {coverOk && (
               <div style={{ marginTop: 10, height: 104, borderRadius: 'var(--r-s)', overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--paper)' }}>
@@ -277,7 +278,7 @@ export default function NewGathering() {
       >
         <Container narrow>
           {failed && <div style={{ fontSize: 14, color: 'var(--danger)', lineHeight: 1.45, marginBottom: 10 }}>{failed}</div>}
-          <Button full size="lg" loading={busy} onClick={create}>{t.createCta}</Button>
+          <Button full size="lg" loading={busy} disabled={uploading} onClick={create}>{t.createCta}</Button>
         </Container>
       </div>
     </div>

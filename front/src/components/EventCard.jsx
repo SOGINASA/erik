@@ -60,6 +60,9 @@ export default function EventCard({ event, reg, onOpen }) {
           </span>
           {regLabel && <span style={{ color: 'var(--yard)', fontWeight: 600, flexShrink: 0 }}>{regLabel}</span>}
         </div>
+        {event.remainingNeeded != null && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--yard)', fontWeight: 500 }}>
+          {isRu ? `Подтвердили ${event.confirmedCount || 0} · ещё нужно ${event.remainingNeeded}` : `${event.confirmedCount || 0} растады · тағы ${event.remainingNeeded} қажет`}
+        </div>}
       </div>
     </button>
   );

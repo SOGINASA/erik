@@ -16,8 +16,7 @@ front/node_modules/
 front/build/
 
 # Секреты и локальные данные
-backend/.env
-backend/.env.production*
+backend/.env*
 backend/database/*.db
 backend/database/*.sqlite
 

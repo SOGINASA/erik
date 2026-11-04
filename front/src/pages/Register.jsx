@@ -13,13 +13,13 @@ import RegistrationConsent, { EMPTY_CONSENTS } from '../components/RegistrationC
 import { guestReturnTo } from '../lib/authReturnTo';
 
 const ROLES = [
-  { id: 'vol', title: 'Волонтёр', desc: 'Нахожу сборы рядом и участвую', icon: 'users' },
-  { id: 'coord', title: 'Координатор', desc: 'Организую сборы и вижу прогноз явки', icon: 'calendar' },
+  { id: 'vol', title: 'Волонтёр', desc: 'Прихожу на события и помогаю команде', icon: 'users' },
+  { id: 'coord', title: 'Координатор', desc: 'Создаю события и управляю ими после проверки администрации', icon: 'calendar' },
   { id: 'org', title: 'НКО / организация', desc: 'Веду волонтёров и события', icon: 'shield' },
 ];
 const STEP_TITLE = ['Кто вы на erik?', 'Давайте познакомимся', 'Придумайте пароль', 'Ваш город и интересы'];
 const STEP_SUB = [
-  'Роль можно поменять в любой момент',
+  'Роль координатора и представителя НКО подтверждает администрация',
   'Так вас увидят координаторы и соседи',
   'Нужен, чтобы вернуться к своим сборам',
   'Покажем сборы рядом и по вашим темам',
@@ -110,12 +110,12 @@ export default function Register() {
     setPending(true);
     setError('');
     try {
-      await registerAccount({
+      const result = await registerAccount({
         identifier: form.email.trim(), password: form.password, full_name: form.name.trim(),
         role: form.role, phone: form.phone.trim() || null, cityId: form.city, interests: form.interests,
         legal: { ...consents, version: legal.version },
       });
-      showToast('Аккаунт создан. Добро пожаловать в erik!');
+      showToast(result?.roleRequest ? 'Аккаунт создан. Заявка на роль организатора отправлена администрации.' : 'Аккаунт создан. Добро пожаловать в erik!');
       navigate(returnTo || (form.role === 'vol' ? '/feed' : '/manage'));
     } catch (err) {
       if (err?.data?.code === 'legal_version_mismatch') {
@@ -163,7 +163,7 @@ export default function Register() {
     if (step === 1) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {form.role === 'org' && <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)' }}>Укажите данные представителя. Организацию можно добавить после регистрации.</p>}
+          {form.role !== 'vol' && <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)' }}>Укажите данные представителя. Администрация проверит заявку и подтвердит статус организатора. Пока идёт проверка, вы можете участвовать как волонтёр.</p>}
           <div>
             <FieldLabel>Фамилия, имя и отчество (при наличии)</FieldLabel>
             <WField icon="users" aria-label="Фамилия, имя и отчество (при наличии)" autoComplete="name" maxLength={120} value={form.name} onChange={(e) => up('name', e.target.value)} placeholder="Фамилия и имя" />

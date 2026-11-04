@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CITIES, ORGS, EVENTS, VOLUNTEERS, ME, BADGES } from '../lib/data';
+import { CITIES, ME, BADGES } from '../lib/data';
 import { api } from '../lib/api';
 import { useUiStore } from './useUiStore';
 import { useSessionStore } from './useSessionStore';
@@ -35,11 +35,11 @@ const mapConvo = (c) => ({
 // и их интерактивное состояние.
 export const usePlatformStore = create((set, get) => ({
   cities: CITIES,
-  orgs: ORGS,
-  events: EVENTS,
+  orgs: [],
+  events: [],
   eventsTotal: 0,
   eventsLoading: false,
-  volunteers: VOLUNTEERS,
+  volunteers: [],
   me: ME,
   badges: BADGES,
   // Уведомления и диалоги — профильные: гостю их не грузим и НЕ показываем мок.
@@ -69,6 +69,10 @@ export const usePlatformStore = create((set, get) => ({
     events: s.events.map((e) => (e.id === eventId ? { ...e, going } : e)),
   })),
 
+  patchEventConfirmation: (eventId, stats) => set((s) => ({
+    events: s.events.map((event) => event.id === eventId ? { ...event, ...stats } : event),
+  })),
+
   // Свежие роли события (с актуальным taken) после выбора роли волонтёром. Приезжают и в
   // успешном ответе, и в теле 409 «роль уже разобрали» — во втором случае myRoleId не
   // трогаем (роль не наша), но счётчики обновляем: список должен показывать правду сразу,
@@ -95,7 +99,7 @@ export const usePlatformStore = create((set, get) => ({
           // Успех (даже пустой массив) заменяет мок; мок остаётся только при ошибке/офлайне.
           if (Array.isArray(arr)) set({ [key]: mapFn ? arr.map(mapFn) : arr });
         } catch (_) {
-          /* офлайн/ошибка — оставляем демо-данные */
+          /* keep last server data; never fabricate records */
         }
       })
     );
@@ -109,7 +113,7 @@ export const usePlatformStore = create((set, get) => ({
       (res.follows || []).forEach((id) => { map['o' + id] = true; });
       set({ followed: map });
     } catch (_) {
-      /* keep mock */
+      /* keep last server data */
     }
   },
 
@@ -123,7 +127,7 @@ export const usePlatformStore = create((set, get) => ({
         if (res.user.role) useSessionStore.setState({ role: res.user.role, roleDirty: false });
       }
     } catch (_) {
-      /* keep mock */
+      /* keep last server data */
     }
   },
 

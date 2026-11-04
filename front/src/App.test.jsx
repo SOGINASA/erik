@@ -28,7 +28,7 @@ jest.mock('./store/useGatheringStore', () => ({ useGatheringStore: { getState: (
 // Keep the actual route table while isolating page data fetching and the globe renderer.
 for (const page of [
   'Home', 'Login', 'Register', 'Legal', 'Feed', 'MapPage', 'Event', 'NewGathering',
-  'GuestGathering', 'CoordGathering', 'CheckIn', 'MyGatherings', 'MyEvents', 'Manage',
+  'GuestGathering', 'CoordGathering', 'CheckIn', 'AttendanceConfirm', 'MyGatherings', 'MyEvents', 'Manage',
   'ManageRequests', 'ManageVolunteers', 'ManageOrg', 'Profile', 'Org', 'Leaderboard',
   'ForecastQuality', 'Messages', 'Convo', 'Notifications', 'Admin', 'NotFound', 'ProjectRights',
 ]) {
@@ -55,7 +55,7 @@ test.each([
 
 test.each([
   ['/e/e1', 'Event'], ['/g/PARK18', 'GuestGathering'], ['/new', 'NewGathering'],
-  ['/me', 'MyGatherings'], ['/c/1', 'CoordGathering'], ['/my-events', 'MyEvents'],
+  ['/me', 'MyGatherings'], ['/c/1', 'CoordGathering'], ['/my-events', 'MyEvents'], ['/attendance/1', 'AttendanceConfirm'],
 ])('volunteer event route %s remains available', async (path, page) => {
   render(<MemoryRouter initialEntries={[path]}><App /><Location /></MemoryRouter>);
   expect(await screen.findByText(page)).toBeInTheDocument();

@@ -9,14 +9,6 @@ import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import { guestReturnTo } from '../lib/authReturnTo';
 
-// Быстрый вход в засеянные демо-личности (реальные данные, не мок).
-// device — deviceId засеянной личности (см. seed.py): токен приходит настоящий.
-const PERSONAS = [
-  { device: 'demo-v0', label: 'Волонтёр', icon: 'users', to: '/feed' },
-  { device: 'demo-coord', label: 'Координатор', icon: 'calendar', to: '/manage' },
-  { device: 'demo-org1', label: 'НКО', icon: 'shield', to: '/manage' },
-];
-
 function AuthField({ icon, right, ...props }) {
   return (
     <div style={{ position: 'relative' }}>
@@ -31,12 +23,11 @@ function AuthField({ icon, right, ...props }) {
   );
 }
 
-// Страница входа. Логин + пароль и три кнопки быстрого входа по роли.
+// Вход по email или никнейму и паролю.
 export default function Login() {
   const navigate = useNavigate();
   const returnTo = guestReturnTo(useLocation().search);
   const loginWithPassword = useSessionStore((s) => s.loginWithPassword);
-  const loginAsDevice = useSessionStore((s) => s.loginAsDevice);
   const showToast = useUiStore((s) => s.showToast);
 
   const [id, setId] = useState('');
@@ -45,7 +36,6 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   // Реальный вход по паролю (аккаунт). 401 → тост «Неверные данные».
-  // Быстрый вход по роли ниже остаётся device-логином (демо).
   const submit = async (e) => {
     e.preventDefault();
     if (!id.trim() || !pass || busy) return;
@@ -75,37 +65,6 @@ export default function Login() {
       showToast('Если такой email есть — письмо для сброса отправлено');
     } catch (err) {
       showToast(err?.data?.error || 'Не удалось запросить восстановление пароля. Попробуйте позже.');
-    }
-  };
-
-  // Отказ входа: 404 — бэкенд ЖИВ, но демо-личностей в базе нет (сид не запускался,
-  // см. DEMO_DEVICE_PREFIX). Раньше оба случая шли под текстом «Бэкенд недоступен»,
-  // и на свежем деплое это уводило чинить сеть вместо того, чтобы запустить сид.
-  const demoFail = (e) => showToast(e?.status === 403
-    ? 'Демо-вход отключён. Войдите по email и паролю или создайте аккаунт.'
-    : e?.data?.error || (e?.status === 404 ? 'Демо-профиль не найден.'
-      : e?.status ? 'Не удалось выполнить демо-вход.' : 'Не удалось связаться с сервером.'));
-
-  // Демо-вход как засеянная личность (реальный токен → реальная роль/данные).
-  const quick = async (p) => {
-    try {
-      await loginAsDevice(p.device);
-      navigate(returnTo || p.to);
-      showToast(`Вход как ${p.label}`);
-    } catch (e) {
-      demoFail(e);
-    }
-  };
-
-  // Админка гейтится по user_type='admin'. Демо-админ — отдельный demo-admin (см. seed.py);
-  // demo-coord теперь обычный координатор без доступа к модерации.
-  const quickAdmin = async () => {
-    try {
-      await loginAsDevice('demo-admin');
-      navigate('/admin');
-      showToast('Вход как администратор');
-    } catch (e) {
-      demoFail(e);
     }
   };
 
@@ -147,39 +106,6 @@ export default function Login() {
             </div>
             <Button type="submit" size="lg" full loading={busy} disabled={!id.trim() || !pass}>Войти</Button>
           </form>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
-            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
-            <span style={{ fontSize: 12, color: 'var(--ink-3)', letterSpacing: '.02em' }}>или войти как</span>
-            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            {PERSONAS.map((p) => (
-              <button
-                key={p.device}
-                type="button"
-                className="erik-btn erik-lift"
-                onClick={() => quick(p)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', cursor: 'pointer' }}
-              >
-                <span style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--yard-soft)', color: 'var(--yard)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={p.icon} size={18} /></span>
-                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{p.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            className="erik-btn"
-            onClick={quickAdmin}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', height: 46, marginTop: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}
-          >
-            <Icon name="shield" size={18} /> Войти как администратор
-          </button>
-          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
-            демо-админ по паролю: <span style={{ fontFamily: 'var(--fm)' }}>admin@erik.kz / admin123</span>
-          </p>
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-2)', marginTop: 24 }}>
             Нет аккаунта?{' '}

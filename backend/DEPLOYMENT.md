@@ -40,13 +40,11 @@ Copy `.env.example` to `.env` and set actual values. Never commit `.env`.
   password recovery returns `503 email_unavailable` without creating reset tokens.
   When enabling SMTP, set `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, credentials
   and `MAIL_FROM`. Production never logs undelivered messages or their tokens.
-- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo seeding and
-  sets `SKIP_DB_CREATE=1`. Demo login defaults to enabled for compatibility.
-- For a demo deployment, set `ALLOW_DEMO_LOGIN=1` in `.env` and rebuild/recreate
-  the backend: `docker compose up -d --build --force-recreate --no-deps backend`.
-  This enables existing demo accounts, including real administrator access and
-  the seeded admin password. It does not seed or reset data; preserve the restored
-  `DATABASE_URL`. Set the flag back to `0` to disable new demo logins.
+- Compose sets `REDIS_URL=redis://redis:6379/0`, disables demo login and seeding,
+  and sets `SKIP_DB_CREATE=1`. Startup seeds reference catalogs only.
+- Demo identities cannot log in or reuse old JWTs in production, even if a stale
+  environment contains `ALLOW_DEMO_LOGIN=1`. Password administrator creation
+  remains available through `flask create-admin`.
 - For exactly one trusted reverse proxy, set `TRUSTED_PROXY_HOPS=1` and configure
   that proxy to overwrite forwarded headers. Default 0 trusts none. Do not expose
   the backend directly when trusting proxy headers.
@@ -54,6 +52,55 @@ Copy `.env.example` to `.env` and set actual values. Never commit `.env`.
 Compose binds the API to host loopback. Terminate HTTPS at the reverse proxy.
 PostgreSQL and Redis have no published host ports. Containers run the API as a
 non-root user. `/api/health` checks the database and Redis without revealing errors.
+
+## Compose project name and existing host migration
+
+The Compose project is explicitly named `erik`. With Docker Compose v2, the
+containers are `erik-backend-1`, `erik-postgres-1` and `erik-redis-1`, the built
+API image is `erik-backend`, and the network is `erik_default`. Service DNS names
+remain `postgres` and `redis`; existing connection URLs do not need changes.
+Remove an old `COMPOSE_PROJECT_NAME=backend` setting or `-p backend` launch flag:
+these override the name in the file. Other projects must use their own names.
+
+For a fresh installation, run `docker compose up -d --build` from `backend/`.
+For an existing host, changing the project name also changes the default volume
+names. **Complete the following migration before starting the renamed stack**
+to keep the existing PostgreSQL and Redis data:
+
+1. Identify the three existing Erik containers with `docker ps -a`. Verify their
+   Compose working-directory labels and mounts, rather than relying on generic
+   container names. Inspect each relevant container with:
+   `docker inspect --format '{{json .Config.Labels}} {{json .Mounts}}' CONTAINER_ID`.
+   Record the volume names mounted at `/var/lib/postgresql/data` and `/data`.
+2. Take a verified database backup. Create `backend/docker-compose.override.yml`
+   on the host using the exact existing volume names (the names below are only
+   examples; verify that these volumes actually belong to Erik):
+
+   ```yaml
+   volumes:
+     postgres_data:
+       external: true
+       name: backend_postgres_data
+     redis_data:
+       external: true
+       name: backend_redis_data
+   ```
+
+   Keep this host-specific file for subsequent deployments. Compose loads it
+   automatically when run from `backend/` without `-f`. If deployment commands
+   use `-f`, include both files explicitly. External volumes must already exist;
+   a mistyped name fails instead of silently creating an empty database.
+3. Run `docker compose config --quiet` from `backend/`. Stop only the three
+   verified old Erik containers with `docker stop ID_API ID_POSTGRES ID_REDIS`.
+   Do not run project-wide cleanup against the shared old `backend` project or
+   delete volumes. Never run two PostgreSQL containers against the same volume.
+4. Run `docker compose up -d --build`, then `docker compose ps` and
+   `curl --fail http://127.0.0.1:6752/api/health`. Verify existing accounts/data.
+   After verification, remove only the stopped old containers with
+   `docker rm ID_API ID_POSTGRES ID_REDIS` (without `-v`).
+
+The API still binds to `127.0.0.1:6752`. A second simultaneous Erik instance needs
+both a different project name and a different host port, plus separate volumes.
 
 ## Rehearsal and cutover
 
@@ -127,3 +174,23 @@ the complete Linux image, including Gunicorn and ML libraries, before release.
 Local validation does not establish production TLS, backup reliability, legal
 compliance, actual PostgreSQL throughput, or iOS build compatibility. Those require
 the deployment environment and an Xcode build.
+
+## Remove legacy demo data
+
+Stop API writers and take a custom-format PostgreSQL dump of the database named
+in the running container's DATABASE_URL (a restored database may have a different
+name from POSTGRES_DB). Verify the dump by restoring it to an isolated database.
+Keep the current DATABASE_URL and credentials; do not replace the host env with a
+local example or delete Docker volumes.
+
+`flask purge-demo` previews row counts. `flask purge-demo --apply` deletes users
+whose device_id starts with demo- and their dependent records in one transaction.
+Real accounts, password administrators, catalogs and primary-key sequences survive.
+If an administrator still uses the old public demo password, supply a protected
+file via `--admin-password-file /path/to/password`. The command refuses to proceed
+without an active password administrator and a replacement for a weak password.
+Admin sessions are invalidated. Cleanup is never run automatically on startup.
+
+Rebuild/recreate only the backend, then check health, empty event/organization
+lists, rejection of demo session requests and password admin login. Deploy the web
+client separately to remove its old demo controls and offline synthetic fallback.
