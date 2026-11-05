@@ -84,6 +84,10 @@ def put_rsvp(code):
         return jsonify({'error': 'Сбор не найден'}), 404
     if gathering.status != 'open':
         return jsonify({'error': 'Сбор уже завершён'}), 409
+    from services.universities import registration_error
+    error = registration_error(gathering, user)
+    if error:
+        return error
 
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):

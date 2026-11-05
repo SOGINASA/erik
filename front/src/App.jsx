@@ -28,6 +28,8 @@ import ManageOrg from './pages/ManageOrg';
 import Profile from './pages/Profile';
 import Org from './pages/Org';
 import Organizations from './pages/Organizations';
+import Universities from './pages/Universities';
+import University from './pages/University';
 import Leaderboard from './pages/Leaderboard';
 import ForecastQuality from './pages/ForecastQuality';
 import Messages from './pages/Messages';
@@ -114,6 +116,8 @@ export default function App() {
           <Route path="/manage/org" element={<ManageOrg />} />
           <Route path="/u/:id" element={<Profile />} />
           <Route path="/orgs" element={<Organizations />} />
+          <Route path="/universities" element={<Universities />} />
+          <Route path="/universities/:id" element={<University />} />
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/forecast-quality" element={<ForecastQuality />} />

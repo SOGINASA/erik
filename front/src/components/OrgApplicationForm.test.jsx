@@ -16,9 +16,11 @@ test('submits an application and replaces fields with pending status', async () 
   fields.forEach(([label, key]) => fireEvent.change(screen.getByLabelText(label), { target: { value: values[key] } }));
   fireEvent.click(screen.getByRole('checkbox', { name: /Подтверждаю достоверность/ }));
   fireEvent.click(screen.getByRole('checkbox', { name: /Даю согласие/ }));
+  fireEvent.change(screen.getByLabelText('Какие задачи будете поручать волонтёрам?'), { target: { value: 'Помощь на мероприятиях' } });
+  fireEvent.change(screen.getByLabelText('Кто и как будет обучать и поддерживать волонтёров?'), { target: { value: 'Координатор проведёт инструктаж' } });
   fireEvent.submit(screen.getByRole('button', { name: 'Отправить на проверку' }).closest('form'));
   await screen.findByRole('heading', { name: 'Заявка на проверке' });
-  expect(api.createOrg).toHaveBeenCalledWith({ ...values, dataConsent: true });
+  expect(api.createOrg).toHaveBeenCalledWith({ ...values, dataConsent: true, applicationDetails: { formVersion: 1, answers: { volunteerTasks: 'Помощь на мероприятиях', supportPlan: 'Координатор проведёт инструктаж' } } });
   expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
 });
 

@@ -11,3 +11,4 @@ user-agents==2.2.0
 
 psycopg[binary]==3.2.10
 redis==6.4.0
+PyJWT[crypto]==2.10.1

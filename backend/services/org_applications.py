@@ -117,6 +117,9 @@ def decide_application(aid, admin, data):
             pending.decided_by = admin.id
             pending.decided_at = row.decided_at
     from services.notifications import create_notification
+    from services.application_data import record_decision
+    # The conditional SQL UPDATE above intentionally bypasses ORM history.
+    record_decision(row, decision)
     if decision == 'approved':
         create_notification(owner.id, 'org', 'Ваша НКО одобрена. Страница создана, кабинет доступен в разделе «НКО».', 'КЕҰ мақұлданды. Ұйым беті жасалды, кабинет «КЕҰ» бөлімінде қолжетімді.')
     else:

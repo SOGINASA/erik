@@ -72,7 +72,7 @@ def create_app(config_object=None):
 
     # Регистрация блюпринтов
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
-                        notifications_bp, platform_bp, organizer_bp)
+                        notifications_bp, platform_bp, organizer_bp, universities_bp, review_data_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(session_bp, url_prefix='/api')          # /api/session, /api/me, /api/logout
@@ -80,6 +80,10 @@ def create_app(config_object=None):
     app.register_blueprint(guest_bp, url_prefix='/api')            # /api/g/<code>, /api/gatherings/by-code
     app.register_blueprint(notifications_bp, url_prefix='/api')    # /api/notifications*
     app.register_blueprint(platform_bp, url_prefix='/api')         # /api/events, /orgs, /leaderboard, /cities…
+    app.register_blueprint(review_data_bp, url_prefix='/api')
+    from services.review_cli import register_review_commands
+    register_review_commands(app)
+    app.register_blueprint(universities_bp, url_prefix='/api')
     app.register_blueprint(organizer_bp, url_prefix='/api')        # /api/me/org/*, /events/<id>/applications, /applications/*
 
     # Безопасность целостности БД: при исключении в запросе откатываем сессию,

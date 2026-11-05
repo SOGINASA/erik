@@ -256,6 +256,7 @@ class Gathering(db.Model):
     code = db.Column(db.String(12), unique=True, index=True, nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True, nullable=False)
     org_id = db.Column(db.Integer, db.ForeignKey('orgs.id'), nullable=True)
+    university_id = db.Column(db.Integer, db.ForeignKey('universities.id'), nullable=True, index=True)
     city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
     theme = db.Column(db.String(16), db.ForeignKey('themes.id'), nullable=True)
 
@@ -287,6 +288,96 @@ class Gathering(db.Model):
 
     def bump(self):
         self.revision = (self.revision or 0) + 1
+
+
+class University(db.Model):
+    __tablename__ = 'universities'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(300), nullable=False, unique=True)
+    name_kz = db.Column(db.String(300), nullable=True)
+    city = db.Column(db.String(100), nullable=False)
+    about = db.Column(db.String(2000), nullable=True)
+    website = db.Column(db.String(300), nullable=True)
+    manager_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    microsoft_tenant_id = db.Column(db.String(36), nullable=True)
+    email_domains = db.Column(db.JSON, nullable=True)
+
+
+class UniversityMembership(db.Model):
+    __tablename__ = 'university_memberships'
+    __table_args__ = (db.UniqueConstraint('university_id', 'user_id', name='uq_university_member'),
+                     db.UniqueConstraint('university_id', 'microsoft_oid', name='uq_university_microsoft_account'))
+    id = db.Column(db.Integer, primary_key=True)
+    university_id = db.Column(db.Integer, db.ForeignKey('universities.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    full_name = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(32), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default='pending')
+    student_card = db.Column(db.LargeBinary, nullable=True)
+    student_card_mime = db.Column(db.String(40), nullable=True)
+    verification_method = db.Column(db.String(16), nullable=False, default='student_card')
+    microsoft_oid = db.Column(db.String(36), nullable=True)
+    verified_email = db.Column(db.String(254), nullable=True)
+    rejection_reason = db.Column(db.String(400), nullable=True)
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+    decided_at = db.Column(db.DateTime, nullable=True)
+    decided_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+
+class UniversityMicrosoftState(db.Model):
+    __tablename__ = 'university_microsoft_states'
+    id = db.Column(db.String(64), primary_key=True)
+    university_id = db.Column(db.Integer, db.ForeignKey('universities.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    nonce = db.Column(db.String(64), nullable=False)
+    verifier = db.Column(db.String(128), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+
+class ReviewSubmission(db.Model):
+    """Immutable input version; independent of mutable domain rows and their deletion."""
+    __tablename__ = 'review_submissions'
+    __table_args__ = (db.UniqueConstraint('kind', 'source_id', 'revision', name='uq_review_submission_revision'),)
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(32), nullable=False, index=True)
+    source_id = db.Column(db.Integer, nullable=False, index=True)
+    revision = db.Column(db.Integer, nullable=False)
+    applicant_id = db.Column(db.Integer, nullable=True, index=True)
+    schema_version = db.Column(db.Integer, nullable=False, default=1)
+    form_version = db.Column(db.Integer, nullable=False, default=1)
+    origin = db.Column(db.String(24), nullable=False)
+    input_digest = db.Column(db.String(64), nullable=False)
+    snapshot = db.Column(db.JSON, nullable=False)
+    details = db.Column(db.JSON, nullable=False)
+    applicant_context = db.Column(db.JSON, nullable=False)
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_now)
+    captured_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ReviewDecision(db.Model):
+    """Append-only labeling evidence. Outcomes never become input features."""
+    __tablename__ = 'review_decisions'
+    id = db.Column(db.Integer, primary_key=True)
+    submission_id = db.Column(db.Integer, db.ForeignKey('review_submissions.id'), nullable=False, index=True)
+    submission = db.relationship('ReviewSubmission')
+    outcome = db.Column(db.String(32), nullable=False)
+    actor_type = db.Column(db.String(24), nullable=False)
+    reviewer_id = db.Column(db.Integer, nullable=True)
+    reason_code = db.Column(db.String(40), nullable=False)
+    note = db.Column(db.String(2000), nullable=True)
+    certainty = db.Column(db.String(24), nullable=False)
+    checks = db.Column(db.JSON, nullable=False)
+    taxonomy_version = db.Column(db.Integer, nullable=False, default=1)
+    reviewed_revision = db.Column(db.Integer, nullable=True)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_now)
+
+
+@event.listens_for(ReviewSubmission, 'before_update')
+@event.listens_for(ReviewSubmission, 'before_delete')
+@event.listens_for(ReviewDecision, 'before_update')
+@event.listens_for(ReviewDecision, 'before_delete')
+def _review_evidence_is_immutable(_mapper, _connection, _target):
+    raise ValueError('Review evidence is append-only')
 
 
 class GatheringCoordinator(db.Model):

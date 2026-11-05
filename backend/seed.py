@@ -230,6 +230,14 @@ def build_participants():
 
 def seed_catalogs():
     """Idempotent reference data only: no accounts or demo events."""
+    import json
+    from pathlib import Path
+    from models import University
+    catalog = json.loads(Path(__file__).with_name('university_catalog.json').read_text(encoding='utf-8'))
+    existing = {row.name for row in University.query.all()}
+    for row in catalog['universities']:
+        if row['name'] not in existing:
+            db.session.add(University(**row))
     ForecastParams.get()
 
     for tid, ru, kz, tint, ink in THEMES:

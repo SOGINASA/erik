@@ -54,6 +54,7 @@ def _base_gathering(g):
         'status': g.status,
         'theme': g.theme,
         'cityId': g.city_id,
+        'universityId': g.university_id,
         'format': g.format,
     }
 

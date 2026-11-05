@@ -148,7 +148,7 @@ export default function Event() {
       : '';
     if (asked === null) return; // отмена
     const reason = (asked || '').trim() || (isRu ? 'Жалоба на событие' : 'Іс-шараға шағым');
-    api.submitReport({ targetType: 'event', targetId: gid, reason })
+    api.submitReport({ targetType: 'event', targetId: gid, reason, applicationDetails: { formVersion: 1, answers: { evidence: reason } } })
       .then(() => showToast(isRu ? 'Жалоба отправлена' : 'Шағым жіберілді'))
       .catch(() => showToast(isRu ? 'Не удалось отправить' : 'Жіберілмеді'));
   };
@@ -178,7 +178,16 @@ export default function Event() {
   const reg = myAnswer;   // тот же ответ, что решает показ команды (см. inTeam выше)
   const regLabel = reg ? (reg === 'yes' ? t.ansYes : reg === 'maybe' ? t.ansMaybe : t.ansNo) : null;
 
-  const openRegister = () => (name ? openSheet('register', ev.id) : openSheet('auth'));
+  const openRegister = async () => {
+    if (!name) { openSheet('auth'); return; }
+    if (ev.universityId) {
+      try {
+        const { university } = await api.university(ev.universityId);
+        if (university.membership?.status !== 'approved') { navigate(`/universities/${ev.universityId}`); return; }
+      } catch (_) { showToast(isRu ? 'Не удалось проверить участие в университете' : 'Университетке мүшелік тексерілмеді'); return; }
+    }
+    openSheet('register', ev.id);
+  };
 
   // Ссылка на событие — ровно та же публичная /g/:code, что раздаёт координатор со своего
   // дашборда. Волонтёр зовёт своих чаще организатора, а скопировать ему было нечего: /e/:id
@@ -212,6 +221,7 @@ export default function Event() {
         </div>
 
         {/* Обложка с чипом темы */}
+        {ev.universityId && <p style={{ padding: 14, background: 'var(--yard-soft)', borderRadius: 12 }}><button type="button" onClick={() => navigate(`/universities/${ev.universityId}`)} style={{ color: 'var(--yard)', border: 0, background: 'none', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>{isRu ? 'Мероприятие университета · Подтвердить обучение и открыть сообщество →' : 'Университет іс-шарасы · Оқуды растау және қауымдастықты ашу →'}</button></p>}
         <div style={{ height: 190, background: theme.tint, borderRadius: 'var(--r-l)', display: 'flex', alignItems: 'flex-end', padding: 20, position: 'relative', overflow: 'hidden' }}>
           {ev.image && (
             <img

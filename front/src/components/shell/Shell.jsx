@@ -127,6 +127,7 @@ function Sidebar({ route }) {
       <nav style={{ display: 'flex', flexDirection: 'column', gap: M.navGap }}>
         <NavBtn icon="feed" label={t.navFeed} active={route === 'feed'} onClick={() => go('/feed', 'feed')} />
         <NavBtn icon="users" label={isRu ? 'НКО' : 'КЕҰ'} active={route === 'orgs'} onClick={() => go('/orgs', 'orgs')} />
+        <NavBtn icon="calendar" label={isRu ? 'Университеты' : 'Университеттер'} active={route === 'universities'} onClick={() => go('/universities', 'universities')} />
         <NavBtn icon="map" label={t.navMap} active={route === 'map'} onClick={() => go('/map', 'map')} />
         {/* Свои участия доступны волонтёрам, координаторам и представителям НКО. */}
         {loggedIn && (
@@ -234,7 +235,7 @@ function Tabbar({ route }) {
     letterSpacing: '.01em', cursor: 'pointer', height: '100%', fontFamily: 'var(--fb)', transform: on ? 'translateY(-1px)' : 'none',
     transition: 'color var(--t-fast), transform var(--t-fast)',
   });
-  const moreActive = ['profile', 'me', 'leaderboard', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers', 'manageOrg'].includes(route) || (isOrganizer && route === 'notifications');
+  const moreActive = ['universities', 'profile', 'me', 'leaderboard', 'admin', 'coord', 'check', 'org', 'manage', 'manageRequests', 'manageVolunteers', 'manageOrg'].includes(route) || (isOrganizer && route === 'notifications');
 
   return (
     <nav className="erik-tap" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, height: 'calc(64px + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)', display: 'flex', alignItems: 'stretch', background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(18px) saturate(1.4)', WebkitBackdropFilter: 'blur(18px) saturate(1.4)', borderTop: '1px solid var(--line)', boxShadow: '0 -1px 12px rgba(20,24,26,.04)' }}>

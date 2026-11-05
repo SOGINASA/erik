@@ -1,3 +1,4 @@
+import ApplicationQuestionnaire, { emptyDetails, detailsComplete } from '../components/ApplicationQuestionnaire';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet } from '../components/ui/Sheet';
@@ -111,11 +112,12 @@ function RoleRequestSheet() {
   const submit = usePlatformStore((s) => s.submitRoleRequest);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [applicationDetails, setApplicationDetails] = useState(emptyDetails);
 
   const send = async () => {
     if (busy) return;
     setBusy(true);
-    const r = await submit(message);
+    const r = await submit(message, applicationDetails);
     setBusy(false);
     if (r.ok) close();   // причину провала показал стор, шторку держим — текст цел
   };
@@ -134,7 +136,8 @@ function RoleRequestSheet() {
         placeholder={isRu ? 'Например: субботники в своём районе раз в месяц' : 'Мысалы: ай сайын өз ауданымда сенбілік'}
         maxLength={1000}
       />
-      <Button full size="lg" style={{ marginTop: 20 }} loading={busy} onClick={send}>
+      <ApplicationQuestionnaire kind="organizer_role" value={applicationDetails} onChange={setApplicationDetails} disabled={busy} />
+      <Button full size="lg" style={{ marginTop: 20 }} disabled={!detailsComplete('organizer_role', applicationDetails)} loading={busy} onClick={send}>
         {isRu ? 'Отправить заявку' : 'Өтінім жіберу'}
       </Button>
     </Sheet>
@@ -233,6 +236,7 @@ function MoreSheet() {
         {loggedIn && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
         {item('user', t.navProfile, () => goClose('/u/me', 'profile'))}
         {item('users', isRu ? 'НКО' : 'КЕҰ', () => goClose('/orgs', 'orgs'))}
+        {item('calendar', isRu ? 'Университеты' : 'Университеттер', () => goClose('/universities', 'universities'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('bell', t.navNotif, () => goClose('/notifications', 'notifications'))}
         {item('shield', isRu ? 'Условия и конфиденциальность' : 'Шарттар және құпиялылық', () => { close(); navigate('/privacy'); })}
@@ -626,17 +630,18 @@ function ApplySheet() {
   const [skills, setSkills] = useState([]);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [applicationDetails, setApplicationDetails] = useState(emptyDetails);
   const toggle = (id) => setSkills((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const send = async () => {
-    if (sending) return;
+    if (sending || !detailsComplete('event_participation', applicationDetails)) return;
     // Имя/город берёт сервер из профиля (createApplication игнорирует клиентские PII).
     // Клиентские поля — только для оптимистичного отображения; мок ME не используем.
     setSending(true);
     // Ждём ответ и тостим успех по факту: раньше «Заявка отправлена» показывалась до
     // запроса, и упавший POST (стор откатывал заявку и тостил причину) выглядел успехом.
     // При провале шторку не закрываем — набранное сообщение и навыки целы для повтора.
-    const res = await addApplication({ eventId, name: name || me.name, phone, city: (me && me.cityId ? me.city : ''), skills, message });
+    const res = await addApplication({ eventId, name: name || me.name, phone, city: (me && me.cityId ? me.city : ''), skills, message, applicationDetails });
     setSending(false);
     if (!res.ok) return; // причину показал стор
     close();
@@ -669,6 +674,7 @@ function ApplySheet() {
         })}
       </div>
       <Textarea label={t.mgApplyMsg} value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder={t.mgApplyMsgPh} />
+      <ApplicationQuestionnaire kind="event_participation" value={applicationDetails} onChange={setApplicationDetails} disabled={sending} />
       <Button full size="lg" loading={sending} style={{ marginTop: 18 }} onClick={send}>{t.mgApplySend}</Button>
     </Sheet>
   );

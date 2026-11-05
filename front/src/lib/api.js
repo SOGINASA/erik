@@ -22,7 +22,7 @@ export function onAuthRefresh(cb) {
 let _refreshing = null; // общий in-flight refresh, чтобы не гонять его параллельно
 
 async function request(path, opts = {}) {
-  const { method = 'GET', body, auth = true, bearer, _retry = false } = opts;
+  const { method = 'GET', body, auth = true, bearer, _retry = false, responseType } = opts;
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (_auth.deviceId) headers['X-Device-Id'] = _auth.deviceId;
@@ -37,6 +37,7 @@ async function request(path, opts = {}) {
   });
 
   if (res.status === 204) return null;
+  if (res.ok && responseType === 'blob') return res.blob();
   let data = null;
   try {
     data = await res.json();
@@ -68,6 +69,19 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  applicationDetails: (kind, id) => request(`/application-data/${kind}/${id}`),
+  saveApplicationDetails: (kind, id, applicationDetails) => request(`/application-data/${kind}/${id}`, { method: 'PATCH', body: { applicationDetails } }),
+  reviewHistory: (kind, id) => request(`/admin/application-data/${kind}/${id}/history`),
+  applicationDataStats: () => request('/admin/application-data/stats'),
+  exportApplicationData: (trainingOnly = false) => request(`/admin/application-data/export?trainingOnly=${trainingOnly ? 1 : 0}`, { responseType: 'blob' }),
+  universities: () => request('/universities'),
+  university: (id) => request(`/universities/${id}`),
+  saveUniversity: (id, body) => request(id ? `/universities/${id}` : '/universities', { method: id ? 'PUT' : 'POST', body }),
+  joinUniversity: (id, body) => request(`/universities/${id}/membership`, { method: 'POST', body }),
+  universityMemberships: (id) => request(`/universities/${id}/memberships`),
+  decideUniversityMembership: (id, body) => request(`/university-memberships/${id}/decision`, { method: 'POST', body }),
+  studentCard: (id) => request(`/university-memberships/${id}/student-card`, { responseType: 'blob' }),
+  universityMicrosoftStart: (id) => request(`/universities/${id}/microsoft/start`, { method: 'POST', body: {} }),
   legal: () => request('/legal', { auth: false }),
   // сессия / профиль
   session: (payload) => request('/session', { method: 'POST', body: payload }),
@@ -185,8 +199,8 @@ export const api = {
 
   // модерация (admin)
   adminReports: () => request('/admin/reports'),
-  approveOrg: (id) => request(`/admin/orgs/${id}/approve`, { method: 'POST' }),
-  rejectOrg: (id) => request(`/admin/orgs/${id}/reject`, { method: 'POST' }),
+  approveOrg: (id, body) => request(`/admin/orgs/${id}/approve`, { method: 'POST', body }),
+  rejectOrg: (id, body) => request(`/admin/orgs/${id}/reject`, { method: 'POST', body }),
   reviewReport: (id) => request(`/admin/reports/${id}/review`, { method: 'POST' }),
 
   // ── организатор / штаб (Manage HQ) ──
@@ -195,7 +209,7 @@ export const api = {
   myApplications: () => request('/me/org/applications'),
   orgVolunteers: () => request('/me/org/volunteers'),
   createApplication: (eventId, body) => request(`/events/${eventId}/applications`, { method: 'POST', body }),
-  actOnApplication: (id, action) => request(`/applications/${id}/${action}`, { method: 'POST' }), // action=accept|decline
+  actOnApplication: (id, action, body) => request(`/applications/${id}/${action}`, { method: 'POST', body }), // action=accept|decline
   orgAnalytics: () => request('/me/org/analytics'),
   eventApplications: (eventId, status = 'pending') =>
     request(`/events/${eventId}/applications?status=${status}`), // status=pending|accepted|declined|all
@@ -216,14 +230,14 @@ export const api = {
   // Очередь заявок на роль организатора. approve выдаёт роль из САМОЙ заявки —
   // тело запроса роль не выбирает (см. backend/routes/admin.py).
   adminRoleRequests: (status = 'pending') => request(`/admin/role-requests?status=${status}`),
-  approveRoleRequest: (id) => request(`/admin/role-requests/${id}/approve`, { method: 'POST' }),
-  rejectRoleRequest: (id, reason = '') => request(`/admin/role-requests/${id}/reject`, { method: 'POST', body: { reason } }),
+  approveRoleRequest: (id, body) => request(`/admin/role-requests/${id}/approve`, { method: 'POST', body }),
+  rejectRoleRequest: (id, reason = '', extra = {}) => request(`/admin/role-requests/${id}/reject`, { method: 'POST', body: { reason, ...extra } }),
   adminOrgs: (status = 'all') => request(`/admin/orgs?status=${status}`),
-  resolveReport: (id) => request(`/admin/reports/${id}/resolve`, { method: 'POST' }),
+  resolveReport: (id, body) => request(`/admin/reports/${id}/resolve`, { method: 'POST', body }),
   adminEvents: (qs = '') => request('/admin/events' + qs),
   unpublishEvent: (id) => request(`/admin/events/${id}/unpublish`, { method: 'POST' }),
-  approveEvent: (id) => request(`/admin/events/${id}/approve`, { method: 'POST' }),   // сбор из очереди модерации → в ленту
-  rejectEvent: (id, reason = '') => request(`/admin/events/${id}/reject`, { method: 'POST', body: { reason } }), // reason уходит в тело, пустой допустим
+  approveEvent: (id, body) => request(`/admin/events/${id}/approve`, { method: 'POST', body }),   // сбор из очереди модерации → в ленту
+  rejectEvent: (id, reason = '', extra = {}) => request(`/admin/events/${id}/reject`, { method: 'POST', body: { reason, ...extra } }), // reason уходит в тело, пустой допустим
   sendBroadcast: (body) => request('/admin/broadcast', { method: 'POST', body }), // {segment, title, textRu, textKz, cityId?}
   adminAnalytics: () => request('/admin/analytics'),
 

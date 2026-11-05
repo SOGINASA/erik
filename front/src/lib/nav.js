@@ -44,6 +44,7 @@ export function routeName(pathname) {
   if (pathname.startsWith('/onboarding')) return 'onboarding';
   if (pathname.startsWith('/g/')) return 'guest';
   if (pathname === '/orgs') return 'orgs';
+  if (pathname.startsWith('/universities')) return 'universities';
   if (pathname.startsWith('/feed')) return 'feed';
   if (pathname.startsWith('/map')) return 'map';
   if (pathname.startsWith('/e/')) return 'event';

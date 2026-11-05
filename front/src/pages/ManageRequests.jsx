@@ -7,6 +7,8 @@ import { useUiStore } from '../store/useUiStore';
 import { Container } from '../components/Container';
 import Icon from '../components/Icon';
 import Avatar from '../components/ui/Avatar';
+import ReviewDialog from '../components/ReviewDialog';
+import { api } from '../lib/api';
 import { SegTabs } from '../components/ui/controls';
 import ManageHeader from '../components/manage/ManageHeader';
 import { SkillTags, RelChip } from '../components/manage/parts';
@@ -21,8 +23,9 @@ export default function ManageRequests() {
   const load = useOrganizerStore((s) => s.load);
   const filter = useOrganizerStore((s) => s.reqFilter);
   const setFilter = useOrganizerStore((s) => s.setReqFilter);
-  const accept = useOrganizerStore((s) => s.acceptApplication);
-  const decline = useOrganizerStore((s) => s.declineApplication);
+  const [reviewId, setReviewId] = useState(null);
+  const accept = (id) => setReviewId(id);
+  const decline = (id) => setReviewId(id);
   const bulkDecide = useOrganizerStore((s) => s.bulkDecide);
   const source = useOrganizerStore((s) => s.source);
   const status = useOrganizerStore((s) => s.status);
@@ -86,6 +89,7 @@ export default function ManageRequests() {
 
   return (
     <div style={{ minHeight: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
+      {reviewId != null && <ReviewDialog kind="event_participation" sourceId={reviewId} onClose={() => setReviewId(null)} onDecision={async (outcome, body) => { await api.actOnApplication(reviewId, outcome === 'approved' ? 'accept' : 'decline', body); await load(); }} />}
       <Container style={{ paddingTop: 16, paddingBottom: 56 }}>
         <ManageHeader active="requests" />
 

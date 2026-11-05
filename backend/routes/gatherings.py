@@ -54,6 +54,21 @@ def _taxonomy_fields(data, user):
     Ключа нет в теле → нет и в fields (PATCH ничего не затирает); пустая строка → None.
     """
     fields = {}
+    if 'universityId' in data:
+        from models import University
+        from services.universities import can_manage
+        raw = data.get('universityId')
+        if raw in (None, ''):
+            fields['university_id'] = None
+        else:
+            try:
+                university_id = int(raw)
+            except (ValueError, TypeError):
+                return None, 'universityId должен быть числом', 400
+            university = db.session.get(University, university_id)
+            if not can_manage(university, user):
+                return None, 'Создавать мероприятия вуза может только назначенный координатор', 403
+            fields['university_id'] = university_id
 
     if 'theme' in data:
         theme = str(data.get('theme') or '').strip() or None
@@ -195,7 +210,7 @@ def create_gathering():
 @gatherings_bp.route('/<int:id>', methods=['GET'])
 @gathering_owner_required
 def get_gathering(id):
-    return jsonify({'gathering': serialize_gathering_owner(g.gathering)})
+    return jsonify({'gathering': {**serialize_gathering_owner(g.gathering), 'canEditApplication': g.gathering.owner_id == g.user.id}})
 
 
 @gatherings_bp.route('/<int:id>/forecast', methods=['GET'])

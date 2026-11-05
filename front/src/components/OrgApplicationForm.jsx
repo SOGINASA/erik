@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useLang } from '../i18n';
 import { Field, Textarea } from './ui/controls';
 import Button from './ui/Button';
+import ApplicationQuestionnaire, { emptyDetails, detailsComplete } from './ApplicationQuestionnaire';
 import './Organizations.css';
 
 const blank = { legalName: '', legalForm: '', bin: '', legalAddress: '', cityId: '', cat: '', aboutRu: '', representativeName: '', authority: '', email: '', phone: '', publicContact: '', authorityConfirmed: false, dataConsent: false };
@@ -13,6 +14,7 @@ export default function OrgApplicationForm({ cities, themes, onRefresh }) {
   const ru = useLang() === 'ru';
   const tr = (a, b) => ru ? a : b;
   const [form, setForm] = useState(blank);
+  const [applicationDetails, setApplicationDetails] = useState(emptyDetails);
   const [application, setApplication] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -35,8 +37,9 @@ export default function OrgApplicationForm({ cities, themes, onRefresh }) {
   const up = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const submit = async (e) => {
     e.preventDefault(); if (busy) return;
+    if (!detailsComplete('organization', applicationDetails)) { setError(tr('Заполните задачи и план поддержки волонтёров.', 'Еріктілер міндеттері мен қолдау жоспарын толтырыңыз.')); return; }
     setBusy(true); setError('');
-    try { const res = await api.createOrg(form); setApplication(res.application); }
+    try { const res = await api.createOrg({ ...form, applicationDetails }); setApplication(res.application); }
     catch (err) { setError(err?.data?.error || err.message); }
     finally { setBusy(false); }
   };
@@ -60,6 +63,7 @@ export default function OrgApplicationForm({ cities, themes, onRefresh }) {
     {application?.status === 'rejected' && <section className="nko-panel" role="status"><h2>{tr('Нужны исправления', 'Түзету қажет')}</h2><p>{application.reason}</p><p>{tr('Исправьте данные ниже и отправьте новую заявку.', 'Төмендегі деректерді түзетіп, жаңа өтінім жіберіңіз.')}</p></section>}
     {error && <div role="alert" className="nko-error">{error} <Button type="button" variant="secondary" onClick={() => setRetry((n) => n + 1)}>{tr('Обновить', 'Жаңарту')}</Button></div>}
     <form onSubmit={submit} className="nko-flow">
+      <ApplicationQuestionnaire kind="organization" value={applicationDetails} onChange={setApplicationDetails} disabled={busy} />
       <fieldset className="nko-panel" disabled={busy}><legend>{tr('1. Организация', '1. Ұйым')}</legend>
         <p className="nko-help">{tr('Все поля обязательны, кроме направления. Название и форму укажите как в регистрационных сведениях.', 'Бағыттан басқа барлық өріс міндетті. Атауы мен нысанын тіркеу деректеріне сәйкес көрсетіңіз.')}</p>
         <div className="nko-grid">

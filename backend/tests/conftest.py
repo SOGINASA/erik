@@ -43,7 +43,7 @@ def create_test_app():
     app.config['ALLOW_DEMO_LOGIN'] = True
 
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
-                        notifications_bp, platform_bp, organizer_bp)
+                        notifications_bp, platform_bp, organizer_bp, universities_bp, review_data_bp)
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
@@ -52,6 +52,8 @@ def create_test_app():
     app.register_blueprint(guest_bp, url_prefix='/api')
     app.register_blueprint(notifications_bp, url_prefix='/api')
     app.register_blueprint(platform_bp, url_prefix='/api')
+    app.register_blueprint(review_data_bp, url_prefix='/api')
+    app.register_blueprint(universities_bp, url_prefix='/api')
     app.register_blueprint(organizer_bp, url_prefix='/api')
 
     return app

@@ -499,6 +499,10 @@ def create_application(id):
     if gathering.status in _CLOSED_STATUSES:
         return _closed_response()
 
+    from services.universities import registration_error
+    error = registration_error(gathering, g.user)
+    if error:
+        return error
     data = request.get_json(silent=True) or {}
     raw_skills = data.get('skills') if isinstance(data.get('skills'), list) else []
     skills = [s for s in raw_skills if s in APPLICATION_SKILLS]

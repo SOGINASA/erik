@@ -1,10 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AdminOrgs from './AdminOrgs';
 import { api } from '../../lib/api';
-jest.mock('../../lib/api', () => ({ api: { adminOrgs: jest.fn(), adminOrgApplications: jest.fn(), decideOrgApplication: jest.fn() } }));
+jest.mock('../../lib/api', () => ({ api: { adminOrgs: jest.fn(), adminOrgApplications: jest.fn(), decideOrgApplication: jest.fn(), reviewHistory: jest.fn().mockResolvedValue({ submissions: [] }) } }));
+jest.mock('../../i18n', () => ({ useLang: () => 'ru' }));
+jest.mock('../ui/Sheet', () => ({ Sheet: ({ children }) => <div>{children}</div> }));
 jest.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a> }));
 
 test('approval requires evidence and checks, then refreshes the queue', async () => {
+  api.reviewHistory.mockResolvedValue({ submissions: [] });
   api.adminOrgs.mockResolvedValue({ orgs: [] });
   api.adminOrgApplications.mockResolvedValueOnce({ applications: [{ id: 8, status: 'pending', createdAt: '2026-11-05', data: { legalName: 'Фонд', bin: '123456789012', email: 'private@example.kz' } }] }).mockResolvedValue({ applications: [] });
   api.decideOrgApplication.mockResolvedValue({});
@@ -16,8 +19,12 @@ test('approval requires evidence and checks, then refreshes the queue', async ()
   fireEvent.change(screen.getByLabelText(/Результат проверки/), { target: { value: 'Реестр и полномочия сверены' } });
   expect(approve).toBeDisabled();
   screen.getAllByRole('checkbox').forEach((c) => fireEvent.click(c));
+  expect(approve).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Основание решения'), { target: { value: 'complete_and_valid' } });
+  ['Регистрация НКО', 'Полномочия представителя', 'Работа с волонтёрами'].forEach((label) => fireEvent.change(screen.getByLabelText(label), { target: { value: 'passed' } }));
+  fireEvent.change(screen.getByLabelText('Уверенность в решении'), { target: { value: 'certain' } });
   expect(approve).toBeEnabled();
   fireEvent.click(approve);
-  await waitFor(() => expect(api.decideOrgApplication).toHaveBeenCalledWith(8, { decision: 'approved', note: 'Реестр и полномочия сверены', registryChecked: true, authorityChecked: true }));
+  await waitFor(() => expect(api.decideOrgApplication).toHaveBeenCalledWith(8, expect.objectContaining({ decision: 'approved', note: 'Реестр и полномочия сверены', registryChecked: true, authorityChecked: true, review: expect.objectContaining({ reasonCode: 'complete_and_valid', certainty: 'certain' }) })));
   await screen.findByText('В этой категории заявок нет.');
 });

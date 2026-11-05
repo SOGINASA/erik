@@ -13,6 +13,7 @@ import ForecastBlock from '../components/ForecastBlock';
 import AttendanceBar from '../components/AttendanceBar';
 import PersonRow from '../components/PersonRow';
 import Button from '../components/ui/Button';
+import { PendingApplicationEditor } from '../components/ApplicationQuestionnaire';
 import { Skeleton } from '../components/ui/feedback';
 
 // Тот же разбор id, что eventNumericId в useGatheringStore: бэк отдаёт число, лента клеит
@@ -158,6 +159,7 @@ export default function CoordGathering() {
               </div>
             )}
 
+            {!booting && g.canEditApplication && ['pending', 'rejected'].includes(g.status) && <PendingApplicationEditor key={g.id} kind="gathering" sourceId={g.id} />}
             {booting ? (
               <div style={{ marginBottom: 32 }}>
                 <Skeleton width={92} height={13} />

@@ -95,7 +95,7 @@ def users_search():
 
 # ── лента событий (открытые сборы) ──
 def _feed_query():
-    q = Gathering.query.filter(Gathering.status == 'open')
+    q = Gathering.query.filter(Gathering.status == 'open', Gathering.university_id.is_(None))
     theme = request.args.get('theme')
     city = request.args.get('city')
     fmt = request.args.get('format')
@@ -259,6 +259,10 @@ def set_registration(id):
     g_ = load_gathering(id)
     if g_ is None or g_.status != 'open':
         return jsonify({'error': 'Событие не найдено'}), 404
+    from services.universities import registration_error
+    error = registration_error(g_, u)
+    if error:
+        return error
     data = request.get_json(silent=True) or {}
     answer = data.get('answer')
     if answer not in ANSWERS:

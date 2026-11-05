@@ -82,6 +82,8 @@ export default function GuestGathering() {
     const err = r && r.error;
     if (err && err.status === 401) {
       requireAccount();
+    } else if (err && err.status === 403 && err.data?.universityId) {
+      navigate(`/universities/${err.data.universityId}`);
     } else if (err && err.status === 409) {
       setClosed(true); // сбор уже завершён — ответы не принимаются
     } else if (isOffline(err)) {

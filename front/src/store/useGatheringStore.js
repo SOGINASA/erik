@@ -153,11 +153,12 @@ export const useGatheringStore = create((set, get) => ({
       // Орг и обложка опциональны: заданы в форме → уходят в тело, иначе undefined и
       // JSON.stringify их выкинет (бэк оставит org_id/image_url прежними/NULL). Имена в
       // ТЕЛЕ запроса — orgId/imageUrl (см. createGathering в lib/api.js).
-      orgId: form.orgId, imageUrl: form.imageUrl,
+      orgId: form.orgId, imageUrl: form.imageUrl, universityId: form.universityId || undefined,
       // Роли — из черновика шторки, а не из form: набор правится в RolesSheet и живёт
       // срезом стора. Ключ перечисляем ЯВНО, как и всё остальное тело: забыть его здесь
       // значит молча создать сбор без ролей (тот же класс потери, что был с theme/cityId).
       roles: get().draftRoles.length ? get().draftRoles : undefined,
+      applicationDetails: form.applicationDetails,
     };
     if (body.name) useSessionStore.getState().setIdentity(body.name, useSessionStore.getState().phone);
     // Успех → { gathering, ... } как раньше. Провал → { error: { offline, forbidden, message } }.

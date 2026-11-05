@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import Button from '../ui/Button';
+import ReviewDialog, { ReviewAnnotation, ApplicationEvidence, emptyReview, reviewComplete } from '../ReviewDialog';
 import { Field, Textarea } from '../ui/controls';
 import '../Organizations.css';
 
@@ -9,6 +10,8 @@ const labels = { legalName: 'Полное наименование', bin: 'БИ�
 const statuses = { pending: 'На проверке', approved: 'Одобрена', rejected: 'Отклонена' };
 
 function Application({ row, onChanged }) {
+  const [review, setReview] = useState(emptyReview);
+  const [submissionRevision, setSubmissionRevision] = useState(undefined);
   const [note, setNote] = useState('');
   const [registry, setRegistry] = useState(false);
   const [authority, setAuthority] = useState(false);
@@ -16,7 +19,7 @@ function Application({ row, onChanged }) {
   const [error, setError] = useState('');
   const decide = async (decision) => {
     setBusy(true); setError('');
-    try { await api.decideOrgApplication(row.id, { decision, note, registryChecked: registry, authorityChecked: authority }); await onChanged(); }
+    try { await api.decideOrgApplication(row.id, { decision, note, registryChecked: registry, authorityChecked: authority, review: { ...review, note, submissionRevision } }); await onChanged(); }
     catch (e) { setError(e?.data?.error || e.message); }
     finally { setBusy(false); }
   };
@@ -25,6 +28,8 @@ function Application({ row, onChanged }) {
     <p className="nko-help">Заявка №{row.id} · {new Date(row.createdAt).toLocaleDateString('ru-RU')} · заявитель #{row.userId}</p>
     <dl className="nko-review-data">{Object.entries(labels).map(([key, title]) => <div key={key}><dt>{title}</dt><dd>{row.data[key] || '—'}</dd></div>)}</dl>
     {row.status === 'pending' ? <>
+      <ApplicationEvidence kind="organization" sourceId={row.id} onVersion={setSubmissionRevision} />
+      <ReviewAnnotation kind="organization" value={review} onChange={setReview} disabled={busy} showNote={false} />
       <p className="nko-help">Сверьте БИН, наименование, некоммерческую форму и действующий статус по сведениям о юрлице. Проверьте руководителя или документ о полномочиях представителя. При необходимости запросите уточнения по указанным контактам.</p>
       <p><a href="https://egov.kz/cms/ru/services/facts_on_legal_persons/e_032" target="_blank" rel="noreferrer">Сведения о юридическом лице на eGov ↗</a></p>
       <label className="nko-check"><input type="checkbox" disabled={busy} checked={registry} onChange={(e) => setRegistry(e.target.checked)} /><span>Регистрация, реквизиты и некоммерческий статус проверены</span></label>
@@ -32,7 +37,7 @@ function Application({ row, onChanged }) {
       <Textarea label="Результат проверки / причина отказа · 10–2000 символов" value={note} maxLength={2000} disabled={busy} onChange={(e) => setNote(e.target.value)} />
       <p className="nko-help">При отказе этот текст увидит заявитель. При одобрении заметка останется в административном журнале.</p>
       {error && <p role="alert" className="nko-error">{error}</p>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}><Button disabled={!registry || !authority || note.trim().length < 10 || busy} onClick={() => decide('approved')}>Одобрить и создать НКО</Button><Button variant="secondary" disabled={note.trim().length < 10 || busy} onClick={() => decide('rejected')}>Отклонить с причиной</Button></div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}><Button disabled={!registry || !authority || note.trim().length < 10 || busy || submissionRevision === undefined || !reviewComplete('organization', review)} onClick={() => decide('approved')}>Одобрить и создать НКО</Button><Button variant="secondary" disabled={note.trim().length < 10 || busy || submissionRevision === undefined || !reviewComplete('organization', review)} onClick={() => decide('rejected')}>Отклонить с причиной</Button></div>
     </> : <><p><strong>Решение:</strong> {row.reviewNote}</p>{row.orgId && <Link to={`/o/o${row.orgId}`}>Открыть организацию →</Link>}</>}
   </details>;
 }
@@ -45,6 +50,7 @@ export default function AdminOrgs() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('pending');
   const [busyId, setBusyId] = useState(null);
+  const [legacyReview, setLegacyReview] = useState(null);
   const load = useCallback(async () => {
     try {
       const [o, a] = await Promise.all([api.adminOrgs('all'), api.adminOrgApplications('all')]);
@@ -52,10 +58,10 @@ export default function AdminOrgs() {
     } catch (e) { setError(e.message); setState('error'); }
   }, []);
   useEffect(() => { load(); }, [load]);
-  const legacyDecision = async (org, approve) => {
+  const legacyDecision = async (org, approve, metadata) => {
     setBusyId(org.id);
-    try { await (approve ? api.approveOrg(org.id) : api.rejectOrg(org.id)); await load(); }
-    catch (e) { setError(e.message); }
+    try { await (approve ? api.approveOrg(org.id, metadata) : api.rejectOrg(org.id, metadata)); await load(); }
+    catch (e) { setError(e.message); throw e; }
     finally { setBusyId(null); }
   };
   const matches = (name, bin) => `${name} ${bin || ''}`.toLowerCase().includes(q.trim().toLowerCase());
@@ -71,9 +77,10 @@ export default function AdminOrgs() {
       <h2>Организации на платформе</h2>
       {orgs.filter((o) => matches(o.name, o.bin)).map((o) => <article className="nko-panel" key={o.id}>
         <h3><Link to={`/o/o${o.id}`}>{o.name}</Link></h3><p>{o.city} · {o.verified ? 'Проверена' : 'Старая заявка · требует проверки'} · {o.events} событий</p>
-        {!o.verified && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}><Button disabled={busyId !== null} onClick={() => legacyDecision(o, true)}>Одобрить</Button><Button variant="secondary" disabled={busyId !== null} onClick={() => legacyDecision(o, false)}>Отклонить</Button></div>}
+        {!o.verified && <Button disabled={busyId !== null} onClick={() => setLegacyReview(o)}>Рассмотреть старую заявку</Button>}
       </article>)}
       {!orgs.length && <p>После первого одобрения организация появится здесь.</p>}
+      {legacyReview && <ReviewDialog kind="legacy_organization" sourceId={legacyReview.id} onClose={() => setLegacyReview(null)} onDecision={(outcome, metadata) => legacyDecision(legacyReview, outcome === 'approved', metadata)} />}
     </>}
   </div>;
 }

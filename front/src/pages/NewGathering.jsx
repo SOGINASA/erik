@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useT, useLang } from '../i18n';
 import { useGatheringStore } from '../store/useGatheringStore';
 import { useUiStore } from '../store/useUiStore';
@@ -12,6 +12,7 @@ import { THEMES, todayISO } from '../lib/data';
 import { Container, BackButton } from '../components/Container';
 import { Field, FieldLabel, Stepper } from '../components/ui/controls';
 import Button from '../components/ui/Button';
+import ApplicationQuestionnaire, { emptyDetails, detailsComplete } from '../components/ApplicationQuestionnaire';
 
 // Выпадающий список: в controls.jsx селекта нет, поэтому те же 48px/рамка/радиус,
 // что у Field и у селекта города в EditProfileSheet — поля стоят в одну линию.
@@ -84,6 +85,10 @@ function submitErrorText(err, isRu) {
 export default function NewGathering() {
   const t = useT();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedUniversity = searchParams.get('universityId') || '';
+  const [universities, setUniversities] = useState([]);
+  const [universityError, setUniversityError] = useState(false);
   const desktop = useIsDesktop();
   const hasName = !!useSessionStore((s) => s.name);
   const createGathering = useGatheringStore((s) => s.create);
@@ -104,8 +109,22 @@ export default function NewGathering() {
   const [busy, setBusy] = useState(false);     // защита от двойного сабмита
   const [uploading, setUploading] = useState(false);
   const [failed, setFailed] = useState(null);
+  const [applicationDetails, setApplicationDetails] = useState(emptyDetails);
   const [myOrgs, setMyOrgs] = useState([]);    // мои НКО (я — owner): пусто → селект «от имени НКО» не показываем
   const up = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  useEffect(() => {
+    let alive = true;
+    api.universities().then((r) => {
+      if (!alive) return;
+      const allowed = r.universities.filter((u) => u.canManage);
+      setUniversities(allowed);
+      if (requestedUniversity) {
+        if (allowed.some((u) => String(u.id) === requestedUniversity)) setForm((f) => ({ ...f, universityId: requestedUniversity }));
+        else setUniversityError(true);
+      }
+    }).catch(() => { if (alive && requestedUniversity) setUniversityError(true); });
+    return () => { alive = false; };
+  }, [requestedUniversity]);
 
   // Свои организации для селекта «от имени НКО». Отдельный запрос, а не платформа:
   // usePlatformStore грузит ВСЕ НКО, а привязать сбор можно только к своей (бэк проверяет
@@ -143,6 +162,8 @@ export default function NewGathering() {
 
   const create = async () => {
     if (busy || uploading) return;
+    if (!detailsComplete('gathering', applicationDetails)) { setFailed(isRu ? 'Заполните цель, задачи волонтёров и план безопасности.' : 'Мақсатты, еріктілер міндеттерін және қауіпсіздік жоспарын толтырыңыз.'); return; }
+    if (requestedUniversity && !form.universityId) { setUniversityError(true); return; }
     setTried(true);
     const errs = validate(form, !hasName, isRu);
     if (Object.keys(errs).length) {
@@ -153,7 +174,7 @@ export default function NewGathering() {
     }
     setBusy(true);
     setFailed(null);
-    const res = await createGathering(form);
+    const res = await createGathering({ ...form, applicationDetails });
     setBusy(false);
     // Провал теперь различим: стор возвращает { error: { offline, forbidden, message } }
     // и уже показал причину тостом. Раньше на этом месте открывалась шторка share
@@ -181,7 +202,10 @@ export default function NewGathering() {
         <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 30, lineHeight: 1.15, letterSpacing: '-.02em', margin: '8px 0 24px' }}>{t.newTitle}</h1>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingBottom: 120 }}>
+          {universityError && <p role="alert" style={{ color: 'var(--danger)' }}>{isRu ? 'Не удалось подтвердить права на создание мероприятия этого университета.' : 'Осы университеттің іс-шарасын құру құқығы расталмады.'}</p>}
+          {universities.length > 0 && <Select label={isRu ? 'Университет' : 'Университет'} placeholder={isRu ? 'Общее мероприятие' : 'Жалпы іс-шара'} value={form.universityId || ''} onChange={up('universityId')} options={universities.map((u) => ({ value: u.id, label: isRu ? u.name : u.nameKz }))} />}
           <Field label={t.fWhat} value={form.what} onChange={up('what')} placeholder={t.fWhatPh} error={errors.what} />
+          <ApplicationQuestionnaire kind="gathering" value={applicationDetails} onChange={setApplicationDetails} disabled={busy} />
           <Field label={t.fWhere} value={form.where} onChange={up('where')} placeholder={t.fWherePh} error={errors.where} />
           <Select
             label={isRu ? 'Тема' : 'Тақырып'}

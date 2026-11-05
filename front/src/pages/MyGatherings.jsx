@@ -8,6 +8,7 @@ import { useUiStore } from '../store/useUiStore';
 import { useIsDesktop, isOrganizerRole } from '../lib/nav';
 import { Container } from '../components/Container';
 import Button from '../components/ui/Button';
+import { PendingApplicationEditor } from '../components/ApplicationQuestionnaire';
 import { EmptyState, Skeleton } from '../components/ui/feedback';
 
 // Блок «стать организатором» под пустым экраном волонтёра. Показывает ровно одно из
@@ -33,6 +34,7 @@ function RoleRequestBlock({ request, isRu, onApply }) {
             ? 'Администратор скоро её посмотрит — решение придёт уведомлением.'
             : 'Әкімші жақын арада қарайды — шешім хабарландырумен келеді.'}
         </p>
+        <PendingApplicationEditor kind="organizer_role" sourceId={request.id} />
       </div>
     );
   }

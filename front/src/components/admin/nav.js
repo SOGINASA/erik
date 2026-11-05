@@ -4,11 +4,13 @@ export const ADMIN_SECTIONS = [
   { id: 'overview', label: 'Обзор', icon: 'feed', path: '/admin' },
   { id: 'users', label: 'Пользователи', icon: 'users', path: '/admin/users' },
   { id: 'orgs', label: 'Организации', icon: 'shield', path: '/admin/orgs' },
+  { id: 'universities', label: 'Университеты', icon: 'calendar', path: '/admin/universities' },
   { id: 'events', label: 'События', icon: 'calendar', path: '/admin/events' },
   { id: 'moderation', label: 'Модерация', icon: 'filter', path: '/admin/moderation' },
   { id: 'cities', label: 'Города', icon: 'map', path: '/admin/cities' },
   { id: 'broadcast', label: 'Рассылки', icon: 'bell', path: '/admin/broadcast' },
   { id: 'analytics', label: 'Аналитика', icon: 'trophy', path: '/admin/analytics' },
+  { id: 'application-data', label: 'Данные заявок', icon: 'list', path: '/admin/application-data' },
 ];
 
 // id активного раздела из пути (/admin -> overview, /admin/users -> users).

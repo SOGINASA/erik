@@ -254,9 +254,9 @@ export const usePlatformStore = create((set, get) => ({
 
   // Подать заявку. Ошибку НЕ глотаем: «заявка отправлена» при неушедшем запросе значит,
   // что человек будет ждать решения, которого никто не увидит.
-  submitRoleRequest: async (message) => {
+  submitRoleRequest: async (message, applicationDetails) => {
     try {
-      const res = await api.createRoleRequest({ message: (message || '').trim() || undefined });
+      const res = await api.createRoleRequest({ message: (message || '').trim() || undefined, applicationDetails });
       set({ myRoleRequest: res.request || null });
       toast(isRu() ? 'Заявка отправлена администратору' : 'Өтінім әкімшіге жіберілді');
       return { ok: true };

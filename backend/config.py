@@ -66,6 +66,10 @@ class Config:
     SHARE_BASE_URL = os.environ.get('SHARE_BASE_URL', 'https://erik.kz')
     # Базовый URL фронта (для ссылок сброса пароля/верификации в письмах)
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID', '')
+    MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET', '')
+    MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', '')
+    APPLICATION_DATA_EXPORT_KEY = os.environ.get('APPLICATION_DATA_EXPORT_KEY', '')
 
     # Строгая проверка реквизитов включается отдельно; старый env остаётся рабочим.
     REQUIRE_LEGAL_CONFIGURATION = os.environ.get('REQUIRE_LEGAL_CONFIGURATION', '0') == '1'

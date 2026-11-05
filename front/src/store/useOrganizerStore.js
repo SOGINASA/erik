@@ -349,11 +349,11 @@ export const useOrganizerStore = create((set, get) => ({
   // НАСТОЯЩУЮ заявку локально, не отправив ничего на сервер, а при source='server'
   // в реальный список входящих попадал фантом с пустым заголовком и вечным 403.
   // Имя/телефон/город сюда больше не нужны: PII берёт сервер из профиля.
-  addApplication: async ({ eventId, skills, message }) => {
+  addApplication: async ({ eventId, skills, message, applicationDetails }) => {
     const gid = feedGatheringId(eventId);
     if (gid === null) return { ok: true }; // демо-лента: за этим id сервера нет
     return commit({
-      call: () => api.createApplication(gid, { skills: skills || [], message }),
+      call: () => api.createApplication(gid, { skills: skills || [], message, applicationDetails }),
       errRu: 'Заявку не удалось отправить', errKz: 'Өтінімді жіберу мүмкін болмады',
     });
   },
