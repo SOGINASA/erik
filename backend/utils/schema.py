@@ -40,8 +40,9 @@ SCHEMA_MARKERS = [
     ('e1f2a3b4c5d6', ('participants', 'confirmed_at')),
     ('f2a3b4c5d6e7', ('orgs', 'bin')),
     ('a3b4c5d6e7f8', ('oauth_identities', None)),
-    ('a3b4c5d6e7f8', ('gatherings', 'university_id')),
+    ('c8f01a72b694', ('gatherings', 'university_id')),
     ('b4c5d6e7f8a9', ('review_decisions', None)),
+    ('d9e2710c5f86', ('oauth_login_codes', None)),
 ]
 
 SCHEMA_HEAD = SCHEMA_MARKERS[-1][0]

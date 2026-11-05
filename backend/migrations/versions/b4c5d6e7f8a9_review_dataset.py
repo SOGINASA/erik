@@ -3,7 +3,7 @@ from alembic import op
 from models import ReviewSubmission, ReviewDecision
 
 revision = 'b4c5d6e7f8a9'
-down_revision = 'a3b4c5d6e7f8'
+down_revision = 'c8f01a72b694'
 branch_labels = None
 depends_on = None
 

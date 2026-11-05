@@ -162,9 +162,11 @@ def test_markers_cover_every_migration():
         src = open(os.path.join(versions, fn), encoding='utf-8').read()
         rev = re.search(r"^revision = '([^']+)'", src, re.M).group(1)
         down = re.search(r"^down_revision = (?:'([^']+)'|None)", src, re.M).group(1)
+        assert rev not in chain, f'Duplicate Alembic revision {rev}: {fn}'
         chain[rev] = down
 
     marked = [rev for rev, _ in SCHEMA_MARKERS]
+    assert len(marked) == len(set(marked)), 'Duplicate schema revision marker'
     assert set(marked) == set(chain), 'SCHEMA_MARKERS разошёлся со списком миграций'
     # порядок маркеров должен совпадать с порядком цепочки
     for prev, cur in zip(marked, marked[1:]):
