@@ -35,3 +35,4 @@ Thumbs.db
 /ml/__pycache__/
 /ml/*.py[cod]
 /ml/data/
+/deploy/
