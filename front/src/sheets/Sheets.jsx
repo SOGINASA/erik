@@ -232,6 +232,7 @@ function MoreSheet() {
             координатор и НКО записываются на чужие сборы наравне с волонтёром. */}
         {loggedIn && item('check', isRu ? 'Мои мероприятия' : 'Менің іс-шараларым', () => goClose('/my-events', 'myEvents'))}
         {item('user', t.navProfile, () => goClose('/u/me', 'profile'))}
+        {item('users', isRu ? 'НКО' : 'КЕҰ', () => goClose('/orgs', 'orgs'))}
         {item('trophy', t.navLeader, () => goClose('/leaderboard', 'leaderboard'))}
         {item('bell', t.navNotif, () => goClose('/notifications', 'notifications'))}
         {item('shield', isRu ? 'Условия и конфиденциальность' : 'Шарттар және құпиялылық', () => { close(); navigate('/privacy'); })}

@@ -41,8 +41,8 @@ export default function Login() {
     if (!id.trim() || !pass || busy) return;
     setBusy(true);
     try {
-      await loginWithPassword({ identifier: id.trim(), password: pass });
-      navigate(returnTo || '/feed');
+      const result = await loginWithPassword({ identifier: id.trim(), password: pass });
+      navigate(result.user?.user_type === 'admin' ? '/admin' : returnTo || '/feed');
       showToast('С возвращением!');
     } catch (err) {
       showToast(err?.status === 401

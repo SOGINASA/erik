@@ -1,126 +1,79 @@
-import { useEffect, useState } from 'react';
-import { usePlatformStore } from '../../store/usePlatformStore';
-import { useUiStore } from '../../store/useUiStore';
-import { AdminSearch, FilterChips, Table, Tr, Td, StatusPill, IconBtn, SectionCard } from './kit';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api } from '../../lib/api';
 import Button from '../ui/Button';
-import { THEMES } from '../../lib/data';
+import { Field, Textarea } from '../ui/controls';
+import '../Organizations.css';
 
-// Русская плюрализация для счётчика организаций.
-const plOrg = (n) => {
-  const a = n % 10, b = n % 100;
-  if (a === 1 && b !== 11) return 'организация';
-  if (a >= 2 && a <= 4 && !(b >= 12 && b <= 14)) return 'организации';
-  return 'организаций';
-};
+const labels = { legalName: 'Полное наименование', bin: 'БИН', legalForm: 'Правовая форма', legalAddress: 'Юридический адрес', cityId: 'Город', aboutRu: 'Деятельность', publicContact: 'Публичный контакт', representativeName: 'ФИО представителя', authority: 'Должность и полномочия', email: 'Email представителя', phone: 'Телефон представителя' };
+const statuses = { pending: 'На проверке', approved: 'Одобрена', rejected: 'Отклонена' };
 
-// Квадратный аватар темы: подложка THEMES[cat].tint, инициал цветом .ink.
-function ThemeAvatar({ cat, name, size = 34 }) {
-  const t = THEMES[cat] || {};
-  return (
-    <span style={{ width: size, height: size, flex: 'none', borderRadius: 'var(--r-s)', background: t.tint || 'var(--paper)', color: t.ink || 'var(--ink-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--fd)', fontWeight: 700, fontSize: Math.round(size * 0.44) }}>
-      {((name || '')[0] || '?').toUpperCase()}
-    </span>
-  );
+function Application({ row, onChanged }) {
+  const [note, setNote] = useState('');
+  const [registry, setRegistry] = useState(false);
+  const [authority, setAuthority] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const decide = async (decision) => {
+    setBusy(true); setError('');
+    try { await api.decideOrgApplication(row.id, { decision, note, registryChecked: registry, authorityChecked: authority }); await onChanged(); }
+    catch (e) { setError(e?.data?.error || e.message); }
+    finally { setBusy(false); }
+  };
+  return <details className="nko-panel">
+    <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{row.data.legalName} · БИН {row.data.bin} · {statuses[row.status]}</summary>
+    <p className="nko-help">Заявка №{row.id} · {new Date(row.createdAt).toLocaleDateString('ru-RU')} · заявитель #{row.userId}</p>
+    <dl className="nko-review-data">{Object.entries(labels).map(([key, title]) => <div key={key}><dt>{title}</dt><dd>{row.data[key] || '—'}</dd></div>)}</dl>
+    {row.status === 'pending' ? <>
+      <p className="nko-help">Сверьте БИН, наименование, некоммерческую форму и действующий статус по сведениям о юрлице. Проверьте руководителя или документ о полномочиях представителя. При необходимости запросите уточнения по указанным контактам.</p>
+      <p><a href="https://egov.kz/cms/ru/services/facts_on_legal_persons/e_032" target="_blank" rel="noreferrer">Сведения о юридическом лице на eGov ↗</a></p>
+      <label className="nko-check"><input type="checkbox" disabled={busy} checked={registry} onChange={(e) => setRegistry(e.target.checked)} /><span>Регистрация, реквизиты и некоммерческий статус проверены</span></label>
+      <label className="nko-check"><input type="checkbox" disabled={busy} checked={authority} onChange={(e) => setAuthority(e.target.checked)} /><span>Полномочия представителя подтверждены</span></label>
+      <Textarea label="Результат проверки / причина отказа · 10–2000 символов" value={note} maxLength={2000} disabled={busy} onChange={(e) => setNote(e.target.value)} />
+      <p className="nko-help">При отказе этот текст увидит заявитель. При одобрении заметка останется в административном журнале.</p>
+      {error && <p role="alert" className="nko-error">{error}</p>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}><Button disabled={!registry || !authority || note.trim().length < 10 || busy} onClick={() => decide('approved')}>Одобрить и создать НКО</Button><Button variant="secondary" disabled={note.trim().length < 10 || busy} onClick={() => decide('rejected')}>Отклонить с причиной</Button></div>
+    </> : <><p><strong>Решение:</strong> {row.reviewNote}</p>{row.orgId && <Link to={`/o/o${row.orgId}`}>Открыть организацию →</Link>}</>}
+  </details>;
 }
 
-const HEAD = [
-  { label: 'Организация' },
-  { label: 'Категория' },
-  { label: 'Город' },
-  { label: 'Статус' },
-  { label: 'События', align: 'right' },
-  { label: 'Волонтёры', align: 'right' },
-  { label: '', align: 'right' },
-];
-
-// Организации (НКО): поиск, фильтр по статусу, модерация и переход к карточке.
 export default function AdminOrgs() {
-  const orgs = usePlatformStore((s) => s.orgs);
-  const loadPlatform = usePlatformStore((s) => s.loadPlatform);
-  const approveOrg = usePlatformStore((s) => s.approveOrg);
-  const rejectOrg = usePlatformStore((s) => s.rejectOrg);
-  const showToast = useUiStore((s) => s.showToast);
+  const [orgs, setOrgs] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [state, setState] = useState('loading');
+  const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('all'); // all | verified | pending
-
-  // Тянем НКО с сервера (идемпотентно; мок-фолбэк при офлайне остаётся в сторе).
-  useEffect(() => { loadPlatform(); }, [loadPlatform]);
-
-  const verifiedCount = orgs.filter((o) => o.verified).length;
-  const pendingCount = orgs.length - verifiedCount;
-  const query = q.trim().toLowerCase();
-
-  const filtered = orgs.filter((o) => {
-    if (status === 'verified' && !o.verified) return false;
-    if (status === 'pending' && o.verified) return false;
-    if (query && !`${o.name} ${o.city}`.toLowerCase().includes(query)) return false;
-    return true;
-  });
-
-  const chips = [
-    { value: 'all', label: 'Все', count: orgs.length },
-    { value: 'verified', label: 'Проверенные', count: verifiedCount },
-    { value: 'pending', label: 'На модерации', count: pendingCount },
-  ];
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* поиск + счётчик */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
-          <AdminSearch value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по названию или городу" />
-        </div>
-        <span style={{ fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{filtered.length} {plOrg(filtered.length)}</span>
-      </div>
-
-      {/* фильтр по статусу */}
-      <FilterChips options={chips} value={status} onChange={setStatus} />
-
-      {/* таблица */}
-      <SectionCard pad={0}>
-        {filtered.length ? (
-          <Table head={HEAD}>
-            {filtered.map((o) => (
-              <Tr key={o.id}>
-                <Td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <ThemeAvatar cat={o.cat} name={o.name} />
-                    <span style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{o.name}</span>
-                  </div>
-                </Td>
-                <Td nowrap style={{ color: 'var(--ink-2)' }}>{(THEMES[o.cat] || {}).ru || o.cat}</Td>
-                <Td nowrap style={{ color: 'var(--ink-2)' }}>{o.city}</Td>
-                <Td nowrap>
-                  {o.verified
-                    ? <StatusPill tone="yard" icon="check">Проверена</StatusPill>
-                    : <StatusPill tone="maybe">На модерации</StatusPill>}
-                </Td>
-                <Td align="right" style={{ fontFamily: 'var(--fm)', color: 'var(--ink)' }}>{o.events}</Td>
-                <Td align="right" style={{ fontFamily: 'var(--fm)', color: 'var(--ink)' }}>{o.vol}</Td>
-                <Td align="right" nowrap>
-                  <div style={{ display: 'inline-flex', gap: 8, justifyContent: 'flex-end' }}>
-                    {o.verified ? (
-                      <>
-                        <IconBtn icon="external" title="Открыть" onClick={() => showToast(`Открываю «${o.name}»`)} />
-                        <IconBtn icon="edit" title="Изменить" onClick={() => showToast(`Редактирование «${o.name}»`)} />
-                      </>
-                    ) : (
-                      <>
-                        <Button size="sm" variant="primary" onClick={() => approveOrg(o.id)}>Одобрить</Button>
-                        <Button size="sm" variant="secondary" onClick={() => rejectOrg(o.id)}>Отклонить</Button>
-                      </>
-                    )}
-                  </div>
-                </Td>
-              </Tr>
-            ))}
-          </Table>
-        ) : (
-          <div style={{ padding: '40px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
-            Организации не найдены
-          </div>
-        )}
-      </SectionCard>
-    </div>
-  );
+  const [filter, setFilter] = useState('pending');
+  const [busyId, setBusyId] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const [o, a] = await Promise.all([api.adminOrgs('all'), api.adminOrgApplications('all')]);
+      setOrgs(o.orgs); setApplications(a.applications); setState('ready'); setError('');
+    } catch (e) { setError(e.message); setState('error'); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const legacyDecision = async (org, approve) => {
+    setBusyId(org.id);
+    try { await (approve ? api.approveOrg(org.id) : api.rejectOrg(org.id)); await load(); }
+    catch (e) { setError(e.message); }
+    finally { setBusyId(null); }
+  };
+  const matches = (name, bin) => `${name} ${bin || ''}`.toLowerCase().includes(q.trim().toLowerCase());
+  return <div className="nko-flow">
+    <section><h2>Заявки НКО</h2><p className="nko-help">Публичная организация создаётся только после одобрения. Контакты представителя и юридический адрес доступны только в заявке.</p></section>
+    {state === 'loading' && <p role="status">Загружаем заявки…</p>}
+    {error && <div role="alert" className="nko-error">{error} <Button onClick={load}>Обновить</Button></div>}
+    {state === 'ready' && <>
+      <Field label="Поиск по названию или БИН" type="search" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{Object.entries(statuses).map(([key, name]) => <Button key={key} variant={filter === key ? 'primary' : 'secondary'} aria-pressed={filter === key} onClick={() => setFilter(key)}>{name} · {applications.filter((a) => a.status === key).length}</Button>)}</div>
+      {applications.filter((a) => a.status === filter && matches(a.data.legalName, a.data.bin)).map((row) => <Application key={row.id} row={row} onChanged={load} />)}
+      {!applications.some((a) => a.status === filter && matches(a.data.legalName, a.data.bin)) && <p>В этой категории заявок нет.</p>}
+      <h2>Организации на платформе</h2>
+      {orgs.filter((o) => matches(o.name, o.bin)).map((o) => <article className="nko-panel" key={o.id}>
+        <h3><Link to={`/o/o${o.id}`}>{o.name}</Link></h3><p>{o.city} · {o.verified ? 'Проверена' : 'Старая заявка · требует проверки'} · {o.events} событий</p>
+        {!o.verified && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}><Button disabled={busyId !== null} onClick={() => legacyDecision(o, true)}>Одобрить</Button><Button variant="secondary" disabled={busyId !== null} onClick={() => legacyDecision(o, false)}>Отклонить</Button></div>}
+      </article>)}
+      {!orgs.length && <p>После первого одобрения организация появится здесь.</p>}
+    </>}
+  </div>;
 }

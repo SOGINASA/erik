@@ -14,7 +14,7 @@ const externalProps = (href) => href?.startsWith('http') ? { target: '_blank', r
 export function OrgContacts({ org = {} }) {
   const ru = useLang() === 'ru';
   const contacts = org.contacts || {};
-  const labels = { telegram: 'Telegram', instagram: 'Instagram', whatsapp: 'WhatsApp', phone: ru ? 'Телефон' : 'Телефон' };
+  const labels = { general: ru ? 'Контакт организации' : 'Ұйым байланысы', telegram: 'Telegram', instagram: 'Instagram', whatsapp: 'WhatsApp', phone: ru ? 'Телефон' : 'Телефон' };
   const entries = Object.entries(contacts).filter(([key, value]) => labels[key] && value).flatMap(([key, value]) =>
     (key === 'phone' ? value.split(/[,;\n]/).map((v) => v.trim()).filter(Boolean) : [value]).map((v) => [key, v]));
   return <section className="community-section">

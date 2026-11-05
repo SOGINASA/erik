@@ -6,6 +6,7 @@ global.TextEncoder = TextEncoder;
 jest.mock('react-router-dom', () => jest.requireActual('react-router'));
 const { MemoryRouter, useLocation } = require('react-router-dom');
 const mockShellVisits = [];
+const mockSession = { token: null, name: null, booted: true, userType: null, boot: async () => null };
 
 jest.mock('./components/shell/Shell', () => {
   const { Outlet, useLocation } = require('react-router-dom');
@@ -17,8 +18,7 @@ jest.mock('./components/shell/Shell', () => {
 jest.mock('./sheets/Sheets', () => () => null);
 jest.mock('./components/ui/feedback', () => ({ Toast: () => null }));
 jest.mock('./store/useSessionStore', () => {
-  const state = { token: null, name: null, boot: async () => null };
-  return { useSessionStore: Object.assign((select) => select(state), { getState: () => state }) };
+  return { useSessionStore: Object.assign((select) => select(mockSession), { getState: () => mockSession }) };
 });
 jest.mock('./store/usePlatformStore', () => ({
   usePlatformStore: { getState: () => ({ loadPlatform: jest.fn() }) },
@@ -40,7 +40,10 @@ function Location() {
   return <output aria-label="Current route">{useLocation().pathname}</output>;
 }
 
-beforeEach(() => { mockShellVisits.length = 0; });
+beforeEach(() => {
+  mockShellVisits.length = 0;
+  Object.assign(mockSession, { token: null, name: null, booted: true, userType: null });
+});
 
 test.each([
   ['/charity', '/feed', 'Feed'],
@@ -60,4 +63,24 @@ test.each([
   render(<MemoryRouter initialEntries={[path]}><App /><Location /></MemoryRouter>);
   expect(await screen.findByText(page)).toBeInTheDocument();
   expect(screen.getByLabelText('Current route')).toHaveTextContent(path);
+});
+
+test.each(['/', '/login', '/register'])('signed-in admin opens %s directly in admin', async (path) => {
+  mockSession.userType = 'admin';
+  render(<MemoryRouter initialEntries={[path]}><App /><Location /></MemoryRouter>);
+  expect(await screen.findByText('Admin')).toBeInTheDocument();
+  expect(screen.getByLabelText('Current route')).toHaveTextContent('/admin');
+  expect(screen.queryByText('Home')).not.toBeInTheDocument();
+});
+
+test('restored session waits for its actual account type without mounting ordinary pages', () => {
+  Object.assign(mockSession, { token: 'saved-token', booted: false });
+  const view = render(<MemoryRouter initialEntries={['/']}><App /><Location /></MemoryRouter>);
+  expect(screen.getByText('Проверяем доступ…')).toHaveAttribute('role', 'status');
+  expect(screen.queryByText('Home')).not.toBeInTheDocument();
+  expect(mockShellVisits).toEqual([]);
+  Object.assign(mockSession, { userType: 'admin', booted: true });
+  view.rerender(<MemoryRouter initialEntries={['/']}><App /><Location /></MemoryRouter>);
+  expect(screen.getByText('Admin')).toBeInTheDocument();
+  expect(screen.queryByText('Home')).not.toBeInTheDocument();
 });

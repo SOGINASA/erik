@@ -22,7 +22,7 @@ def test_registration_profile_login_and_event_creation(client, legal_acceptance,
     headers = {'Authorization': 'Bearer ' + account['access_token']}
     profile = client.get('/api/users/me', headers=headers).get_json()['user']
     assert profile['role'] == 'vol'
-    if role == 'vol':
+    if role in ('vol', 'org'):
         assert profile['roleRequest'] is None
         assert account['roleRequest'] is None
     else:
@@ -36,10 +36,19 @@ def test_registration_profile_login_and_event_creation(client, legal_acceptance,
 
     org_id = None
     if role == 'org':
-        org = Org(name='Тестовая НКО', owner_id=user_id, city_id='ast', verified=False)
-        db.session.add(org)
-        db.session.commit()
-        org_id = org.id
+        applied = client.post('/api/orgs', headers=headers, json={
+            'legalName': 'Тестовая НКО', 'legalForm': 'Общественный фонд', 'bin': '123456789012',
+            'cityId': 'ast', 'legalAddress': 'Астана, улица 1', 'aboutRu': 'Помощь людям',
+            'representativeName': 'Иван Тестовый', 'authority': 'Руководитель по уставу',
+            'email': 'representative@example.kz', 'phone': '+77001234567', 'publicContact': '@help',
+            'authorityConfirmed': True, 'dataConsent': True,
+        })
+        assert applied.status_code == 201
+        approved = client.post(f"/api/admin/org-applications/{applied.json['application']['id']}/decision",
+            headers=admin_headers, json={'decision': 'approved', 'note': 'Сведения и полномочия проверены',
+                                        'registryChecked': True, 'authorityChecked': True})
+        assert approved.status_code == 200
+        org_id = approved.json['application']['orgId']
 
     # После одобрения работают и прежний токен, и повторный вход.
     for index in range(2):

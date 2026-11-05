@@ -19,7 +19,9 @@ export default function Org() {
   const navigate = useNavigate();
   const { id } = useParams();
   const orgs = usePlatformStore((s) => s.orgs);
-  const events = usePlatformStore((s) => s.events);
+  const [orgEvents, setOrgEvents] = useState([]);
+  const [eventsState, setEventsState] = useState('loading');
+  const [eventsRetry, setEventsRetry] = useState(0);
   const followedMap = usePlatformStore((s) => s.followed);
   const toggleFollow = usePlatformStore((s) => s.toggleFollow);
   const regs = useGatheringStore((s) => s.regs);
@@ -58,12 +60,22 @@ export default function Org() {
     return () => { alive = false; };
   }, [id, fromCache, numericOrgId]);
 
+  useEffect(() => {
+    if (!numericOrgId) return undefined;
+    let alive = true;
+    setEventsState('loading'); setOrgEvents([]);
+    api.getOrgEvents(numericOrgId).then(({ events: rows }) => {
+      if (alive) { setOrgEvents(rows.map((e) => ({ ...e, id: 'e' + e.id, orgId: 'o' + e.orgId }))); setEventsState('ready'); }
+    }, () => { if (alive) setEventsState('error'); });
+    return () => { alive = false; };
+  }, [numericOrgId, eventsRetry]);
+
   const org = fetched && String(fetched.sid) === numericOrgId ? fetched : fromCache;
   if (!org) {
     return (
       <Container style={{ paddingTop: 20, paddingBottom: 48 }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <BackButton onClick={() => navigate('/feed')} label={isRu ? 'Назад' : 'Артқа'} />
+          <BackButton onClick={() => navigate('/orgs')} label={isRu ? 'Назад' : 'Артқа'} />
           {orgState === 'error'
             ? <EmptyState icon="search" title={isRu ? 'Организация не найдена' : 'Ұйым табылмады'} sub={isRu ? 'Она не существует или недоступна.' : 'Ол жоқ немесе қолжетімсіз.'} />
             : <div style={{ padding: '48px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>{isRu ? 'Загрузка…' : 'Жүктелуде…'}</div>}
@@ -73,7 +85,6 @@ export default function Org() {
   }
   const T = THEMES[org.cat] || { ru: '', kz: '', tint: '#eee', ink: '#333' };
   const followed = !!followedMap[org.id];
-  const orgEvents = events.filter((e) => e.orgId === org.id);
   const mine = org.sid != null && myOrgIds.includes(org.sid);
 
   const secTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '28px 0 12px' };
@@ -83,7 +94,7 @@ export default function Org() {
   return (
     <Container style={{ paddingTop: 20, paddingBottom: 48 }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <BackButton onClick={() => navigate('/feed')} label={isRu ? 'Назад' : 'Артқа'} />
+        <BackButton onClick={() => navigate('/orgs')} label={isRu ? 'Назад' : 'Артқа'} />
 
         {/* Шапка */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, margin: '8px 0 18px' }}>
@@ -102,7 +113,9 @@ export default function Org() {
         </div>
 
         {/* Описание */}
-        <p style={{ fontSize: 15, lineHeight: 1.55, color: 'var(--ink)', margin: '0 0 18px' }}>{isRu ? org.aboutRu : org.aboutKz}</p>
+        <p style={{ fontSize: 15, lineHeight: 1.55, color: 'var(--ink)', margin: '0 0 18px' }}>{(isRu ? org.aboutRu : org.aboutKz) || org.aboutRu}</p>
+
+        {org.bin && <p className="community-muted">{org.registration?.legalName} · {org.registration?.legalForm} · {isRu ? 'БИН' : 'БСН'} {org.bin}</p>}
 
         {/* Статы: события · волонтёры */}
         <div style={{ display: 'flex', gap: 22, marginBottom: 18 }}>
@@ -135,7 +148,7 @@ export default function Org() {
 
         {/* События организации */}
         <div style={secTitle}>{t.orgEventsTitle}</div>
-        {orgEvents.length === 0 ? (
+        {eventsState === 'loading' ? <p role="status">{isRu ? 'Загружаем события…' : 'Іс-шаралар жүктелуде…'}</p> : eventsState === 'error' ? <div role="alert"><p>{isRu ? 'Не удалось загрузить события.' : 'Іс-шараларды жүктеу мүмкін болмады.'}</p><button onClick={() => setEventsRetry((n) => n + 1)}>{isRu ? 'Повторить' : 'Қайталау'}</button></div> : orgEvents.length === 0 ? (
           <EmptyState icon="calendar" title={isRu ? 'Пока нет событий' : 'Әзірге іс-шара жоқ'} sub={isRu ? 'Скоро здесь появятся новые сборы.' : 'Жақында жаңа жиындар пайда болады.'} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

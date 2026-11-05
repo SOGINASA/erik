@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { useUiStore } from '../../store/useUiStore';
 import { useLang } from '../../i18n';
@@ -49,17 +50,13 @@ function Warn() {
 
 // Модерация: верификация НКО и разбор жалоб (данные из usePlatformStore).
 export default function AdminModeration() {
-  const orgs = usePlatformStore((s) => s.orgs);
   const reports = usePlatformStore((s) => s.reports);
   const pendingEvents = usePlatformStore((s) => s.pendingEvents);
-  const loadPlatform = usePlatformStore((s) => s.loadPlatform);
   const loadReports = usePlatformStore((s) => s.loadReports);
   const loadPendingEvents = usePlatformStore((s) => s.loadPendingEvents);
   const roleRequests = usePlatformStore((s) => s.roleRequests);
   const loadRoleRequests = usePlatformStore((s) => s.loadRoleRequests);
   const decideRoleRequest = usePlatformStore((s) => s.decideRoleRequest);
-  const approveOrg = usePlatformStore((s) => s.approveOrg);
-  const rejectOrg = usePlatformStore((s) => s.rejectOrg);
   const approveEvent = usePlatformStore((s) => s.approveEvent);
   const reviewReport = usePlatformStore((s) => s.reviewReport);
   const resolveReport = usePlatformStore((s) => s.resolveReport);
@@ -78,12 +75,11 @@ export default function AdminModeration() {
   const [reqReason, setReqReason] = useState('');
 
   // Организации — из платформы; жалобы, сборы и заявки на роль — отдельными вызовами.
-  useEffect(() => { loadPlatform(); loadReports(); loadPendingEvents(); loadRoleRequests(); },
-    [loadPlatform, loadReports, loadPendingEvents, loadRoleRequests]);
+  useEffect(() => { loadReports(); loadPendingEvents(); loadRoleRequests(); },
+    [loadReports, loadPendingEvents, loadRoleRequests]);
   // Реальная метрика «ср. время реакции» из /admin/stats.
   useEffect(() => { api.adminStats().then(setStats).catch(() => {}); }, []);
 
-  const pending = orgs.filter((o) => !o.verified);
   const openReports = reports.filter((r) => r.status === 'open').length;
   // ср. время реакции модерации: реальное из бэкенда, иначе «—»
   const reaction = stats && stats.avgReactionHours != null ? `${stats.avgReactionHours} ч` : '—';
@@ -108,7 +104,7 @@ export default function AdminModeration() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
         <StatCard label="Сборы на модерации" value={visiblePending.length} sub="ждут одобрения" subTone="maybe" icon="calendar" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Заявки на роль" value={roleRequests.length} sub="хотят организовывать" subTone="maybe" icon="users" accent="var(--maybe)" tint="var(--maybe-soft)" />
-        <StatCard label="На верификации" value={pending.length} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
+        <StatCard label="На верификации" value={stats?.pendingOrgs ?? '—'} sub="ждут решения" subTone="maybe" icon="shield" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Жалобы" value={openReports} sub="открытых обращений" subTone="maybe" icon="bell" accent="var(--maybe)" tint="var(--maybe-soft)" />
         <StatCard label="Ср. время реакции" value={reaction} sub="от жалобы до решения" icon="clock" />
       </div>
@@ -208,29 +204,9 @@ export default function AdminModeration() {
         )}
       </SectionCard>
 
-      {/* заявки на верификацию */}
-      <SectionCard title="Заявки на верификацию" pad={8}>
-        {pending.length ? (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {pending.map((o, i) => (
-              <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderBottom: i < pending.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                <ThemeAvatar cat={o.cat} name={o.name} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.name}</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>{(THEMES[o.cat] || {}).ru || o.cat} · {o.city}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  <Button size="sm" variant="secondary" onClick={() => rejectOrg(o.id)}>Отклонить</Button>
-                  <Button size="sm" variant="primary" onClick={() => approveOrg(o.id)}>Одобрить</Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>
-            Все организации проверены
-          </div>
-        )}
+      <SectionCard title="Заявки НКО">
+        <p style={{ color: 'var(--ink-2)', lineHeight: 1.5 }}>Реквизиты, данные представителя и история решений находятся в разделе организаций.</p>
+        <Link to="/admin/orgs" className="community-link">Проверить заявки НКО →</Link>
       </SectionCard>
 
       {/* жалобы */}

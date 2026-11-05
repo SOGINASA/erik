@@ -144,7 +144,7 @@ def register():
             db.session.add(user)
 
         from services.role_requests import request_organizer_role
-        role_request = request_organizer_role(user, role)
+        role_request = request_organizer_role(user, 'vol' if role == 'org' else role)
         if 'phone' in data:
             user.phone = (data.get('phone') or '').strip() or None
         if 'cityId' in data:

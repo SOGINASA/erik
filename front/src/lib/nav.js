@@ -43,6 +43,7 @@ export function routeName(pathname) {
   if (pathname === '/') return 'home';
   if (pathname.startsWith('/onboarding')) return 'onboarding';
   if (pathname.startsWith('/g/')) return 'guest';
+  if (pathname === '/orgs') return 'orgs';
   if (pathname.startsWith('/feed')) return 'feed';
   if (pathname.startsWith('/map')) return 'map';
   if (pathname.startsWith('/e/')) return 'event';
@@ -102,9 +103,10 @@ export function useRoleResolved() {
   const loggedIn = useSessionStore((s) => s.loggedIn);
   const role = useSessionStore((s) => s.role);
   const isAdmin = useSessionStore((s) => s.isAdmin());
+  const booted = useSessionStore((s) => s.booted);
   const roleKnown = !loggedIn || role != null;
-  // Админство знаем точно только когда оно уже true: false может быть «ещё не загружено».
-  const adminKnown = !loggedIn || isAdmin;
+  // false до завершения boot() ещё может означать «данные аккаунта не загружены».
+  const adminKnown = !loggedIn || isAdmin || booted;
   const known = roleKnown && adminKnown;
   const [waited, setWaited] = useState(false);
   useEffect(() => {

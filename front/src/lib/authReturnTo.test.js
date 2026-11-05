@@ -1,6 +1,6 @@
 import { guestReturnTo } from './authReturnTo';
 
-test.each(['/g/PARK18', '/g/abc_123-XYZ', '/attendance/12#eyJ.TEST_token-signature'])('accepts invitation return path %s', (path) => {
+test.each(['/manage/org', '/g/PARK18', '/g/abc_123-XYZ', '/attendance/12#eyJ.TEST_token-signature'])('accepts invitation return path %s', (path) => {
   expect(guestReturnTo(`?returnTo=${encodeURIComponent(path)}`)).toBe(path);
 });
 

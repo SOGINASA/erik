@@ -112,7 +112,7 @@ export default function AdminOverview() {
         <SectionCard title="Быстрые действия">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Button variant="secondary" icon="bell" full onClick={() => navigate('/admin/broadcast')} style={{ justifyContent: 'flex-start' }}>Создать рассылку</Button>
-            <Button variant="secondary" icon="filter" full onClick={() => navigate('/admin/moderation')} style={{ justifyContent: 'flex-start' }}>Проверить заявки ({pendingN})</Button>
+            <Button variant="secondary" icon="filter" full onClick={() => navigate('/admin/orgs')} style={{ justifyContent: 'flex-start' }}>Заявки НКО ({pendingN})</Button>
             <Button variant="secondary" icon="trophy" full onClick={() => navigate('/admin/analytics')} style={{ justifyContent: 'flex-start' }}>Аналитика</Button>
             <Button variant="secondary" icon="users" full onClick={() => navigate('/admin/users')} style={{ justifyContent: 'flex-start' }}>Управление доступом</Button>
           </div>

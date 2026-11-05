@@ -1,3 +1,8 @@
+/* Anchor navigation scrolls the document, not the landing's wrapper. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.erik-home) { scroll-behavior:smooth; }
+}
+
 .erik-home { --eh-green:#286347; --eh-dark:#1e2d25; --eh-muted:#697269; --eh-line:#dfe4dc; --eh-paper:#f7f8f4; --eh-soft:#eef2e9; background:#fff; color:var(--eh-dark); font-family:var(--fb); overflow:clip; }
 .erik-home * { box-sizing:border-box; }
 .erik-home a { color:inherit; }

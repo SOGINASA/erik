@@ -130,6 +130,7 @@ export const useSessionStore = create(
           userType: (res.user && res.user.user_type) || 'user',
           role: (res.user && res.user.role) || s.role || 'vol',
           name: (res.user && res.user.full_name) || s.name,
+          booted: true,
         }));
         return res;
       },

@@ -414,47 +414,31 @@ def org_detail(id):
 def org_events(id):
     u = current_user()
     rows = Gathering.query.filter(
-        Gathering.org_id == id, Gathering.status.notin_(('deleted', 'pending'))).order_by(
-        Gathering.starts_at.asc()).all()
+        Gathering.org_id == id, Gathering.status.notin_(('deleted', 'pending', 'rejected'))).order_by(
+        Gathering.starts_at.desc()).all()
     return jsonify({'events': [serialize_event_card(x, u.id if u else None) for x in rows]})
 
 
 @platform_bp.route('/orgs', methods=['GET'])
 def orgs_list():
-    return jsonify({'orgs': [serialize_org(o) for o in Org.query.all()]})
+    return jsonify({'orgs': [serialize_org(o) for o in Org.query.filter_by(verified=True).order_by(Org.name, Org.id).all()]})
 
 
 @platform_bp.route('/orgs', methods=['POST'])
+@rate_limit(5, 3600, by_user=True)
 @profiled_required
 def create_org():
-    """Заявка на создание НКО (self-registration). verified=False → в очередь модерации."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get('name') or '').strip()
-    if not name:
-        return jsonify({'error': 'Название организации обязательно'}), 400
-    org = Org(
-        name=name,
-        cat=data.get('cat') or None,
-        city_id=data.get('cityId') or data.get('city_id') or g.user.city_id,
-        verified=False,
-        about_ru=(data.get('aboutRu') or '').strip() or None,
-        about_kz=(data.get('aboutKz') or '').strip() or None,
-        owner_id=g.user.id,
-    )
-    from services.org_profile import profile_fields
-    try:
-        for key, value in profile_fields(data).items():
-            setattr(org, key, value)
-    except ValueError as exc:
-        return jsonify({'error': str(exc)}), 400
-    if g.user.role in ORGANIZER_ROLES:
-        g.user.role = 'org'
-    else:
-        from services.role_requests import request_organizer_role
-        request_organizer_role(g.user, 'org', f'Представитель организации «{org.name}»')
-    db.session.add(org)
-    db.session.commit()
-    return jsonify({'org': serialize_org(org)}), 201
+    from services.org_applications import submit_application
+    return submit_application(g.user, request.get_json(silent=True))
+
+
+@platform_bp.route('/me/org-applications', methods=['GET'])
+@profiled_required
+def my_org_applications():
+    from models import OrgApplication
+    from services.org_applications import serialize_application
+    rows = OrgApplication.query.filter_by(user_id=g.user.id).order_by(OrgApplication.id.desc()).all()
+    return jsonify({'applications': [serialize_application(row) for row in rows]})
 
 
 @platform_bp.route('/me/orgs', methods=['GET'])
@@ -616,7 +600,7 @@ def leaderboard_cities():
 
 @platform_bp.route('/leaderboard/orgs', methods=['GET'])
 def leaderboard_orgs():
-    data = [serialize_org(o) for o in Org.query.all()]
+    data = [serialize_org(o) for o in Org.query.filter_by(verified=True).order_by(Org.name, Org.id).all()]
     data.sort(key=lambda x: x['vol'], reverse=True)
     return jsonify({'orgs': data})
 

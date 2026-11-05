@@ -17,6 +17,7 @@ export default function OrgProfileFields({ value, onChange, disabled = false, on
       <p className="community-muted">{ru ? 'Укажите публичные контакты — волонтёры смогут связаться с вами напрямую.' : 'Ашық байланыстарды көрсетіңіз — волонтёрлер сізбен тікелей хабарласа алады.'}</p>
       <div className="community-form-grid">
         {[
+          ['general', ru ? 'Основной контакт' : 'Негізгі байланыс', 'hello@organization.kz'],
           ['telegram', 'Telegram', '@your_organization'], ['instagram', 'Instagram', '@your_organization'],
           ['whatsapp', 'WhatsApp', '+7 700 000 00 00'], ['phone', ru ? 'Телефоны' : 'Телефондар', '+7 700 000 00 00'],
         ].map(([key, label, placeholder]) => <Field key={key} label={label} placeholder={placeholder} maxLength={300} value={(value.contacts || {})[key] || ''} onChange={(e) => set('contacts', { ...value.contacts, [key]: e.target.value })} />)}

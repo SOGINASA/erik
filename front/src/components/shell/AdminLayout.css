@@ -1,0 +1,27 @@
+.erik-admin-layout { min-height:100dvh; background:var(--paper); }
+.erik-admin-sidebar { position:fixed; inset:0 auto 0 0; width:248px; padding:22px 16px; display:flex; flex-direction:column; background:var(--surface); border-right:1px solid var(--line); overflow-y:auto; z-index:30; }
+.erik-admin-brand { display:flex; align-items:center; gap:8px; flex:none; }
+.erik-admin-brand>span { padding:3px 7px; border-radius:999px; background:var(--ink); color:white; font-size:10px; font-weight:700; letter-spacing:.04em; }
+.erik-admin-sidebar .erik-admin-brand { padding:4px 10px; margin-bottom:20px; }
+.erik-admin-nav { display:flex; gap:2px; }
+.erik-admin-sidebar .erik-admin-nav { flex-direction:column; }
+.erik-admin-link { min-height:44px; padding:10px 14px; display:flex; align-items:center; gap:12px; border-radius:var(--r-m); color:var(--ink-2); text-decoration:none; font-size:15px; font-weight:500; }
+.erik-admin-link svg { flex:none; }
+.erik-admin-link:hover { background:var(--paper); }
+.erik-admin-link.is-active { background:var(--yard-soft); color:var(--yard); }
+.erik-admin-link:focus-visible,.erik-admin-logout:focus-visible { outline:2px solid var(--yard); outline-offset:2px; }
+.erik-admin-account { margin-top:auto; padding-top:16px; border-top:1px solid var(--line); }
+.erik-admin-identity { display:flex; gap:10px; align-items:center; padding:8px; }
+.erik-admin-identity>div { min-width:0; }
+.erik-admin-identity strong { display:block; overflow-wrap:anywhere; font-size:14px; color:var(--ink); }
+.erik-admin-identity small { display:block; color:var(--ink-3); font-size:12px; margin-top:3px; }
+.erik-admin-logout { display:flex; gap:8px; align-items:center; justify-content:center; min-height:44px; padding:8px; border:0; border-radius:var(--r-m); background:transparent; color:var(--ink-2); cursor:pointer; font:500 14px var(--fb); }
+.erik-admin-logout:disabled { opacity:.6; cursor:wait; }
+.erik-admin-account .erik-admin-logout { width:100%; justify-content:flex-start; margin:4px 0 10px; }
+.erik-admin-layout.is-desktop .erik-admin-content { padding-left:248px; }
+.erik-admin-content { min-width:0; }
+.erik-admin-mobile-header { position:sticky; top:0; z-index:30; background:var(--surface); border-bottom:1px solid var(--line); }
+.erik-admin-mobile-top { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 16px; flex-wrap:wrap; }
+.erik-admin-actions { display:flex; gap:6px; align-items:center; }
+.erik-admin-mobile-header .erik-admin-nav { padding:4px 12px 10px; overflow-x:auto; }
+.erik-admin-mobile-header .erik-admin-link { flex:none; white-space:nowrap; font-size:14px; padding:10px 12px; }
