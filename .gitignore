@@ -17,6 +17,10 @@ __pycache__/
 !/backend/.env.example
 /backend/docker-compose.override.yml
 
+# Приватные ключи доступа к серверу
+/keypair
+/deploy/keypair
+
 # База данных
 /backend/database/*.db
 /backend/database/*.sqlite

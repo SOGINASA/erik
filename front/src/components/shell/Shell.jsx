@@ -8,7 +8,7 @@ import { useSessionStore } from '../../store/useSessionStore';
 import { useUiStore } from '../../store/useUiStore';
 import { usePlatformStore } from '../../store/usePlatformStore';
 import { routeName, useIsDesktop, useGuardedNav, useUnread, useRouteAccess, accessDeniedText } from '../../lib/nav';
-import { ADMIN_SECTIONS, adminSectionId } from '../admin/nav';
+import AdminLayout from './AdminLayout';
 import LegalLinks from '../LegalLinks';
 
 // Шелл приложения: сайдбар (десктоп) / шапка + таббар (мобиль) вокруг страниц.
@@ -17,6 +17,7 @@ export default function Shell() {
   const route = routeName(location.pathname);
   const desktop = useIsDesktop();
   const loggedIn = useSessionStore((s) => s.loggedIn);
+  const isAdmin = useSessionStore((s) => s.isAdmin());
   const openSheet = useUiStore((s) => s.openSheet);
   const showToast = useUiStore((s) => s.showToast);
   const isRu = useLang() === 'ru';
@@ -36,11 +37,16 @@ export default function Shell() {
   }, [denied, access, isRu, showToast]);
   if (access === 'guest' || denied) return <Navigate to="/feed" replace />;
 
+  if (isAdmin && route === 'feed') return <Navigate to="/admin" replace />;
+  if (isAdmin) return <AdminLayout desktop={desktop}>
+    {access === 'pending' ? <RolePending isRu={isRu} /> : <Outlet />}
+  </AdminLayout>;
+
   const showGuestBanner = !loggedIn && (route === 'feed' || route === 'map' || route === 'event');
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--paper)', overflowX: 'hidden' }}>
-      {desktop && (route === 'admin' && access === 'ok' ? <AdminSidebar pathname={location.pathname} /> : <Sidebar route={route} />)}
+      {desktop && <Sidebar route={route} />}
       <div
         style={{
           minHeight: '100dvh',
@@ -75,7 +81,6 @@ function Sidebar({ route }) {
   const go = useGuardedNav();
   const navigate = useNavigate();
   const loggedIn = useSessionStore((s) => s.loggedIn);
-  const isAdmin = useSessionStore((s) => s.isAdmin());
   const role = useSessionStore((s) => s.role);
   const logout = useSessionStore((s) => s.logout);
   const isOrganizer = role === 'coord' || role === 'org';
@@ -121,28 +126,16 @@ function Sidebar({ route }) {
       )}
       <nav style={{ display: 'flex', flexDirection: 'column', gap: M.navGap }}>
         <NavBtn icon="feed" label={t.navFeed} active={route === 'feed'} onClick={() => go('/feed', 'feed')} />
+        <NavBtn icon="users" label={isRu ? 'НКО' : 'КЕҰ'} active={route === 'orgs'} onClick={() => go('/orgs', 'orgs')} />
         <NavBtn icon="map" label={t.navMap} active={route === 'map'} onClick={() => go('/map', 'map')} />
-        {/* «Мои мероприятия» (свои RSVP) — ЛЮБОМУ вошедшему, без фильтра по роли.
-            Роль в erik это прогрессия (vol → coord → org), а не режим: координатор
-            не перестаёт записываться на чужие сборы, а НКО и админ тем более. Под
-            role==='vol' && !isAdmin пункт пропадал у всех, кроме чистого волонтёра,
-            и своих записей было не найти вообще — при том что и гейт роута
-            ('myEvents' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES), и бэкенд
-            (/api/me/events под @profiled_required, без проверки роли) их пускают.
-            Меню было строже гейта — та же ошибка, что когда-то с «Моими сборами». */}
+        {/* Свои участия доступны волонтёрам, координаторам и представителям НКО. */}
         {loggedIn && (
           <NavBtn icon="check" label={isRu ? 'Мои мероприятия' : 'Менің іс-шараларым'} active={route === 'myEvents'} onClick={() => go('/my-events', 'myEvents')} />
         )}
         {isOrganizer && (
           <NavBtn icon="calendar" label={t.mgNav} active={route === 'manage' || route === 'manageRequests' || route === 'manageVolunteers'} onClick={() => go('/manage', 'manage')} />
         )}
-        {/* «Мои сборы» — любому вошедшему (роут 'me' в GATED_ROUTES, но НЕ в ORGANIZER_ROUTES),
-            как в мобильном MoreSheet. Волонтёр своих сборов не ведёт и увидит там пустой
-            экран, но экран честный: он объясняет разницу и ведёт в «Мои мероприятия»
-            (MyGatherings.jsx). Прятать пункт по роли значило бы сделать меню строже гейта —
-            а роль меняется без перезагрузки, и пункт пропадал бы у свежего организатора.
-            !isAdmin НЕ ставим сознательно: у админа role='vol' (seed.py, ADMIN_ROLE),
-            и под этим условием он потерял бы «Мои сборы» вообще. */}
+        {/* Волонтёру этот раздел объясняет, как подать заявку на роль координатора. */}
         {loggedIn && (
           <NavBtn icon="list" label={t.myGatherings} active={route === 'me'} onClick={() => go('/me', 'me')} />
         )}
@@ -159,9 +152,6 @@ function Sidebar({ route }) {
         <NavBtn icon="message" label={t.navMessages} active={route === 'messages' || route === 'convo'} onClick={() => go('/messages', 'messages')} />
         <NavBtn icon="bell" label={t.navNotif} active={route === 'notifications'} onClick={() => go('/notifications', 'notifications')} badge={unread} />
         <NavBtn icon="trophy" label={t.navLeader} active={route === 'leaderboard'} onClick={() => go('/leaderboard', 'leaderboard')} />
-        {isAdmin && (
-          <NavBtn icon="shield" label={t.navAdmin} active={route === 'admin'} onClick={() => go('/admin', 'admin')} />
-        )}
       </nav>
       <div style={{ flex: 1, minHeight: 8 }} />
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: M.footPad, marginTop: M.footPad }}>
@@ -196,61 +186,6 @@ function Sidebar({ route }) {
           <LangToggle surface="var(--paper)" />
         </div>
         <div style={{ marginTop: 12 }}><LegalLinks compact /></div>
-      </div>
-    </aside>
-  );
-}
-
-// Сайдбар админ-области: разделы админки как отдельные пункты.
-function AdminSidebar({ pathname }) {
-  const navigate = useNavigate();
-  const me = usePlatformStore((s) => s.me);
-  const orgs = usePlatformStore((s) => s.orgs);
-  const pending = orgs.filter((o) => !o.verified).length + 2;
-  const active = adminSectionId(pathname);
-
-  const item = (on) => ({
-    display: 'flex', alignItems: 'center', gap: 12, height: 44, padding: '0 14px', borderRadius: 'var(--r-m)',
-    border: 'none', background: on ? 'var(--yard-soft)' : 'transparent', color: on ? 'var(--yard)' : 'var(--ink-2)',
-    fontWeight: 500, fontSize: 15, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'var(--fb)',
-    transition: 'background var(--t-fast), color var(--t-fast)',
-  });
-
-  return (
-    <aside className="erik-scroll" style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 248, background: 'var(--surface)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', padding: '22px 16px', zIndex: 30, overflowY: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', marginBottom: 20 }}>
-        <Logo size={24} onClick={() => navigate('/admin')} />
-        <span style={{ height: 18, padding: '0 7px', display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--ink)', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '.04em' }}>АДМИН</span>
-      </div>
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {ADMIN_SECTIONS.map((s) => {
-          const on = active === s.id;
-          return (
-            <button key={s.id} className="erik-row-hover" onClick={() => navigate(s.path)} style={item(on)}>
-              <Icon name={s.icon} size={20} />
-              <span style={{ flex: 1 }}>{s.label}</span>
-              {s.id === 'moderation' && pending > 0 && (
-                <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--maybe)', color: '#fff', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pending}</span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-      <div style={{ flex: 1 }} />
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>
-        <button className="erik-row-hover" onClick={() => navigate('/feed')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-m)', color: 'var(--ink-2)', fontFamily: 'var(--fb)', fontWeight: 500, fontSize: 14, textAlign: 'left' }}>
-          <Icon name="back" size={18} /> В приложение
-        </button>
-        <button className="erik-row-hover" onClick={() => navigate('/u/me')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 8px', borderRadius: 'var(--r-m)', textAlign: 'left', marginTop: 4 }}>
-          <Avatar name={me.name} size={38} />
-          <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{me.name}</span>
-            <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)' }}>Администратор</span>
-          </span>
-        </button>
-        <div style={{ marginTop: 8 }}>
-          <LangToggle surface="var(--paper)" />
-        </div>
       </div>
     </aside>
   );

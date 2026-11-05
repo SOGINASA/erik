@@ -63,3 +63,14 @@ test.each([
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(destination));
   expect(mockLogin).toHaveBeenCalledWith({ identifier: 'ivan@example.kz', password: 'password1' });
 });
+
+test.each(['', '?returnTo=%2Fg%2FPARK18'])('administrator enters the admin workspace immediately (%s)', async (search) => {
+  mockLocation.search = search;
+  mockLogin.mockResolvedValue({ user: { user_type: 'admin', role: 'vol' } });
+  render(<Login />);
+  fireEvent.change(screen.getByPlaceholderText('you@example.kz'), { target: { value: 'admin@example.kz' } });
+  fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'password1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Войти', exact: true }));
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin'));
+  expect(mockNavigate).not.toHaveBeenCalledWith('/feed');
+});

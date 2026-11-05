@@ -18,7 +18,7 @@ def profile_fields(data):
             fields[column] = value.strip()
     if 'contacts' in data:
         raw = data['contacts']
-        if not isinstance(raw, dict) or set(raw) - {'telegram', 'instagram', 'whatsapp', 'phone'}:
+        if not isinstance(raw, dict) or set(raw) - {'telegram', 'instagram', 'whatsapp', 'phone', 'general'}:
             raise ValueError('Некорректные контакты')
         contacts = {}
         for key, value in raw.items():

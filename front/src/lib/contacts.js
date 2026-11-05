@@ -6,7 +6,7 @@ export function contactHref(kind, value) {
     try { const url = new URL(raw); return url.hostname ? url.href : null; } catch (_) { return null; }
   }
   if (/^(t\.me|(?:www\.)?instagram\.com|wa\.me)\//i.test(raw)) return 'https://' + raw;
-  if (kind === 'telegram' || (kind === 'coordinator' && raw.startsWith('@'))) {
+  if (kind === 'telegram' || (['coordinator', 'general'].includes(kind) && raw.startsWith('@'))) {
     const name = raw.replace(/^@/, '');
     return /^[a-z0-9_]+$/i.test(name) ? 'https://t.me/' + encodeURIComponent(name) : null;
   }
@@ -14,10 +14,11 @@ export function contactHref(kind, value) {
     const name = raw.replace(/^@/, '');
     return /^[a-z0-9_.]+$/i.test(name) ? 'https://www.instagram.com/' + encodeURIComponent(name) : null;
   }
-  if (['phone', 'whatsapp', 'coordinator'].includes(kind) && /^\+?[\d\s()-]+$/.test(raw)) {
+  if (['phone', 'whatsapp', 'coordinator', 'general'].includes(kind) && /^\+?[\d\s()-]+$/.test(raw)) {
     const digits = raw.replace(/\D/g, '');
     if (digits.length < 6 || digits.length > 15) return null;
     return kind === 'whatsapp' ? 'https://wa.me/' + digits : 'tel:' + (raw.startsWith('+') ? '+' : '') + digits;
   }
+  if (kind === 'general' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return 'mailto:' + encodeURIComponent(raw);
   return null;
 }

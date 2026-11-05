@@ -136,7 +136,7 @@ def test_stats_count_pending_requests(client, admin_headers, pending_request):
                       headers=admin_headers).get_json()['pendingRoleRequests'] == 1
 
 
-@pytest.mark.parametrize('role', ['coord', 'org'])
+@pytest.mark.parametrize('role', ['coord'])
 def test_registration_requests_role_until_admin_approval(client, legal_acceptance, admin_headers, role):
     response = client.post('/api/auth/register', json={
         'nickname': 'neworganizer', 'password': 'test123456', 'full_name': 'Новый Организатор',

@@ -8,6 +8,7 @@ import { Container } from '../components/Container';
 import { Field, Textarea, FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import OrgApplicationForm from '../components/OrgApplicationForm';
 import OrgProfileFields, { orgProfileDefaults } from '../components/OrgProfileFields';
 import { Skeleton } from '../components/ui/feedback';
 
@@ -43,27 +44,21 @@ const sectionTitle = { fontSize: 12, letterSpacing: '.03em', textTransform: 'upp
 export default function ManageOrg() {
   const t = useT();
   const isRu = useLang() === 'ru';
-  const showToast = useUiStore((s) => s.showToast);
-
   const [status, setStatus] = useState('loading'); // loading | error | ready
   const [orgs, setOrgs] = useState([]);
   const [themes, setThemes] = useState([]);
   const [cities, setCities] = useState([]);
-  const [form, setForm] = useState({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '', ...orgProfileDefaults() });
-  const [creating, setCreating] = useState(false);
-  const [uploading, setUploading] = useState(false);
-
-  // Свои организации + справочники тем/городов для селектов. Справочники не критичны:
-  // если не пришли, форма всё равно работает (селект просто пустой), поэтому их ошибку глушим.
+  // Город обязателен для заявки: при ошибке справочника показываем повтор загрузки.
   const load = useCallback(async () => {
     setStatus('loading');
     try {
       const [orgRes, thRes, ctRes] = await Promise.all([
         api.myOrgs(),
         api.getThemes().catch(() => ({ themes: [] })),
-        api.getCities().catch(() => ({ cities: [] })),
+        api.getCities(),
       ]);
       setOrgs(orgRes.orgs || []);
+      if (orgRes.orgs?.some((org) => org.verified)) await useSessionStore.getState().boot();
       setThemes(thRes.themes || []);
       setCities(ctRes.cities || []);
       setStatus('ready');
@@ -85,32 +80,7 @@ export default function ManageOrg() {
   const themeOptions = themes.map((th) => ({ value: th.id, label: isRu ? th.ru : th.kz }));
   const cityOptions = cities.map((c) => ({ value: c.id, label: isRu ? c.ru : c.kz }));
 
-  const upCreate = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }));
   const applySaved = (updated) => setOrgs((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-
-  const submitCreate = async () => {
-    if (creating || uploading) return;
-    if (!form.name.trim()) { showToast(t.orgNameReq); return; }
-    setCreating(true);
-    try {
-      // Пустые поля не шлём — undefined выпадает при JSON.stringify (как в create сбора).
-      const res = await api.createOrg({
-        ...form,
-        name: form.name.trim(),
-        cat: form.cat || undefined,
-        cityId: form.cityId || undefined,
-        aboutRu: form.aboutRu.trim() || undefined,
-        aboutKz: form.aboutKz.trim() || undefined,
-      });
-      setOrgs((prev) => [res.org, ...prev]);
-      setForm({ name: '', cat: '', cityId: '', aboutRu: '', aboutKz: '' });
-      showToast(t.orgCreated);
-    } catch (err) {
-      showToast(err?.data?.error || t.orgCreateErr);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   return (
     <div style={{ minHeight: '100dvh', animation: 'erik-fade var(--t-base) var(--ease-out)' }}>
@@ -139,24 +109,7 @@ export default function ManageOrg() {
           </div>
         )}
 
-        {status === 'ready' && orgs.length === 0 && (
-          <>
-            <div style={cardBox}>
-              <div style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 19, color: 'var(--ink)' }}>{t.orgNoneTitle}</div>
-              <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, margin: '6px 0 0' }}>{t.orgNoneSub}</p>
-            </div>
-            <div style={sectionTitle}>{t.orgCreateTitle}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Field label={t.orgFName} value={form.name} onChange={upCreate('name')} placeholder={t.orgFNamePh} />
-              <Select label={t.orgFCat} placeholder={t.orgFCatPh} value={form.cat} onChange={upCreate('cat')} options={themeOptions} />
-              <Select label={t.orgFCity} placeholder={t.orgFCityPh} value={form.cityId} onChange={upCreate('cityId')} options={cityOptions} />
-              <Textarea label={t.orgFAboutRu} value={form.aboutRu} onChange={upCreate('aboutRu')} placeholder={t.orgFAboutPh} />
-              <Textarea label={t.orgFAboutKz} value={form.aboutKz} onChange={upCreate('aboutKz')} placeholder={t.orgFAboutPh} />
-              <OrgProfileFields value={form} onChange={setForm} disabled={creating} onBusyChange={setUploading} />
-              <Button icon="plus" loading={creating} disabled={uploading} onClick={submitCreate} style={{ alignSelf: 'flex-start' }}>{t.orgCreateCta}</Button>
-            </div>
-          </>
-        )}
+        {status === 'ready' && orgs.length === 0 && <OrgApplicationForm cities={cities} themes={themes} onRefresh={load} />}
 
         {status === 'ready' && orgs.length > 0 && (
           <>

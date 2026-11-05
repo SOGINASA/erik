@@ -539,6 +539,8 @@ class Org(db.Model):
     __tablename__ = 'orgs'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200))
+    bin = db.Column(db.String(12), unique=True, nullable=True)
+    registration = db.Column(db.JSON, nullable=True)
     cat = db.Column(db.String(16), db.ForeignKey('themes.id'))
     city_id = db.Column(db.String(3), db.ForeignKey('cities.id'), nullable=True)
     verified = db.Column(db.Boolean, default=False)
@@ -704,3 +706,21 @@ class UploadedImage(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     mime = db.Column(db.String(30), nullable=False)
     data = db.Column(db.LargeBinary, nullable=False)
+
+
+class OrgApplication(db.Model):
+    """Private, immutable submission. A public Org exists only after approval."""
+    __tablename__ = 'org_applications'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    # Nullable reservations enforce one pending application per person and BIN.
+    pending_user_id = db.Column(db.Integer, unique=True, nullable=True)
+    pending_bin = db.Column(db.String(12), unique=True, nullable=True)
+    data = db.Column(db.JSON, nullable=False)
+    status = db.Column(db.String(16), nullable=False, default='pending', index=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('orgs.id', ondelete='SET NULL'), nullable=True)
+    review_note = db.Column(db.Text, nullable=True)
+    decided_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=_now)
+    decided_at = db.Column(db.DateTime, nullable=True)
+    __table_args__ = (db.CheckConstraint("status IN ('pending', 'approved', 'rejected')", name='ck_org_application_status'),)

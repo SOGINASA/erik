@@ -115,8 +115,8 @@ export default function Register() {
         role: form.role, phone: form.phone.trim() || null, cityId: form.city, interests: form.interests,
         legal: { ...consents, version: legal.version },
       });
-      showToast(result?.roleRequest ? 'Аккаунт создан. Заявка на роль организатора отправлена администрации.' : 'Аккаунт создан. Добро пожаловать в erik!');
-      navigate(returnTo || (result?.roleRequest ? '/me' : form.role === 'vol' ? '/feed' : '/manage'));
+      showToast(form.role === 'org' ? 'Аккаунт создан. Теперь заполните заявку НКО.' : result?.roleRequest ? 'Аккаунт создан. Заявка на роль организатора отправлена администрации.' : 'Аккаунт создан. Добро пожаловать в erik!');
+      navigate(returnTo || (form.role === 'org' ? '/manage/org' : result?.roleRequest ? '/me' : form.role === 'vol' ? '/feed' : '/manage'));
     } catch (err) {
       if (err?.data?.code === 'legal_version_mismatch') {
         setError('Условия обновились. Прочитайте документы ещё раз и подтвердите новую редакцию.');

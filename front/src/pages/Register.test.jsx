@@ -85,16 +85,16 @@ test('sends explicit consent and the loaded version, then navigates only after s
   await fillRegistration(/НКО \/ организация/);
   acceptAll();
   fireEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
-  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/manage'));
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/manage/org'));
   expect(mockRegisterAccount).toHaveBeenCalledWith({
     identifier: 'ivan@example.kz', password: 'password1', full_name: 'Иванов Иван',
     role: 'org', phone: '+7 700 000 00 00', cityId: 'almaty', interests: [],
     legal: { version: legal.version, termsAccepted: true, privacyAccepted: true, consentAccepted: true, adultConfirmed: true },
   });
-  expect(mockToast).toHaveBeenCalledWith('Аккаунт создан. Добро пожаловать в erik!');
+  expect(mockToast).toHaveBeenCalledWith('Аккаунт создан. Теперь заполните заявку НКО.');
 });
 
-test.each([[/Координатор/, 'coord'], [/НКО \/ организация/, 'org']])('opens the request status while %s awaits approval', async (label, role) => {
+test.each([[/Координатор/, 'coord']])('opens the request status while %s awaits approval', async (label, role) => {
   mockRegisterAccount.mockResolvedValueOnce({ user: { role: 'vol' }, roleRequest: { role, status: 'pending' } });
   await fillRegistration(label);
   acceptAll();

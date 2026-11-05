@@ -27,6 +27,7 @@ import ManageVolunteers from './pages/ManageVolunteers';
 import ManageOrg from './pages/ManageOrg';
 import Profile from './pages/Profile';
 import Org from './pages/Org';
+import Organizations from './pages/Organizations';
 import Leaderboard from './pages/Leaderboard';
 import ForecastQuality from './pages/ForecastQuality';
 import Messages from './pages/Messages';
@@ -51,6 +52,8 @@ export default function App() {
   // и НЕ дёргает 403 для гостя.
   const token = useSessionStore((s) => s.token);
   const name = useSessionStore((s) => s.name);
+  const booted = useSessionStore((s) => s.booted);
+  const userType = useSessionStore((s) => s.userType);
   useEffect(() => {
     if (!token || !name) return;
     const p = usePlatformStore.getState();
@@ -75,12 +78,17 @@ export default function App() {
     return () => clearInterval(iv);
   }, []);
 
+  // userType is deliberately not persisted. Wait for /me before choosing the
+  // workspace so refreshing an admin session never flashes volunteer navigation.
+  if (token && !booted) return <div role="status" style={{ padding: 40, color: 'var(--ink-2)' }}>Проверяем доступ…</div>;
+
+  const admin = userType === 'admin';
   return (
     <>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/" element={admin ? <Navigate to="/admin" replace /> : <Home />} />
+        <Route path="/login" element={admin ? <Navigate to="/admin" replace /> : <Login />} />
+        <Route path="/register" element={admin ? <Navigate to="/admin" replace /> : <Register />} />
         <Route path="/onboarding" element={<Navigate to="/register" replace />} />
         <Route path="/terms" element={<Legal documentKey="terms" />} />
         <Route path="/privacy" element={<Legal documentKey="privacy" />} />
@@ -105,6 +113,7 @@ export default function App() {
           <Route path="/manage/volunteers" element={<ManageVolunteers />} />
           <Route path="/manage/org" element={<ManageOrg />} />
           <Route path="/u/:id" element={<Profile />} />
+          <Route path="/orgs" element={<Organizations />} />
           <Route path="/o/:id" element={<Org />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/forecast-quality" element={<ForecastQuality />} />

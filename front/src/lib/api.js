@@ -162,6 +162,10 @@ export const api = {
   getEventRegistration: (id) => request(`/events/${id}/registration`),
   confirmParticipation: (id) => request(`/events/${id}/confirm`, { method: 'POST' }),
   getOrgs: () => request('/orgs'),
+  getOrgEvents: (id) => request(`/orgs/${id}/events`),
+  myOrgApplications: () => request('/me/org-applications'),
+  adminOrgApplications: (status = 'pending') => request(`/admin/org-applications?status=${status}`),
+  decideOrgApplication: (id, body) => request(`/admin/org-applications/${id}/decision`, { method: 'POST', body }),
   createOrg: (body) => request('/orgs', { method: 'POST', body }), // {name,cat,cityId,aboutRu,aboutKz}
   getOrg: (id) => request(`/orgs/${id}`),
   followOrg: (id) => request(`/orgs/${id}/follow`, { method: 'POST' }),

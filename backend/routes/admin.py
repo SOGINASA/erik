@@ -101,7 +101,7 @@ def update_user(user_id):
 @admin_required
 def moderation_stats():
     """Метрики под карточки AdminOverview. pendingOrgs/openReports сохранены (обратная совместимость)."""
-    from models import Gathering
+    from models import Gathering, OrgApplication
 
     pending_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(False)).scalar() or 0
     verified_orgs = db.session.query(db.func.count(Org.id)).filter(Org.verified.is_(True)).scalar() or 0
@@ -138,7 +138,7 @@ def moderation_stats():
         avg_reaction_hours = round(total_h / len(resolved), 1)
 
     return jsonify({
-        'pendingOrgs': pending_orgs,
+        'pendingOrgs': pending_orgs + OrgApplication.query.filter_by(status='pending').count(),
         'openReports': open_reports,
         'pendingRoleRequests': pending_role_requests,
         'verifiedOrgs': verified_orgs,
@@ -380,6 +380,8 @@ def reject_org(oid):
     # Закрытый раздел: сохраняем архивные записи при удалении связанной НКО.
     LegacyCharityRequest.query.filter_by(org_id=org.id).update({'org_id': None})
     Follow.query.filter_by(org_id=org.id).delete()
+    from models import OrgApplication
+    OrgApplication.query.filter_by(org_id=org.id).update({'org_id': None})
     db.session.delete(org)
     db.session.commit()
     return jsonify({'ok': True})
@@ -498,3 +500,24 @@ def resolve_report(rid):
         pass
     db.session.commit()
     return jsonify({'report': r.to_dict()})
+
+
+@admin_bp.route('/org-applications', methods=['GET'])
+@admin_required
+def org_applications():
+    from models import OrgApplication
+    from services.org_applications import serialize_application
+    status = request.args.get('status', 'pending')
+    query = OrgApplication.query
+    if status in ('pending', 'approved', 'rejected'):
+        query = query.filter_by(status=status)
+    rows = query.order_by(OrgApplication.id.desc()).all()
+    return jsonify({'applications': [{**serialize_application(row), 'reviewNote': row.review_note} for row in rows]})
+
+
+@admin_bp.route('/org-applications/<int:aid>/decision', methods=['POST'])
+@admin_required
+def org_application_decision(aid):
+    from flask import g
+    from services.org_applications import decide_application
+    return decide_application(aid, g.user, request.get_json(silent=True))

@@ -237,6 +237,7 @@ def serialize_org(org, following=None):
         Gathering.org_id == org.id, Participant.user_id.isnot(None)).scalar() or 0
     city = db.session.get(City, org.city_id) if org.city_id else None
     d = {
+        'bin': org.bin, 'registration': org.registration or {},
         'id': org.id, 'name': org.name, 'cat': org.cat, 'cityId': org.city_id,
         'city': city.name_ru if city else None, 'verified': org.verified,
         'aboutRu': org.about_ru, 'aboutKz': org.about_kz,

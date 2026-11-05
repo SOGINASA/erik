@@ -85,8 +85,11 @@ def test_org_profile_permissions_validation_reviews(client, user1, user2):
     data = {'name': 'НКО', 'contacts': {'telegram': '@help', 'phone': '+77770000000'},
             'officeAddress': 'Астана, 1', 'mapUrl': 'https://2gis.kz/astana',
             'coordinators': [{'name': 'Анна', 'contact': '@anna'}], 'photos': ['https://example.org/photo.jpg']}
-    r = client.post('/api/orgs', headers=h, json=data)
-    assert r.status_code == 201
+    approved = Org(name='НКО', verified=True, owner_id=user1.id)
+    db.session.add(approved)
+    db.session.commit()
+    r = client.patch(f'/api/orgs/{approved.id}', headers=h, json=data)
+    assert r.status_code == 200
     org = r.get_json()['org']
     url = f"/api/orgs/{org['id']}"
     assert org['contacts'] == data['contacts']
