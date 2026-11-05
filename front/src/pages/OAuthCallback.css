@@ -1,0 +1,52 @@
+.oauth-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oauth-field__label {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.oauth-field__input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--fb);
+  font-size: 16px;
+  line-height: 1.5;
+  cursor: text;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.oauth-field__input::placeholder {
+  color: var(--ink-2);
+}
+
+.oauth-field__input:hover {
+  border-color: var(--ink);
+}
+
+.oauth-field__input:focus {
+  border-color: var(--yard);
+  outline: 2px solid var(--yard);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--yard-soft);
+}
+
+.oauth-field__hint {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}

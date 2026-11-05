@@ -6,6 +6,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { Logo } from '../components/shell/Brand';
 import Button from '../components/ui/Button';
 import RegistrationConsent, { EMPTY_CONSENTS } from '../components/RegistrationConsent';
+import './OAuthCallback.css';
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -78,17 +79,24 @@ export default function OAuthCallback() {
     <main style={{ minHeight: '100dvh', padding: '24px 20px 48px' }}>
       <Logo size={24} onClick={() => navigate('/')} />
       <div style={{ maxWidth: 440, margin: '48px auto', overflowWrap: 'anywhere' }}>
-        <h1 style={{ fontFamily: 'var(--fd)', fontSize: 30, lineHeight: 1.2 }}>Вход через Google</h1>
+        <h1 style={{ fontFamily: 'var(--fd)', fontSize: 30, lineHeight: 1.2, margin: '0 0 20px' }}>Вход через Google</h1>
         {busy && <p role="status">Завершаем вход…</p>}
         {error && <p role="alert" style={{ color: 'var(--danger)', lineHeight: 1.5 }}>{error}</p>}
-        {login && <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {login && <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {phase === 'link_required' && <>
             <p style={{ color: 'var(--ink-2)', lineHeight: 1.5, margin: 0 }}>Аккаунт с этим email уже есть. Введите его пароль, чтобы привязать Google и сохранить свой профиль и историю.</p>
-            <label>Пароль аккаунта<input className="erik-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={1024} style={{ display: 'block', width: '100%', marginTop: 8 }} /></label>
+            <div className="oauth-field">
+              <label className="oauth-field__label" htmlFor="oauth-password">Пароль аккаунта</label>
+              <input id="oauth-password" className="oauth-field__input" type="password" autoComplete="current-password" placeholder="Введите пароль аккаунта Erik" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={1024} />
+            </div>
           </>}
           {phase === 'registration_required' && <>
             <p style={{ color: 'var(--ink-2)', lineHeight: 1.5, margin: 0 }}>Google подтверждён. Укажите своё имя и прочитайте условия, чтобы создать профиль волонтёра.</p>
-            <label>Фамилия и имя<input className="erik-input" autoComplete="name" value={name} onChange={(e) => { setName(e.target.value); setConsents({ ...EMPTY_CONSENTS }); }} required maxLength={100} style={{ display: 'block', width: '100%', marginTop: 8 }} /></label>
+            <div className="oauth-field">
+              <label className="oauth-field__label" htmlFor="oauth-name">Фамилия и имя</label>
+              <input id="oauth-name" className="oauth-field__input" type="text" autoComplete="name" placeholder="Например, Иванов Иван" aria-describedby="oauth-name-hint" value={name} onChange={(e) => { setName(e.target.value); setConsents({ ...EMPTY_CONSENTS }); }} required maxLength={100} />
+              <p id="oauth-name-hint" className="oauth-field__hint">Имя из Google можно изменить перед регистрацией.</p>
+            </div>
             <RegistrationConsent legal={legal} loading={legalLoading} error={legalError} values={consents} onChange={(key, value) => setConsents((old) => ({ ...old, [key]: value }))} onRetry={loadLegal} />
           </>}
           {(!busy || phase) && <Button type="submit" full size="lg" loading={busy} disabled={!canSubmit}>{phase === 'link_required' ? 'Привязать Google и войти' : phase === 'registration_required' ? 'Создать аккаунт' : 'Повторить'}</Button>}
