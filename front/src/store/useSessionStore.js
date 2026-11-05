@@ -135,6 +135,13 @@ export const useSessionStore = create(
         return res;
       },
 
+      acceptOAuthSession: (res) => {
+        setAuth({ token: res.access_token, refreshToken: res.refresh_token });
+        set({ token: res.access_token, refreshToken: res.refresh_token,
+          loggedIn: true, userType: res.user.user_type, role: res.user.role || 'vol',
+          name: res.user.full_name, phone: res.user.phone || null, roleDirty: false, booted: true });
+      },
+
       // Профиль и журнал подтверждений создаются одним запросом. До успеха
       // сервера форма (в том числе пароль) не попадает в сохраняемый стор.
       registerAccount: async ({ identifier, email, nickname, password, full_name, role, phone, cityId, interests, legal }) => {

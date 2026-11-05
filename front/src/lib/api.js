@@ -69,6 +69,9 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  oauthProviders: () => request('/auth/oauth/providers', { auth: false }),
+  oauthStartUrl: (challenge) => `${BASE}/auth/oauth/google/start?challenge=${encodeURIComponent(challenge)}`,
+  oauthExchange: (payload) => request('/auth/oauth/exchange', { method: 'POST', body: payload, auth: false }),
   applicationDetails: (kind, id) => request(`/application-data/${kind}/${id}`),
   saveApplicationDetails: (kind, id, applicationDetails) => request(`/application-data/${kind}/${id}`, { method: 'PATCH', body: { applicationDetails } }),
   reviewHistory: (kind, id) => request(`/admin/application-data/${kind}/${id}/history`),

@@ -537,7 +537,7 @@ def deactivate_account():
         data = request.get_json(silent=True) or {}
         # Аккаунт (email/пароль) требует подтверждения паролем; device-личность без пароля
         # деактивируется по валидному JWT (подтверждать нечем).
-        if user.has_account:
+        if user.password_hash:
             if not data.get('password'):
                 return jsonify({'error': 'Подтверждение паролем обязательно'}), 400
             if not user.check_password(data['password']):

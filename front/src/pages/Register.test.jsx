@@ -21,7 +21,7 @@ jest.mock('../store/usePlatformStore', () => ({
   usePlatformStore: (select) => select({ cities: [{ id: 'almaty', ru: 'Алматы' }] }),
 }));
 jest.mock('../components/shell/Brand', () => ({ Logo: () => <span>erik</span>, LangToggle: () => null }));
-jest.mock('../lib/api', () => ({ api: { legal: jest.fn() } }));
+jest.mock('../lib/api', () => ({ api: { legal: jest.fn(), oauthProviders: async () => ({ providers: [] }) } }));
 
 const legal = {
   version: '2026-09-28.1-operator-1', registrationAvailable: true,

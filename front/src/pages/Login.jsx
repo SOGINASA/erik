@@ -8,6 +8,7 @@ import { FieldLabel } from '../components/ui/controls';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import { guestReturnTo } from '../lib/authReturnTo';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 
 function AuthField({ icon, right, ...props }) {
   return (
@@ -80,6 +81,7 @@ export default function Login() {
           <h1 style={{ fontFamily: 'var(--fd)', fontWeight: 600, fontSize: 30, letterSpacing: '-.02em', margin: '0 0 6px' }}>С возвращением</h1>
           <p style={{ fontSize: 15, color: 'var(--ink-2)', margin: '0 0 28px' }}>Войдите, чтобы вести сборы и видеть прогноз явки</p>
 
+          <GoogleLoginButton returnTo={returnTo} />
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <FieldLabel>Email или никнейм</FieldLabel>

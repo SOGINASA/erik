@@ -81,6 +81,8 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=True, index=True)
     nickname = db.Column(db.String(50), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(255), nullable=True)
+    oauth_identities = db.relationship('OAuthIdentity', back_populates='user',
+                                      cascade='all, delete-orphan')
 
     full_name = db.Column(db.String(100))          # отображаемое имя / имя участника
     user_type = db.Column(db.String(20), default='user')   # user | admin (привилегия)
@@ -128,7 +130,7 @@ class User(db.Model):
 
     @property
     def has_account(self):
-        return bool(self.password_hash)
+        return bool(self.password_hash or self.oauth_identities)
 
     @property
     def has_profile(self):
@@ -164,6 +166,28 @@ class User(db.Model):
             if include_device:
                 data['device_id'] = self.device_id
         return data
+
+
+class OAuthIdentity(db.Model):
+    __tablename__ = 'oauth_identities'
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(20), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    user = db.relationship('User', back_populates='oauth_identities')
+    __table_args__ = (db.UniqueConstraint('provider', 'subject', name='uq_oauth_provider_subject'),
+                      db.UniqueConstraint('user_id', 'provider', name='uq_oauth_user_provider'))
+
+
+class OAuthLoginCode(db.Model):
+    """Short-lived, browser-bound handoff. Provider tokens are never stored."""
+    __tablename__ = 'oauth_login_codes'
+    code_hash = db.Column(db.String(64), primary_key=True)
+    challenge = db.Column(db.String(43), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    full_name = db.Column(db.String(100), nullable=False)
+    expires_at = db.Column(db.BigInteger, nullable=False, index=True)
 
 
 class UsedRefreshToken(db.Model):

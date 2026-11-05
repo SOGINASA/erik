@@ -61,6 +61,8 @@ def create_app(config_object=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    from services.oauth_service import init_oauth
+    init_oauth(app)
 
     # Для локальной разработки/демо схема поднимается create_all() (zero-config).
     # В проде используйте миграции: `flask db-sync` и запуск с SKIP_DB_CREATE=1.
@@ -74,6 +76,8 @@ def create_app(config_object=None):
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
                         notifications_bp, platform_bp, organizer_bp, universities_bp, review_data_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    from routes.oauth import oauth_bp
+    app.register_blueprint(oauth_bp, url_prefix='/api/auth/oauth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(session_bp, url_prefix='/api')          # /api/session, /api/me, /api/logout
     app.register_blueprint(gatherings_bp, url_prefix='/api/gatherings')

@@ -27,7 +27,7 @@ jest.mock('./store/useGatheringStore', () => ({ useGatheringStore: { getState: (
 
 // Keep the actual route table while isolating page data fetching and the globe renderer.
 for (const page of [
-  'Home', 'Login', 'Register', 'Legal', 'Feed', 'MapPage', 'Event', 'NewGathering',
+  'Home', 'Login', 'Register', 'OAuthCallback', 'Legal', 'Feed', 'MapPage', 'Event', 'NewGathering',
   'GuestGathering', 'CoordGathering', 'CheckIn', 'AttendanceConfirm', 'MyGatherings', 'MyEvents', 'Manage',
   'ManageRequests', 'ManageVolunteers', 'ManageOrg', 'Profile', 'Org', 'Leaderboard',
   'ForecastQuality', 'Messages', 'Convo', 'Notifications', 'Admin', 'NotFound', 'ProjectRights',
@@ -43,6 +43,19 @@ function Location() {
 beforeEach(() => {
   mockShellVisits.length = 0;
   Object.assign(mockSession, { token: null, name: null, booted: true, userType: null });
+});
+
+test('OAuth callback stays reachable without restoring a previous account session', () => {
+  const previousBoot = mockSession.boot;
+  const boot = jest.fn();
+  Object.assign(mockSession, { token: 'old-session', name: 'Previous User', booted: false, boot });
+  try {
+    render(<MemoryRouter initialEntries={['/oauth/callback']}><App /></MemoryRouter>);
+    expect(screen.getByText('OAuthCallback')).toBeInTheDocument();
+    expect(boot).not.toHaveBeenCalled();
+  } finally {
+    mockSession.boot = previousBoot;
+  }
 });
 
 test.each([

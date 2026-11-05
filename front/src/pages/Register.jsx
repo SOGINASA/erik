@@ -11,6 +11,7 @@ import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import RegistrationConsent, { EMPTY_CONSENTS } from '../components/RegistrationConsent';
 import { guestReturnTo } from '../lib/authReturnTo';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 
 const ROLES = [
   { id: 'vol', title: 'Волонтёр', desc: 'Прихожу на события и помогаю команде', icon: 'users' },
@@ -144,6 +145,7 @@ export default function Register() {
     if (step === 0) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <GoogleLoginButton returnTo={returnTo} />
           {ROLES.map((r) => {
             const on = form.role === r.id;
             return (

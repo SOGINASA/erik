@@ -6,11 +6,13 @@ REST API волонтёрской платформы **erik** (Tech Vision 2026 
 Flask + SQLAlchemy + JWT. Обслуживает сборы, прогноз явки, отметку присутствия, штаб
 организатора, соц-слой (НКО, помощь, сообщения) и модерацию.
 
+Вход через Google OAuth / OpenID Connect: [настройка, сценарии и API](OAUTH.md).
+
 Корневой обзор проекта — в [../README.md](../README.md). Модель прогноза — в [../ml/README.md](../ml/README.md).
 
 ## Стек
 
-- **Flask 3** — фабрика приложения (`create_app`), 8 блюпринтов, единые error-handlers.
+- **Flask 3** — фабрика приложения (`create_app`), 9 блюпринтов, единые error-handlers.
 - **SQLAlchemy 2** + **Flask-Migrate** — ORM и миграции.
 - **Flask-JWT-Extended** — access/refresh-токены; device-вход выдаёт токен без пароля.
 - **Flask-CORS**, **python-dotenv**, тесты — **pytest**, контейнеризация — **Docker**.
@@ -22,7 +24,8 @@ Flask + SQLAlchemy + JWT. Обслуживает сборы, прогноз яв
 - **device-участник** — `User` с `device_id` (токен выдаётся по заголовку `X-Device-Id`,
   без email и пароля). Так волонтёр отвечает на сбор без регистрации — снимает барьер
   «страшно регистрироваться».
-- **аккаунт НКО / координатора** — тот же `User` + `email` + `password_hash`.
+- **аккаунт** — тот же `User` + пароль или привязанная Google-личность `OAuthIdentity`;
+  роль координатора / НКО подтверждается отдельно администрацией.
 - **админ** — `User` с `user_type='admin'`.
 
 Продуктовые агрегаты явки (`trust_came`, `trust_total`, `reliability`, `hours_total`)
