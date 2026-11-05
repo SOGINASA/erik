@@ -68,6 +68,9 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  oauthProviders: () => request('/auth/oauth/providers', { auth: false }),
+  oauthStartUrl: (challenge) => `${BASE}/auth/oauth/google/start?challenge=${encodeURIComponent(challenge)}`,
+  oauthExchange: (payload) => request('/auth/oauth/exchange', { method: 'POST', body: payload, auth: false }),
   legal: () => request('/legal', { auth: false }),
   // сессия / профиль
   session: (payload) => request('/session', { method: 'POST', body: payload }),

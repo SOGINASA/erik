@@ -6,7 +6,7 @@ const mockLogin = jest.fn();
 const mockToast = jest.fn();
 const mockLocation = { search: '' };
 const mockForgot = jest.fn();
-jest.mock('../lib/api', () => ({ api: { forgotPassword: (...args) => mockForgot(...args) } }));
+jest.mock('../lib/api', () => ({ api: { forgotPassword: (...args) => mockForgot(...args), oauthProviders: async () => ({ providers: [] }) } }));
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,

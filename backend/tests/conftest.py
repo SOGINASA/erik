@@ -40,12 +40,16 @@ def create_test_app():
     _db.init_app(app)
     from services.security import configure_jwt
     configure_jwt(JWTManager(app))
+    from services.oauth_service import init_oauth
+    init_oauth(app)
     app.config['ALLOW_DEMO_LOGIN'] = True
 
     from routes import (auth_bp, admin_bp, session_bp, gatherings_bp, guest_bp,
                         notifications_bp, platform_bp, organizer_bp)
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    from routes.oauth import oauth_bp
+    app.register_blueprint(oauth_bp, url_prefix='/api/auth/oauth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(session_bp, url_prefix='/api')
     app.register_blueprint(gatherings_bp, url_prefix='/api/gatherings')

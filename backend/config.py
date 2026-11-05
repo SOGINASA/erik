@@ -66,6 +66,13 @@ class Config:
     SHARE_BASE_URL = os.environ.get('SHARE_BASE_URL', 'https://erik.kz')
     # Базовый URL фронта (для ссылок сброса пароля/верификации в письмах)
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+    GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', '')
+    SESSION_COOKIE_NAME = 'erik_oauth'
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
 
     # Строгая проверка реквизитов включается отдельно; старый env остаётся рабочим.
     REQUIRE_LEGAL_CONFIGURATION = os.environ.get('REQUIRE_LEGAL_CONFIGURATION', '0') == '1'

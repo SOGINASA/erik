@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Shell from './components/shell/Shell';
 import Sheets from './sheets/Sheets';
 import { Toast } from './components/ui/feedback';
@@ -10,6 +10,7 @@ import { useGatheringStore } from './store/useGatheringStore';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import OAuthCallback from './pages/OAuthCallback';
 import Legal from './pages/Legal';
 import Feed from './pages/Feed';
 import MapPage from './pages/MapPage';
@@ -38,14 +39,16 @@ import NotFound from './pages/NotFound';
 import ProjectRights from './pages/ProjectRights';
 
 export default function App() {
+  const oauthCallback = useLocation().pathname === '/oauth/callback';
   // Поднимаем device-сессию один раз при загрузке (нужно и гостю для RSVP),
   // затем подтягиваем данные платформы, уведомления, подписки и ответы на события.
   // Поднимаем device-сессию + публичные данные (лента/НКО/города/рейтинг) — можно и гостю.
   useEffect(() => {
+    if (oauthCallback) return;
     useSessionStore.getState().boot().finally(() => {
       usePlatformStore.getState().loadPlatform();
     });
-  }, []);
+  }, [oauthCallback]);
 
   // Профильные данные (уведомления/подписки/диалоги/ответы) — только когда есть
   // токен И имя (@profiled_required). Реактивно: срабатывает и после входа/онбординга,
@@ -55,18 +58,19 @@ export default function App() {
   const booted = useSessionStore((s) => s.booted);
   const userType = useSessionStore((s) => s.userType);
   useEffect(() => {
-    if (!token || !name) return;
+    if (oauthCallback || !token || !name) return;
     const p = usePlatformStore.getState();
     p.loadNotifications();
     p.loadFollows();
     p.loadMe();
     p.loadConversations();
     useGatheringStore.getState().loadRegistrations();
-  }, [token, name]);
+  }, [token, name, oauthCallback]);
 
   // Живые уведомления/сообщения: лёгкий поллинг каждые 25с (только с профилем, видимая вкладка).
   useEffect(() => {
     const tick = () => {
+      if (oauthCallback) return;
       if (typeof document !== 'undefined' && document.hidden) return;
       const s = useSessionStore.getState();
       if (!s.token || !s.name) return; // профильные эндпоинты требуют имя
@@ -76,16 +80,17 @@ export default function App() {
     };
     const iv = setInterval(tick, 25000);
     return () => clearInterval(iv);
-  }, []);
+  }, [oauthCallback]);
 
   // userType is deliberately not persisted. Wait for /me before choosing the
   // workspace so refreshing an admin session never flashes volunteer navigation.
-  if (token && !booted) return <div role="status" style={{ padding: 40, color: 'var(--ink-2)' }}>Проверяем доступ…</div>;
+  if (!oauthCallback && token && !booted) return <div role="status" style={{ padding: 40, color: 'var(--ink-2)' }}>Проверяем доступ…</div>;
 
   const admin = userType === 'admin';
   return (
     <>
       <Routes>
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/" element={admin ? <Navigate to="/admin" replace /> : <Home />} />
         <Route path="/login" element={admin ? <Navigate to="/admin" replace /> : <Login />} />
         <Route path="/register" element={admin ? <Navigate to="/admin" replace /> : <Register />} />
